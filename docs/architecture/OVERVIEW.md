@@ -37,9 +37,12 @@ is the deep link.
 
 ## Концепция screen
 
-Three.js scene: extruded footprints from `buildingsData.ts` (traced approximations; two
-12-point crosses), matcap + edge lines, hand-rolled orbit (cursor offset on desktop,
-drag deltas on touch), reverse perspective applied per frame (see TUNING_LOG).
+Three.js scene: the user's GLB (`public/resources/scene.glb`, normalized to span 300,
+base y=0) under an orthographic top-down camera; hand-rolled tilt (cursor offset with
+deadzone on desktop, drag deltas on touch). Reverse (icon) perspective is BAKED into the
+geometry once at load by `reversePerspective.ts` — per-wall polycentric splay, so every
+roof shows all four façades from straight above (`?rp=<k>` dev override; see TUNING_LOG).
+`buildingsData.ts` is legacy/unused.
 
 ## Performance tiers
 

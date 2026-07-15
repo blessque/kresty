@@ -113,6 +113,7 @@ Planned ver 6 «Витраж»: beams as masks revealing section photo content i
 - **`REVERSE_K = 0`** — user: divergence at 0.85 read as "too fisheye". The map is now
   pure orthographic: flat plan at rest, clean axonometric on tilt. The vertex-divergence
   mechanism stays wired; raise K gently (0.15–0.3) if reverse perspective is requested back.
+  **SUPERSEDED by Map round 3 — the global-divergence shader patch was removed entirely.**
 
 ## Repo hygiene (2026-07-15, late night)
 
@@ -127,10 +128,41 @@ Planned ver 6 «Витраж»: beams as masks revealing section photo content i
 - This also fixed the initial push failing (RPC/HTTP 400) — the old history carried
   ~14MB of mood-board PNGs; squashed to one clean initial commit without them.
 
+## Map round 3 (2026-07-15) — TRUE icon reverse perspective, baked
+
+- Root cause of the round-1 "fisheye": the old formula scaled view-space XY around ONE
+  global center (the view axis), so off-center roofs sheared sideways relative to their
+  bases. Icon perspective is **polycentric** — each building splays around its own
+  footprint (user's drawing: `references/reverso.png` — roof + all four walls visible
+  from straight above, wall bottoms further out than the roof edge).
+- New mechanism: `src/screens/concept/reversePerspective.ts` — **baked into the GLB
+  geometry once at load**, zero per-frame cost, tilt untouched (camera-side). Wall faces
+  (|n.y| < 0.35) are flood-filled into strips via position-welded vertices; every wall
+  vertex is pushed outward along the area-weighted horizontal normal by
+  `SPLAY_K · (ownRoofLineY − y)`. Wall tops don't move (stay welded to roofs); normals
+  are kept so façades keep flat directional shading. Strips shorter than 4% of model
+  height (curbs) are skipped.
+- The superseded global-divergence shader patch (`patchMaterial`, `uRevK/uRevDist/
+  uRevScale`, `REVERSE_K/REVERSE_SCALE`) was **removed** from ConceptScreen.ts —
+  resurrect from git history if ever needed; do NOT re-add it as "reverse perspective",
+  it is the wrong model.
+- User decisions: splay **always on** at every tilt angle; mechanism free as long as
+  cursor/touch tilt works.
+- Dials: `SPLAY_K = 0.6` (wall band = 60% of wall height; `?rp=<k>` URL override —
+  `?rp=0` flat plan sanity, `?rp=1` overlaps between close buildings). Also
+  `WALL_NY_MAX`, `MIN_WALL_H_FRAC`, `WELD_EPS_FRAC` in reversePerspective.ts.
+- Accepted-by-construction quirks (also present in the user's drawing): diagonal seams
+  where two splayed walls interpenetrate in concave inner corners of the crosses;
+  wall overlap between very close buildings at high K.
+- Verified via headless screenshots on :5299: rest = top-down roofs + 4 wall bands
+  (crosses read clearly), tilt works, `?rp=0`/`?rp=1` behave.
+- Taste dial left open: façade shading contrast vs roofs (hemisphere/directional light
+  intensities in `buildScene`) — walls read but are close in tone to roofs.
+
 ## Open issues
 
-- **[OPEN] Reverse perspective is currently OFF (K=0)** — the original icon-perspective
-  concept is dormant. Clarify with the user whether it returns subtly or stays flat.
+- ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
+  true polycentric icon splay baked at load, always on.
 - **[OPEN] Showreel/hover placeholder photos are gitignored** — a completely fresh clone
   will render those two features without images until real client photos are added
   (rays, nav, transition, map are unaffected).
