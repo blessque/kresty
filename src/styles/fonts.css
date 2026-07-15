@@ -1,0 +1,35 @@
+@font-face {
+  font-family: 'ALS Hauss Next';
+  src: url('/resources/ALSHaussNext-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ALS Hauss Next';
+  src: url('/resources/ALSHaussNext-RegularItalic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ALS Hauss Next Condensed';
+  src: url('/resources/ALSHaussNext-CondensedRegular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ALS Hauss Next Condensed';
+  src: url('/resources/ALSHaussNext-CondensedRegularItalic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ALS Chromius';
+  src: url('/resources/ALS_Chromius_VF_0.8.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

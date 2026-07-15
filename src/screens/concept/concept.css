@@ -1,0 +1,47 @@
+#screen-concept {
+  background: #56b7e6;
+  touch-action: none;
+}
+
+#screen-concept canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.concept-home {
+  position: absolute;
+  left: 32px;
+  top: 40px;
+  width: 220px;
+  z-index: 5;
+  cursor: pointer;
+}
+.concept-home svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.concept-title {
+  position: absolute;
+  right: 32px;
+  top: 44px;
+  z-index: 5;
+  font-family: 'ALS Chromius', sans-serif;
+  font-size: 24px;
+  font-variation-settings: 'wght' 500;
+}
+
+.concept-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  z-index: 5;
+  font-size: 14px;
+  opacity: 0.55;
+  text-align: center;
+  pointer-events: none;
+}

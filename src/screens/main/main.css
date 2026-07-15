@@ -1,0 +1,153 @@
+#screen-main {
+  background: #56b7e6;
+}
+
+/* photo showreel sits under the ray canvas; screen-blend lightens it */
+.showreel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.showreel.active {
+  opacity: 1;
+}
+.showreel img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.showreel img.visible {
+  opacity: 1;
+}
+/* keep photos moody so white rays read on top */
+.showreel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 61, 84, 0.45);
+}
+
+/* hover "gallery dark": black drop + section image, revealed by the light */
+.hover-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+.hover-scene .hover-dark {
+  position: absolute;
+  inset: 0;
+  background: #04070c;
+  opacity: 0.93;
+}
+.hover-scene img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.hover-scene img.visible {
+  opacity: 0.38;
+}
+
+.ray-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1440px;
+  height: 800px;
+  z-index: 4;
+  transform-origin: center;
+  /* transform set from JS: translate(-50%,-50%) scale(s) */
+}
+
+.stage .logo {
+  position: absolute;
+  left: 32px;
+  top: 40px;
+  width: 314px;
+  height: 50px;
+}
+.stage .logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.nav-link {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
+  font-size: 32px;
+  font-weight: 500;
+  font-variation-settings: 'wght' 500;
+  color: #fff;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: text-shadow 0.25s ease;
+}
+.nav-link .nav-rot {
+  display: block;
+}
+.nav-link:hover,
+.nav-link:focus-visible {
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.9), 0 0 42px rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.news {
+  position: absolute;
+  left: 32px;
+  bottom: 32px;
+  width: 271px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.news .headline {
+  opacity: 0.5;
+  transition: opacity 0.4s ease;
+  min-height: 48px;
+}
+.news .headline.fading {
+  opacity: 0;
+}
+.news a {
+  width: fit-content;
+}
+.news a:hover {
+  text-decoration: underline;
+}
+
+.corner-mark {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  font-size: 14px;
+  opacity: 0.5;
+  letter-spacing: 0.08em;
+}
+
