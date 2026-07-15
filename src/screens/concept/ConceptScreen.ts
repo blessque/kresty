@@ -2,16 +2,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import logoSvg from '../../assets/logo.svg?raw';
 import { getPerfTier } from '../../shared/performanceTier';
-import { applyIconSplay } from './reversePerspective';
 
 /**
- * Reverse (icon) perspective is BAKED into the GLB geometry once at load —
- * see reversePerspective.ts (per-wall polycentric splay: roof + all four
- * façades visible from straight above). The camera itself stays plain
- * orthographic top-down; cursor/touch tilt only moves the camera, so the
- * icon read is always on. Dev dial: ?rp=<k> overrides the splay amount
- * (?rp=0 → flat plan).
+ * Reverse (icon) perspective, done at the VERTEX level: with an orthographic
+ * camera looking straight down, every vertex's view-space xy is scaled by
+ * how much deeper it sits than the reference plane:
+ *
+ *   factor = 1 + K · (depth − refDepth) / refScale
+ *
+ * Deeper (lower) vertices spread outward → building walls splay, all façades
+ * become visible at once — the icon-painting read. Works continuously across
+ * a single GLB mesh (no per-object scaling).
  */
+// 0 = pure orthographic, no divergence at all ("too fisheye" at 0.85 —
+// user 2026-07-15). Raise gently (0.15–0.3) if reverse perspective returns.
+const REVERSE_K = 0;
+const REVERSE_SCALE = 110;
 /** max tilt when the cursor is at the viewport edge (rad) */
 const MAX_TILT = 0.5;
 /** cursor deadzone around the center — inside it the view is exactly top-down */
@@ -36,6 +42,10 @@ export class ConceptScreen {
   private smY = 0;
   private dragging = false;
   private lastDrag = { x: 0, y: 0 };
+
+  private uRevDist = { value: CAMERA_DIST };
+  private uRevK = { value: REVERSE_K };
+  private uRevScale = { value: REVERSE_SCALE };
 
   constructor(container: HTMLElement) {
     this.el = container;
@@ -95,6 +105,34 @@ export class ConceptScreen {
     addEventListener('pointerup', () => (this.dragging = false));
   }
 
+  /** inject the reverse-perspective displacement into a material's vertex stage */
+  private patchMaterial(mat: THREE.Material) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uRevK = this.uRevK;
+      shader.uniforms.uRevDist = this.uRevDist;
+      shader.uniforms.uRevScale = this.uRevScale;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uRevK;\nuniform float uRevDist;\nuniform float uRevScale;'
+        )
+        .replace(
+          '#include <project_vertex>',
+          [
+            'vec4 mvPosition = vec4( transformed, 1.0 );',
+            '#ifdef USE_INSTANCING',
+            '  mvPosition = instanceMatrix * mvPosition;',
+            '#endif',
+            'mvPosition = modelViewMatrix * mvPosition;',
+            'float rpDepth = -mvPosition.z;',
+            'mvPosition.xy *= 1.0 + uRevK * (rpDepth - uRevDist) / uRevScale;',
+            'gl_Position = projectionMatrix * mvPosition;',
+          ].join('\n')
+        );
+    };
+    mat.needsUpdate = true;
+  }
+
   private buildScene() {
     // lights for whatever materials the GLB carries
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8fc4e2, 1.4));
@@ -108,15 +146,6 @@ export class ConceptScreen {
       (gltf) => {
         const root = gltf.scene;
 
-        // bake the icon splay first, so normalization frames the widened footprint
-        const rp = parseFloat(new URLSearchParams(location.search).get('rp') ?? '');
-        root.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.isMesh) {
-            applyIconSplay(mesh.geometry, Number.isFinite(rp) ? rp : undefined);
-          }
-        });
-
         // normalize: center on origin, base at y=0, span = MODEL_SPAN
         const box = new THREE.Box3().setFromObject(root);
         const size = box.getSize(new THREE.Vector3());
@@ -124,6 +153,14 @@ export class ConceptScreen {
         const scale = MODEL_SPAN / Math.max(size.x, size.z);
         root.scale.setScalar(scale);
         root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+
+        root.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) {
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach((m) => this.patchMaterial(m));
+          }
+        });
 
         this.scene.add(root);
         this.primeFrame();
@@ -202,5 +239,6 @@ export class ConceptScreen {
       t.z + CAMERA_DIST * Math.sin(polar) * dirZ
     );
     this.camera.lookAt(t);
+    this.uRevDist.value = this.camera.position.distanceTo(t);
   }
 }
