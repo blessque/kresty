@@ -4,23 +4,23 @@ import logoSvg from '../../assets/logo.svg?raw';
 import { getPerfTier } from '../../shared/performanceTier';
 
 /**
- * Reverse (icon) perspective, done at the VERTEX level: with an orthographic
- * camera looking straight down, every vertex's view-space xy is scaled by
- * how much deeper it sits than the reference plane:
+ * Plan-oblique («military») projection: the camera is PERMANENTLY straight
+ * top-down and never rotates. Cursor/touch tilt drives a pure shear on the
+ * model instead:
  *
- *   factor = 1 + K · (depth − refDepth) / refScale
+ *   x' = x + sx·y      z' = z + sz·y      (y untouched)
  *
- * Deeper (lower) vertices spread outward → building walls splay, all façades
- * become visible at once — the icon-painting read. Works continuously across
- * a single GLB mesh (no per-object scaling).
+ * Every horizontal section — every roof, at any height, of any shape — keeps
+ * its exact undistorted plan drawing at all times; walls extrude as
+ * parallelograms on the opposite side (reference:
+ * references/perspective-guide.png). Depth stays = height, so the z-buffer
+ * resolves the oblique view's occlusion exactly. No geometry processing,
+ * no shader patches.
  */
-// 0 = pure orthographic, no divergence at all ("too fisheye" at 0.85 —
-// user 2026-07-15). Raise gently (0.15–0.3) if reverse perspective returns.
-const REVERSE_K = 0;
-const REVERSE_SCALE = 110;
-/** max tilt when the cursor is at the viewport edge (rad) */
-const MAX_TILT = 0.5;
-/** cursor deadzone around the center — inside it the view is exactly top-down */
+/** max shear (wall reveal per unit height) when the cursor is at the edge;
+ *  ?ob=<k> URL override for tuning */
+const MAX_SHEAR = 0.55;
+/** cursor deadzone around the center — inside it the view is a flat plan */
 const DEADZONE = 0.08;
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max dimension
@@ -32,7 +32,8 @@ export class ConceptScreen {
   private renderer!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera!: THREE.OrthographicCamera;
-  private target = new THREE.Vector3(0, 0, 0);
+  private shearGroup = new THREE.Group();
+  private maxShear = MAX_SHEAR;
   private raf = 0;
   private running = false;
 
@@ -43,12 +44,10 @@ export class ConceptScreen {
   private dragging = false;
   private lastDrag = { x: 0, y: 0 };
 
-  private uRevDist = { value: CAMERA_DIST };
-  private uRevK = { value: REVERSE_K };
-  private uRevScale = { value: REVERSE_SCALE };
-
   constructor(container: HTMLElement) {
     this.el = container;
+    const ob = parseFloat(new URLSearchParams(location.search).get('ob') ?? '');
+    if (Number.isFinite(ob)) this.maxShear = ob;
     this.buildDom();
     this.buildScene();
   }
@@ -105,40 +104,15 @@ export class ConceptScreen {
     addEventListener('pointerup', () => (this.dragging = false));
   }
 
-  /** inject the reverse-perspective displacement into a material's vertex stage */
-  private patchMaterial(mat: THREE.Material) {
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uRevK = this.uRevK;
-      shader.uniforms.uRevDist = this.uRevDist;
-      shader.uniforms.uRevScale = this.uRevScale;
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          '#include <common>\nuniform float uRevK;\nuniform float uRevDist;\nuniform float uRevScale;'
-        )
-        .replace(
-          '#include <project_vertex>',
-          [
-            'vec4 mvPosition = vec4( transformed, 1.0 );',
-            '#ifdef USE_INSTANCING',
-            '  mvPosition = instanceMatrix * mvPosition;',
-            '#endif',
-            'mvPosition = modelViewMatrix * mvPosition;',
-            'float rpDepth = -mvPosition.z;',
-            'mvPosition.xy *= 1.0 + uRevK * (rpDepth - uRevDist) / uRevScale;',
-            'gl_Position = projectionMatrix * mvPosition;',
-          ].join('\n')
-        );
-    };
-    mat.needsUpdate = true;
-  }
-
   private buildScene() {
     // lights for whatever materials the GLB carries
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8fc4e2, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(180, 320, 120);
     this.scene.add(sun);
+
+    this.shearGroup.matrixAutoUpdate = false;
+    this.scene.add(this.shearGroup);
 
     const loader = new GLTFLoader();
     loader.load(
@@ -154,15 +128,7 @@ export class ConceptScreen {
         root.scale.setScalar(scale);
         root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
 
-        root.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.isMesh) {
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            mats.forEach((m) => this.patchMaterial(m));
-          }
-        });
-
-        this.scene.add(root);
+        this.shearGroup.add(root);
         this.primeFrame();
       },
       undefined,
@@ -171,6 +137,8 @@ export class ConceptScreen {
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 1500);
     this.camera.up.set(0, 0, -1); // north up on screen when looking straight down
+    this.camera.position.set(0, CAMERA_DIST, 0);
+    this.camera.lookAt(0, 0, 0);
     this.resize();
   }
 
@@ -211,7 +179,7 @@ export class ConceptScreen {
 
   /** render a single frame even when paused (transition priming) */
   primeFrame() {
-    this.updateCamera();
+    this.updateShear();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -219,26 +187,26 @@ export class ConceptScreen {
     const k = 1 - Math.exp(-dt / 0.25);
     this.smX += (this.inputX - this.smX) * k;
     this.smY += (this.inputY - this.smY) * k;
-    this.updateCamera();
+    this.updateShear();
     this.renderer.render(this.scene, this.camera);
   }
 
-  private updateCamera() {
-    // deadzone: perfectly top-down until the cursor leaves the center
+  private updateShear() {
+    // deadzone: flat plan until the cursor leaves the center
     const mag = Math.hypot(this.smX, this.smY);
     const eased = Math.max(0, mag - DEADZONE) / (1 - DEADZONE);
-    const polar = Math.min(1, eased) * MAX_TILT;
-    // tilt TOWARD the cursor side (screen x → world x, screen y → world z)
-    const dirX = mag > 1e-4 ? this.smX / mag : 0;
-    const dirZ = mag > 1e-4 ? this.smY / mag : 0;
+    const amt = Math.min(1, eased) * this.maxShear;
+    // roofs lean TOWARD the cursor → walls reveal on the far side
+    // (screen x → world x, screen y → world z; guide: mouse up ⇒ bottom walls)
+    const sx = mag > 1e-4 ? (this.smX / mag) * amt : 0;
+    const sz = mag > 1e-4 ? (this.smY / mag) * amt : 0;
 
-    const t = this.target;
-    this.camera.position.set(
-      t.x + CAMERA_DIST * Math.sin(polar) * dirX,
-      t.y + CAMERA_DIST * Math.cos(polar),
-      t.z + CAMERA_DIST * Math.sin(polar) * dirZ
+    this.shearGroup.matrix.set(
+      1, sx, 0, 0,
+      0, 1, 0, 0,
+      0, sz, 1, 0,
+      0, 0, 0, 1
     );
-    this.camera.lookAt(t);
-    this.uRevDist.value = this.camera.position.distanceTo(t);
+    this.shearGroup.matrixWorldNeedsUpdate = true;
   }
 }

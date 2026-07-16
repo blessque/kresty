@@ -129,6 +129,8 @@ Planned ver 6 «Витраж»: beams as masks revealing section photo content i
   ~14MB of mood-board PNGs; squashed to one clean initial commit without them.
 
 ## Map round 3 (2026-07-15) — TRUE icon reverse perspective, baked
+**SUPERSEDED by Map round 4 — user rejected the splay ("Egyptian pyramids") and
+reverted it in `aadd6d2`. Kept for the record only.**
 
 - Root cause of the round-1 "fisheye": the old formula scaled view-space XY around ONE
   global center (the view axis), so off-center roofs sheared sideways relative to their
@@ -158,6 +160,31 @@ Planned ver 6 «Витраж»: beams as masks revealing section photo content i
   (crosses read clearly), tilt works, `?rp=0`/`?rp=1` behave.
 - Taste dial left open: façade shading contrast vs roofs (hemisphere/directional light
   intensities in `buildScene`) — walls read but are close in tone to roofs.
+
+## Map round 4 (2026-07-16) — plan-oblique («military») projection
+
+- **Map round 3 (baked icon splay) REJECTED** — user: "looks like we've turned buildings
+  into Egyptian pyramids." He reverted it himself (commit `aadd6d2`, via Cursor). Do NOT
+  bring back the splay or any icon/reverse-perspective distortion.
+- **New hard requirement** (user scheme `references/perspective-guide.png`): the roof
+  plan is a 2D drawing that must stay pixel-identical at every cursor position — never
+  compressed, never rotated. Tilt only *reveals walls*, one or two sides at a time.
+- Camera-rotation tilt inherently violates this (ortho rotation compresses the plan by
+  cos θ), so the mechanism is now a **pure shear** (plan-oblique / military projection):
+  camera pinned straight top-down forever, and a wrapper `shearGroup` around the GLB
+  gets `x' = x + sx·y, z' = z + sz·y` per frame from the same smoothed cursor/touch
+  input (deadzone 0.08 kept). Roofs lean toward the cursor; walls extrude on the far
+  side (mouse up ⇒ bottom walls — matches the guide's frames).
+- Why this construction: every horizontal section of ANY geometry keeps its exact plan
+  shape (stacked volumes, cylinders on boxes — automatic); depth stays = height so the
+  z-buffer resolves oblique occlusion exactly; zero geometry processing, zero shader
+  patches. The leftover `patchMaterial`/`uRev*`/`REVERSE_K` machinery was deleted
+  (resurrect from git history only with an explicit user ask).
+- Dials: `MAX_SHEAR = 0.55` (≈ tan of the old 0.5 rad max tilt — same reveal magnitude);
+  `?ob=<k>` URL override.
+- Verified 2026-07-16 headless on :5299: rest = flat plan; mouse up/left/corner match
+  `perspective-guide.png` directions; roof outlines identical across all frames
+  (translate only); no frustum clipping at full shear; `npm run build` passes.
 
 ## Open issues
 

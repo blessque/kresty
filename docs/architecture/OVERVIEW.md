@@ -38,11 +38,12 @@ is the deep link.
 ## Концепция screen
 
 Three.js scene: the user's GLB (`public/resources/scene.glb`, normalized to span 300,
-base y=0) under an orthographic top-down camera; hand-rolled tilt (cursor offset with
-deadzone on desktop, drag deltas on touch). Reverse (icon) perspective is BAKED into the
-geometry once at load by `reversePerspective.ts` — per-wall polycentric splay, so every
-roof shows all four façades from straight above (`?rp=<k>` dev override; see TUNING_LOG).
-`buildingsData.ts` is legacy/unused.
+base y=0) under an orthographic camera pinned straight top-down (it never rotates).
+Cursor/touch tilt (deadzone on desktop, drag deltas on touch) drives a **plan-oblique
+(military) projection**: a per-frame shear matrix on a wrapper group
+(`x' = x + sx·y, z' = z + sz·y`), so roof plans stay pixel-exact 2D drawings at every
+angle while walls extrude on the far side (`MAX_SHEAR` const, `?ob=<k>` dev override;
+see TUNING_LOG Map round 4). `buildingsData.ts` is legacy/unused.
 
 ## Performance tiers
 
