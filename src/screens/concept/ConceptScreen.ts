@@ -105,9 +105,13 @@ export class ConceptScreen {
   }
 
   private buildScene() {
-    // lights for whatever materials the GLB carries
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8fc4e2, 1.4));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    // flat white architecture: sky term saturates up-facing roofs to pure
+    // white, the ground term sets the wall tone a step darker; a weak sun
+    // keeps the four wall directions distinguishable
+    // (Lambert output = irradiance/π, so sky intensity must exceed π ≈ 3.14
+    // for roofs to clamp at pure white)
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 3.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.35);
     sun.position.set(180, 320, 120);
     this.scene.add(sun);
 
@@ -119,6 +123,14 @@ export class ConceptScreen {
       encodeURI('/resources/scene.glb'),
       (gltf) => {
         const root = gltf.scene;
+
+        // ignore the GLB's grey SketchUp material — pure white Lambert so
+        // roofs read as untouched white paper and walls take the light ramp
+        const white = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        root.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) mesh.material = white;
+        });
 
         // normalize: center on origin, base at y=0, span = MODEL_SPAN
         const box = new THREE.Box3().setFromObject(root);
