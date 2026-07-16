@@ -105,14 +105,14 @@ export class ConceptScreen {
   }
 
   private buildScene() {
-    // flat white architecture: sky term saturates up-facing roofs to pure
-    // white, the ground term sets the wall tone a step darker; a weak sun
-    // keeps the four wall directions distinguishable
-    // (Lambert output = irradiance/π, so sky intensity must exceed π ≈ 3.14
-    // for roofs to clamp at pure white)
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 3.4));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.35);
-    sun.position.set(180, 320, 120);
+    // flat white architecture, explicit tones. Roofs use an UNLIT white
+    // material (split off in splitByHorizontal) so they are exactly #fff at
+    // every tilt; these lights shape only the walls: ambient = base wall
+    // tone, low sun = per-side variance. No top-down light — under shear the
+    // wall normals gain a y component and a top light would leak onto them.
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0)); // wall tone dial (tone ≈ intensity/π)
+    const sun = new THREE.DirectionalLight(0xffffff, 0.3); // wall side variance
+    sun.position.set(180, 60, 120);
     this.scene.add(sun);
 
     this.shearGroup.matrixAutoUpdate = false;
@@ -124,13 +124,31 @@ export class ConceptScreen {
       (gltf) => {
         const root = gltf.scene;
 
-        // ignore the GLB's grey SketchUp material — pure white Lambert so
-        // roofs read as untouched white paper and walls take the light ramp
-        const white = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        // ignore the GLB's grey SketchUp material: horizontal faces (roofs)
+        // become unlit pure white, near-vertical faces (walls) take the
+        // ambient+sun ramp
+        const roofMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const meshes: THREE.Mesh[] = [];
         root.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
-          if (mesh.isMesh) mesh.material = white;
+          if (mesh.isMesh) meshes.push(mesh);
         });
+        for (const mesh of meshes) {
+          const { roof, wall } = splitByHorizontal(mesh.geometry);
+          const parent = mesh.parent!;
+          if (roof) {
+            const m = new THREE.Mesh(roof, roofMat);
+            m.applyMatrix4(mesh.matrix);
+            parent.add(m);
+          }
+          if (wall) {
+            const m = new THREE.Mesh(wall, wallMat);
+            m.applyMatrix4(mesh.matrix);
+            parent.add(m);
+          }
+          parent.remove(mesh);
+        }
 
         // normalize: center on origin, base at y=0, span = MODEL_SPAN
         const box = new THREE.Box3().setFromObject(root);
@@ -221,4 +239,44 @@ export class ConceptScreen {
     );
     this.shearGroup.matrixWorldNeedsUpdate = true;
   }
+}
+
+/** split a geometry into horizontal faces (|face normal·y| ≥ 0.5 — roofs,
+ *  ground, slabs) and the rest (walls) so the two can carry different
+ *  materials; done once at load */
+function splitByHorizontal(geometry: THREE.BufferGeometry): {
+  roof: THREE.BufferGeometry | null;
+  wall: THREE.BufferGeometry | null;
+} {
+  const src = geometry.index ? geometry.toNonIndexed() : geometry;
+  const pos = src.getAttribute('position');
+  const nrm = src.getAttribute('normal');
+  const roofArr: number[][] = [[], []]; // position, normal
+  const wallArr: number[][] = [[], []];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const ac = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i += 3) {
+    a.fromBufferAttribute(pos, i);
+    b.fromBufferAttribute(pos, i + 1);
+    c.fromBufferAttribute(pos, i + 2);
+    b.sub(a);
+    ac.subVectors(c, a);
+    b.cross(ac).normalize(); // geometric face normal
+    const [dp, dn] = Math.abs(b.y) >= 0.5 ? roofArr : wallArr;
+    for (let v = i; v < i + 3; v++) {
+      dp.push(pos.getX(v), pos.getY(v), pos.getZ(v));
+      if (nrm) dn.push(nrm.getX(v), nrm.getY(v), nrm.getZ(v));
+    }
+  }
+  const build = ([p, n]: number[][]) => {
+    if (!p.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    if (n.length) g.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
+    else g.computeVertexNormals();
+    return g;
+  };
+  return { roof: build(roofArr), wall: build(wallArr) };
 }
