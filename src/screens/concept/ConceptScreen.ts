@@ -27,6 +27,14 @@ const MODEL_SPAN = 300; // model normalized to this max dimension
 /** orthographic zoom — smaller frustum = bigger on screen */
 const ZOOM = 1.5;
 
+// height-gradient palette (t = 0 at ground, 1 at the tallest roof).
+// Roofs: light blue, deeper low → near-white high. Walls: dark blue,
+// navy at the base → mid-blue at the top.
+const ROOF_LOW = 0x7cb8e8;
+const ROOF_HIGH = 0xe4f3ff;
+const WALL_LOW = 0x0c1f33;
+const WALL_HIGH = 0x3a72a8;
+
 export class ConceptScreen {
   el: HTMLElement;
   onNavigate: (to: 'main') => void = () => {};
@@ -107,16 +115,9 @@ export class ConceptScreen {
   }
 
   private buildScene() {
-    // flat white architecture, explicit tones. Roofs use an UNLIT white
-    // material (split off in splitByHorizontal) so they are exactly #fff at
-    // every tilt; these lights shape only the walls: ambient = base wall
-    // tone, low sun = per-side variance. No top-down light — under shear the
-    // wall normals gain a y component and a top light would leak onto them.
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0)); // wall tone dial (tone ≈ intensity/π)
-    const sun = new THREE.DirectionalLight(0xffffff, 0.3); // wall side variance
-    sun.position.set(180, 60, 120);
-    this.scene.add(sun);
-
+    // Unlit throughout: roofs and walls carry per-vertex height gradients
+    // (see splitByHorizontal + paintHeightGradient), so no lights are needed —
+    // the colour is exact and stable at every tilt.
     this.shearGroup.matrixAutoUpdate = false;
     this.scene.add(this.shearGroup);
 
@@ -126,11 +127,17 @@ export class ConceptScreen {
       (gltf) => {
         const root = gltf.scene;
 
-        // ignore the GLB's grey SketchUp material: horizontal faces (roofs)
-        // become unlit pure white, near-vertical faces (walls) take the
-        // ambient+sun ramp
-        const roofMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        // root-space height range (before the normalize scale, which is
+        // uniform and leaves the gradient parameter t unchanged)
+        const preBox = new THREE.Box3().setFromObject(root);
+        const minY = preBox.min.y;
+        const spanY = Math.max(1e-6, preBox.max.y - preBox.min.y);
+
+        // ignore the GLB's grey SketchUp material: split each mesh into
+        // horizontal faces (roofs) and the rest (walls), each getting its own
+        // vertex-colour ramp by height
+        const roofMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+        const wallMat = new THREE.MeshBasicMaterial({ vertexColors: true });
         const meshes: THREE.Mesh[] = [];
         root.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
@@ -141,12 +148,14 @@ export class ConceptScreen {
           const parent = mesh.parent!;
           if (roof) {
             const m = new THREE.Mesh(roof, roofMat);
-            m.applyMatrix4(mesh.matrix);
+            m.applyMatrix4(mesh.matrix); // bake into root space, then paint
+            paintHeightGradient(roof, minY, spanY, ROOF_LOW, ROOF_HIGH);
             parent.add(m);
           }
           if (wall) {
             const m = new THREE.Mesh(wall, wallMat);
             m.applyMatrix4(mesh.matrix);
+            paintHeightGradient(wall, minY, spanY, WALL_LOW, WALL_HIGH);
             parent.add(m);
           }
           parent.remove(mesh);
@@ -241,6 +250,32 @@ export class ConceptScreen {
     );
     this.shearGroup.matrixWorldNeedsUpdate = true;
   }
+}
+
+/** paint per-vertex colours as a vertical gradient by height: each vertex's
+ *  Y (in the geometry's current, root-space coords) maps t = (y − minY)/spanY
+ *  → lerp(loHex, hiHex). Colours are written in linear space (THREE.Color
+ *  stores linear with color-management on) so the sRGB output is correct. */
+function paintHeightGradient(
+  geometry: THREE.BufferGeometry,
+  minY: number,
+  spanY: number,
+  loHex: number,
+  hiHex: number
+): void {
+  const pos = geometry.getAttribute('position');
+  const lo = new THREE.Color(loHex);
+  const hi = new THREE.Color(hiHex);
+  const c = new THREE.Color();
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.min(1, Math.max(0, (pos.getY(i) - minY) / spanY));
+    c.copy(lo).lerp(hi, t);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 /** split a geometry into horizontal faces (|face normal·y| ≥ 0.5 — roofs,
