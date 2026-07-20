@@ -19,7 +19,7 @@ import { getPerfTier } from '../../shared/performanceTier';
  */
 /** max shear (wall reveal per unit height) when the cursor is at the edge;
  *  ?ob=<k> URL override for tuning */
-const MAX_SHEAR = 0.55;
+const MAX_SHEAR = 1.6;
 /** cursor deadzone around the center — inside it the view is a flat plan */
 const DEADZONE = 0.08;
 const CAMERA_DIST = 400;
