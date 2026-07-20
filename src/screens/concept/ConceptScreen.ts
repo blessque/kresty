@@ -24,6 +24,8 @@ const MAX_SHEAR = 1.6;
 const DEADZONE = 0.08;
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max dimension
+/** orthographic zoom — smaller frustum = bigger on screen */
+const ZOOM = 1.5;
 
 export class ConceptScreen {
   el: HTMLElement;
@@ -175,7 +177,7 @@ export class ConceptScreen {
   resize = () => {
     this.renderer.setSize(innerWidth, innerHeight);
     const aspect = innerWidth / innerHeight;
-    const halfH = MODEL_SPAN * 0.62;
+    const halfH = (MODEL_SPAN * 0.62) / ZOOM;
     const halfW = halfH * aspect;
     this.camera.left = -halfW;
     this.camera.right = halfW;
