@@ -15,10 +15,15 @@ await page.hover('#nav-kontseptsia');
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${out}/hover-koncept.png` });
 
-// 2. switch to ver 2 via the segmented control, mid-tween + settled
-await page.click('.variant-switcher button:nth-child(2)');
-await page.waitForTimeout(600);
-await page.screenshot({ path: `${out}/switched-v2.png` });
+// 2. walk the segmented control «Сияние» -> «Прорезь» -> «Призма» -> back
+await page.click('.fx-switch button:nth-child(2)'); // Прорезь
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/switched-prorez.png` });
+await page.click('.fx-switch button:nth-child(3)'); // Призма
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/switched-prizma.png` });
+await page.click('.fx-switch button:nth-child(1)'); // back to Сияние
+await page.waitForTimeout(900);
 
 // 3. click Концепция -> transition; catch the flash mid-flight
 await page.click('#nav-kontseptsia');

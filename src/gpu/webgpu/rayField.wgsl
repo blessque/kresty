@@ -9,6 +9,8 @@ struct U {
   scale: f32,
   beamAngles: vec4f,
   linkAngles: vec4f,
+  linkDist: vec4f,    // link center distances from convergence, reference px
+  linkHalfAng: vec4f, // apparent angular half-width of each label, rad
   beamHover: vec4f,
   p0: vec4f, // primaryK, primaryIntensity, falloffL, coreRadius
   p1: vec4f, // coreIntensity, crossSize, crossIntensity, secCount
@@ -17,9 +19,14 @@ struct U {
   p4: vec4f, // hazeBase, channelDark, parallax, breathe
   p5: vec4f, // hoverMode, compositeMode, bgMix, layers
   p6: vec4f, // octaves, refraction, shimmer, sceneDim
+  p7: vec4f, // fiberDrift, angleWarp, ghosting, shadow
+  p8: vec4f, // modeMix, slitMix, hasMask, signSize
+  p9: vec4f, // godrays, bloom, dissolve, 0
 };
 
 @group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var signMaskTex: texture_2d<f32>;
+@group(0) @binding(2) var signSamp: sampler;
 
 fn hash21(pin: vec2f) -> f32 {
   var p = fract(pin * vec2f(123.34, 456.21));
@@ -54,6 +61,144 @@ fn fbm(pin: vec2f) -> f32 {
 fn lobe(th: f32, a: f32, k: f32) -> f32 {
   let c = cos(th - a);
   return select(0.0, pow(c, k), c > 0.0);
+}
+
+// Fiber bundle inside a beam: NON-periodic comb of hashed sub-rays that drift
+// angularly, are born and die on individual cycles ("disco lights"), with
+// unequal widths/brightness. Replaces the old sin() prismatic bands, whose
+// strict periodicity produced the "ladder" artifact — real light never splits
+// into equal lines. `disp` spreads RGB across each fiber's cross-section
+// (prism dispersion); returns per-channel fiber luminance.
+fn fiberComb(dTh: f32, r: f32, t: f32, seed: f32, disp: f32) -> vec3f {
+  // slight shear so fibers are not laser-straight along their length
+  let shear = (vnoise(vec2f(dTh * 26.0 + seed, r * 0.0035 + t * 0.04)) - 0.5) * 0.6;
+  var acc = vec3f(0.0);
+  // staggered generations (golden-ratio offsets) so births/deaths overlap;
+  // each generation runs its OWN comb frequency — equal spacing would both
+  // read as fake and alias into concentric moiré rings near the center
+  for (var g = 0; g < 3; g++) {
+    let fg = f32(g);
+    let freq = 47.0 + fg * 18.0;
+    // fade a generation out where its fibers shrink below ~2 device px,
+    // otherwise the converging lines alias into arc-shaped moiré
+    let cellPx = r * u.scale / freq;
+    let vis = smoothstep(2.2, 5.5, cellPx);
+    if (vis < 0.003) { continue; }
+    var x = dTh * freq + shear + fg * 4.3262;
+    x = x + t * u.p7.x * (0.55 + 0.37 * fg);
+    let id = floor(x);
+    let fx = fract(x);
+    let h1 = hash21(vec2f(id, seed + fg * 31.7));
+    let h2 = hash21(vec2f(id, seed + fg * 31.7 + 5.3));
+    let h3 = hash21(vec2f(id, seed + fg * 31.7 + 9.1));
+    // lifecycle: each fiber fades in, lives ~4-9 s, dies, gets replaced
+    var life = 0.5 + 0.5 * sin(t * (0.7 + h1 * 0.9) + h1 * 6.2831);
+    life = smoothstep(0.12, 0.62, life) * step(0.2, h2);
+    // unequal widths, jittered positions, a few bright "soloists";
+    // a fiber never goes subpixel — that aliased into concentric moiré
+    let w = max(0.07 + 0.17 * h2, 1.6 / cellPx);
+    let c = 0.22 + 0.56 * h3;
+    let d = (fx - c) / w;
+    let bright = 0.3 + 2.2 * pow(h1, 6.0);
+    let dd = disp * 0.6;
+    acc = acc + vec3f(
+      exp(-(d - dd) * (d - dd)),
+      exp(-d * d),
+      exp(-(d + dd) * (d + dd))
+    ) * bright * life * vis;
+  }
+  return acc * 0.55;
+}
+
+// emblem mask, crisp channel; 0 outside the footprint. textureSampleLevel
+// avoids derivative/uniformity constraints inside the god-ray loop.
+fn signMask(uv: vec2f) -> f32 {
+  let c = clamp(uv, vec2f(0.0), vec2f(1.0));
+  if (any(c != uv)) { return 0.0; }
+  return textureSampleLevel(signMaskTex, signSamp, uv, 0.0).r;
+}
+
+// round-blurred emblem channel — bloom taps sample this: sparse jittered taps
+// of the hard-edged crisp channel have huge per-pixel variance (stipple noise)
+fn signMaskSoft(uv: vec2f) -> f32 {
+  let c = clamp(uv, vec2f(0.0), vec2f(1.0));
+  if (any(c != uv)) { return 0.0; }
+  return textureSampleLevel(signMaskTex, signSamp, uv, 0.0).g;
+}
+
+// RADIALLY-smeared emblem channel — the god-ray march samples this: the march
+// integrates along the ray, so only that direction needs smoothing; a round
+// blur here would also melt the razor-sharp tangential trail edges (the look)
+fn signMaskRay(uv: vec2f) -> f32 {
+  let c = clamp(uv, vec2f(0.0), vec2f(1.0));
+  if (any(c != uv)) { return 0.0; }
+  return textureSampleLevel(signMaskTex, signSamp, uv, 0.0).b;
+}
+
+// «Прорезь»/«Сияние»: the logo as light through a cross-shaped slit. Mirror of
+// the GLSL slitLight(). dissolve 0: crisp emblem core + bloom halo + god-rays;
+// dissolve 1: crisp paths vanish, strokes elongate into soft zoom-blur light
+// trails with a blown bright center. jit = per-pixel dither seed: the god-ray
+// march and the bloom spiral MUST be jittered per pixel — their fixed offsets
+// otherwise deposit visible ghost copies of the mask edges ("ladders").
+fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f32) -> vec3f {
+  let S = max(u.p8.w, 1.0);
+  let uv0 = vec2f(0.5) + p / S;
+  let par = (q * 0.06 + hoverDir * 26.0) * u.p4.z; // parallax
+  let lightUv = vec2f(0.5) - par / S;
+  let dissolve = u.p9.z;
+
+  // crisp emblem core — fades out entirely as the logo dissolves into light
+  let core = signMask(uv0) * (1.0 - dissolve);
+
+  // bloom halo; per-pixel spiral rotation turns 12 discrete taps into noise
+  let bloomR = 0.085 * (1.0 + 1.2 * dissolve); // dissolved = wider, softer
+  var bloom = 0.0;
+  for (var i = 0; i < 12; i++) {
+    let fi = f32(i);
+    let rad = (fi + 0.5) / 12.0 * bloomR;
+    let ang = fi * 2.399963 + jit * 6.2831;
+    bloom = bloom + signMaskSoft(uv0 + vec2f(cos(ang), sin(ang)) * rad) * (1.0 - rad / (bloomR * 1.06));
+  }
+  bloom = bloom / 6.0;
+
+  let N = i32(clamp(u.p5.w * 8.0 + u.p6.x * 4.0, 12.0, 32.0)); // layers, octaves
+  let caS = u.p3.w * 3.5; // ca
+  let duv = (uv0 - lightUv) / f32(N);
+  var acc = vec3f(0.0);
+  var illum = 1.0;
+  let decay = mix(0.93, 0.968, dissolve); // dissolved trails reach further
+  var s = uv0 - duv * jit; // dithered march start: banding -> hidden noise
+  for (var i = 0; i < 32; i++) {
+    if (i >= N) { break; }
+    s = s - duv;
+    let rel = s - lightUv;
+    acc = acc + vec3f(
+      signMaskRay(lightUv + rel * (1.0 + caS)),
+      signMaskRay(s),
+      signMaskRay(lightUv + rel * (1.0 - caS))
+    ) * illum;
+    illum = illum * decay;
+  }
+  // crisp register: fade the rays near the very center so the emblem's own
+  // strokes read there. Dissolved register WANTS the blown featureless core.
+  let rayGate = mix(smoothstep(0.02, 0.17, length(uv0 - vec2f(0.5))), 1.0, dissolve);
+  var rays = acc / f32(N) * rayGate;
+  // dissolved trails melt toward the screen edges instead of staying constant
+  rays = rays * mix(1.0, exp(-r / (u.p0.z * 1.15)), dissolve); // falloffL
+
+  let pd = clamp(length(q) / 380.0, 0.0, 1.0);
+  let lean = 1.0 + 0.7 * clamp(dot(normalize(p + vec2f(1e-4)), normalize(q + vec2f(1e-4))), -1.0, 1.0) * pd;
+
+  var life = 1.0 + u.p4.w * 0.12 * sin(u.time * 0.6)
+    + u.p6.z * 0.12 * (vnoise(vec2f(u.time * 0.5, 7.3)) - 0.5);
+  life = life * (1.0 + 0.4 * hoverAmt);
+
+  // crisp emblem core (readable logo) carries the shape; bloom + rays are light
+  let col = vec3f(core) * u.p1.x * 1.8
+    + vec3f(bloom) * u.p9.y * 1.9
+    + rays * u.p9.x * 2.2 * lean;
+  return col * life;
 }
 
 @vertex
@@ -98,6 +243,12 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   let refraction = u.p6.y;
   let shimmer = u.p6.z;
   let sceneDim = u.p6.w;
+  let angleWarp = u.p7.y;
+  let ghosting = u.p7.z;
+  let shadow = u.p7.w;
+  let modeMix = u.p8.x;
+  let slitMix = u.p8.y;
+  let hasMask = u.p8.z;
 
   // pointer as wind
   let pd = clamp(length(q) / 380.0, 0.0, 1.0);
@@ -114,17 +265,29 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     if (f32(i) >= layers) { break; }
     let fi = f32(i);
     let depth = 0.55 + fi * 0.45;
-    let dc = p + q * (0.05 * parallax * depth) * 60.0 / (r * 0.02 + 6.0) + swirl;
+    // pure per-layer translation: the old 1/r amplification radially squeezed
+    // the noise domain whenever the pointer left center, compressing the
+    // wisps into concentric "onion shell" arcs
+    let dc = p + q * (0.05 * parallax * depth) * 5.0 + swirl;
     let rr = length(dc) + 1e-3;
     let aa = atan2(dc.y, dc.x) - rotSpeed * u.time * (1.2 + 0.6 * fi);
-    let rJit = vnoise(vec2f(aa * 1.7 + fi * 9.0, 3.7)) * 0.55;
+    // TWO angular jitter terms: the slow one bends would-be rings, the fast
+    // strong one breaks their local coherence (single smooth jitter only bent
+    // the "sonar rings" — fbm octaves still aligned into concentric arcs)
+    let rJit = vnoise(vec2f(aa * 1.7 + fi * 9.0, 3.7)) * 0.55
+      + vnoise(vec2f(aa * 6.1 + fi * 9.0, 13.7)) * 1.15;
+    // the angular frequency must NOT grow with rr: `aa*(3+rr*0.018)` made the
+    // y-lattice get crossed periodically along the radius (period ≈
+    // 1/(|aa|·0.018) px) — spiral arc bands no radial jitter could hide
     let nUv = vec2f(
       rr * 0.008 * dustScale - u.time * (0.025 + 0.012 * fi) + rJit,
-      aa * (3.0 + rr * 0.018) * dustScale + fi * 17.0
+      aa * 6.0 * dustScale + fi * 17.0
     );
     dust = dust + (fbm(nUv) - 0.34) / (1.0 + fi);
   }
   dust = max(dust, 0.0) * dustAmount;
+  // dusty register: the air is the protagonist
+  dust = dust * (1.0 + 1.7 * modeMix);
 
   // ---- motes ----
   let thD = th - rotSpeed * u.time * 0.6;
@@ -155,67 +318,88 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     let deltaPx = (f - mposFrac) * cellS;
     let dr = dot(deltaPx, rd);
     let dtv = dot(deltaPx, vec2f(-rd.y, rd.x));
-    let sigmaR = cellS * 0.22 * (1.0 + 1.2 * streamBoost + 1.4 * wind);
-    let sigmaT = cellS * 0.055;
-    let m = exp(-(dr * dr / (sigmaR * sigmaR) + dtv * dtv / (sigmaT * sigmaT)));
+    // per-mote size variance (identical stamped "rice seeds" read as fake);
+    // wind stretches the streak but the cap keeps tails inside the cell
+    var sigmaR = cellS * (0.15 + 0.10 * hash21(cid + 9.4))
+      * (1.0 + 1.2 * streamBoost + 1.4 * wind);
+    sigmaR = min(sigmaR, cellS * 0.28);
+    let sigmaT = cellS * (0.038 + 0.035 * hash21(cid + 13.2));
+    var m = exp(-(dr * dr / (sigmaR * sigmaR) + dtv * dtv / (sigmaT * sigmaT)));
+    // border envelope: whatever the stretch, a streak is exactly zero at the
+    // cell edge — the hard rectangular cuts came from clipped tails
+    m = m * smoothstep(0.5, 0.4, max(abs(f.x - 0.5), abs(f.y - 0.5)));
     let edge = abs(mposFrac - 0.5);
-    let alive = 1.0 - smoothstep(0.42, 0.62, max(edge.x, edge.y));
-    motes = m * step(0.6, h) * alive * (0.6 + 0.4 * sin(u.time * (1.0 + h * 3.0) + h * 40.0))
+    let alive = 1.0 - smoothstep(0.38, 0.58, max(edge.x, edge.y));
+    motes = m * smoothstep(0.55, 0.72, h) * alive
+      * (0.6 + 0.4 * sin(u.time * (1.0 + h * 3.0) + h * 40.0))
       * (1.0 + 1.8 * wind);
   }
-  motes = motes * moteAmount;
+  motes = motes * moteAmount * (1.0 + 1.5 * modeMix);
 
-  // ---- primary beams ----
+  // ---- primary beams (camera-tilt optics + fiber bundles) ----
   let radial = exp(-r / falloffL);
   var beams = vec3f(0.0);
   var beamMaskW = 0.0;
   var hoverTurbGate = 0.0;
   var flood = 0.0;
+  // rainbow dispersion belongs to the blue-sky register only
+  let caM = ca * (1.0 - modeMix);
+  let disp = clamp(ca * 55.0, 0.0, 1.0) * (1.0 - modeMix);
 
   for (var i = 0; i < 4; i++) {
     var a = u.beamAngles[i];
     let dAng = atan2(sin(pa - a), cos(pa - a));
     a = a + clamp(dAng, -1.0, 1.0) * 0.1 * pd * parallax;
     let hov = u.beamHover[i];
-    var k = primaryK;
+
+    // camera tilt: beams facing the cursor contract into thin hard rods,
+    // the far side opens into wide soft fans (scheme.jpg physics)
+    let toward = max(cos(pa - a), 0.0);
+    let away = max(-cos(pa - a), 0.0);
+    let warp = angleWarp * pd;
+    var k = primaryK * (1.0 + 1.1 * warp * toward);
+    k = k / (1.0 + 0.55 * warp * away);
+    // dusty beams contract into defined cones cutting the darkness
+    k = k * (1.0 + 0.45 * modeMix);
     if (hm == 1) { k = mix(k, k * 0.22, hov); }
     k = k * (1.0 + breathe * 0.22 * sin(u.time * 0.45 + f32(i) * 1.7));
 
-    let lr = lobe(th, a - ca, k);
+    let lr = lobe(th, a - caM, k);
     let lg = lobe(th, a, k);
-    let lb = lobe(th, a + ca, k);
+    let lb = lobe(th, a + caM, k);
 
     var boost = 1.0;
     if (hm == 0 || hm == 4) { boost = boost + 0.75 * hov; }
     if (hm == 1) { boost = boost + 0.35 * hov; }
     if (hm == 3) { boost = boost + 0.25 * hov; }
 
-    let toward = max(cos(pa - a), 0.0);
-    boost = boost * (1.0 + 1.0 * toward * toward * pd * parallax);
-    boost = boost * (1.0 - 0.3 * max(-cos(pa - a), 0.0) * pd);
+    // toward-beams burn brighter and harder, the far side calms down
+    boost = boost * (1.0 + (0.55 + 0.75 * angleWarp) * toward * toward * pd * parallax);
+    boost = boost * (1.0 - min(0.25 + 0.28 * angleWarp, 0.62) * away * pd);
 
     let flick = 1.0 + shimmer * (vnoise(vec2f(u.time * 0.55 + f32(i) * 13.7, 4.2)) - 0.5) * 1.5;
 
-    let dTh = th - a;
-    let bandPhase = dTh * 140.0 + r * 0.012 - u.time * 0.9;
-    let bands = mix(
-      vec3f(1.0),
-      vec3f(
-        0.62 + 0.55 * sin(bandPhase),
-        0.62 + 0.55 * sin(bandPhase + 2.094),
-        0.62 + 0.55 * sin(bandPhase + 4.188)
-      ),
-      refraction
-    );
+    // fiber bundles: drifting, dying, unequal sub-rays (see fiberComb)
+    let dTh = atan2(sin(th - a), cos(th - a));
+    var bands = vec3f(1.0);
+    if (refraction > 0.003 && lr + lg + lb > 0.004) {
+      let fib = fiberComb(dTh, r, u.time, f32(i) * 17.0, disp);
+      bands = mix(vec3f(1.0), vec3f(0.5) + fib * 1.25, refraction);
+    }
 
-    let halo = lobe(th, a, max(k * 0.10, 2.5)) * 0.3;
+    // broad soft halo; the away side melts further into its halo
+    let halo = lobe(th, a, max(k * 0.10, 2.5)) * (0.3 + 0.5 * warp * away);
 
-    beams = beams + (vec3f(lr, lg, lb) * bands + vec3f(halo)) * boost * flick;
+    // tilt also stretches the toward-rod, shortens the far fans
+    let lenWarp = 1.0 + 0.35 * warp * toward - 0.18 * warp * away;
+    let radialB = exp(-r / (falloffL * lenWarp));
+
+    beams = beams + (vec3f(lr, lg, lb) * bands + vec3f(halo)) * boost * flick * radialB;
     beamMaskW = beamMaskW + lobe(th, a, primaryK * 0.3);
     hoverTurbGate = hoverTurbGate + hov * lg;
     if (hm == 2) { flood = flood + hov * lobe(th, a, primaryK * 0.5); }
   }
-  beams = beams * radial * primaryIntensity;
+  beams = beams * primaryIntensity;
   beamMaskW = min(beamMaskW, 1.0);
 
   let turb = 1.0 + 2.2 * hoverTurbGate * fbm(p * 0.02 + u.time * vec2f(0.35, -0.28));
@@ -249,9 +433,9 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     let armBoost = 1.0 + 1.2 * toward * toward * pd * parallax;
     let fall = exp(-r / armLen);
     crossGlyph = crossGlyph + vec3f(
-      lobe(th, a - ca * 2.0, 600.0),
+      lobe(th, a - caM * 2.0, 600.0),
       lobe(th, a, 600.0),
-      lobe(th, a + ca * 2.0, 600.0)
+      lobe(th, a + caM * 2.0, 600.0)
     ) * fall * armBoost;
     let ad = a + 0.7853982 + sin(u.time * 0.1) * 0.22;
     crossGlyph = crossGlyph + vec3f(lobe(th, ad, 900.0)) * exp(-r / (armLen * 0.6)) * 0.4;
@@ -262,35 +446,97 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   let hazeN = 0.8 + 0.4 * fbm(p * 0.004 + u.time * 0.02);
   let haze = hazeBase * exp(-r / (falloffL * 1.6)) * hazeN;
 
-  // ---- composite ----
-  var col: vec3f;
+  // ---- composite (procedural field) ----
+  var field: vec3f;
   if (cm == 1) {
     var channel = 0.0;
     for (var i = 0; i < 4; i++) {
       channel = channel + lobe(th, u.beamAngles[i], primaryK * 0.4);
     }
     channel = min(channel, 1.0);
-    col = vec3f(haze * (1.0 - channelDark * channel) * (0.9 + 0.25 * dust));
-    col = col + vec3f(flood) * radial * 1.25;
-    col = col + crossGlyph * 0.6 + vec3f(core * 0.7);
+    field = vec3f(haze * (1.0 - channelDark * channel) * (0.9 + 0.25 * dust));
+    field = field + vec3f(flood) * radial * 1.25;
+    field = field + crossGlyph * 0.6 + vec3f(core * 0.7);
   } else {
-    col = beams * (0.72 + 0.5 * dust * turb);
-    col = col + vec3f(sec * (0.85 + 0.35 * dust));
-    col = col + crossGlyph + vec3f(core);
-    col = col + vec3f(haze * 0.35);
-    col = col + vec3f(motes * min(beamMaskW + sec * 2.2, 1.0) * exp(-r / (falloffL * 1.1)));
+    // dusty mode confines the air strictly inside the cones: the beams
+    // highlight dust, everything outside stays black (dust perfect ref)
+    let inBeam = mix(1.0, min(beamMaskW * 1.6, 1.0), modeMix * 0.9);
+    field = beams * (0.72 + 0.5 * dust * turb);
+    field = field + vec3f(sec * (0.85 + 0.35 * dust)) * inBeam;
+    field = field + crossGlyph + vec3f(core);
+    field = field + vec3f(haze * 0.35 * inBeam);
+    field = field + vec3f(motes * min(beamMaskW + sec * 2.2, 1.0) * inBeam * exp(-r / (falloffL * 1.1)));
 
     var zone = 0.0;
     for (var j = 0; j < 4; j++) {
       zone = zone + u.beamHover[j] * pow(max(cos(th - u.linkAngles[j]), 0.0), 5.0);
     }
-    col = col + vec3f(1.06, 1.0, 0.9) * zone * exp(-r / (falloffL * 0.55)) * 1.35;
+    field = field + vec3f(1.06, 1.0, 0.9) * zone * exp(-r / (falloffL * 0.55)) * 0.95;
   }
+
+  // ---- hovered links occlude the light: clean dark shadow cone ----------
+  // starts AT the label's outer edge (r ≥ linkDist); no noise contour.
+  if (shadow > 0.003) {
+    var shadowMask = 0.0;
+    for (var j = 0; j < 4; j++) {
+      let hov = u.beamHover[j];
+      let ld = u.linkDist[j];
+      if (hov < 0.01 || ld < 1.0) { continue; }
+      let dA = atan2(sin(th - u.linkAngles[j]), cos(th - u.linkAngles[j]));
+      let pw = u.linkHalfAng[j] * (1.0 + 0.5 * max(r - ld, 0.0) / ld);
+      let occl = 1.0 - smoothstep(pw * 0.6, pw, abs(dA)); // soft cone edges
+      let behind = smoothstep(ld, ld * 1.2, r);           // fades in past the label
+      shadowMask = max(shadowMask, occl * behind * hov);
+    }
+    field = field * (1.0 - shadow * shadowMask * 0.8);
+  }
+
+  // ---- lens-flare ghosts on the camera axis (holographic register) -----
+  var gAmt = ghosting * (1.0 - modeMix) * smoothstep(0.3, 0.8, pd);
+  // ghosts only sometimes appear — a slow gate, the lens catching the angle
+  gAmt = gAmt * smoothstep(0.35, 0.75, vnoise(vec2f(u.time * 0.06, 23.7)));
+  if (gAmt > 0.004) {
+    for (var j = 0; j < 4; j++) {
+      let fj = f32(j);
+      let gp = q * (-0.4 + 0.55 * fj);
+      let gr = length(p - gp);
+      let rad = 30.0 + 26.0 * fj;
+      // soft disc with a faint bright rim
+      var disc = exp(-pow(gr / rad, 2.4));
+      disc = disc + exp(-abs(gr - rad * 0.8) / (rad * 0.14)) * 0.35;
+      let gTint = 0.65 + 0.35 * cos(vec3f(0.0, 2.1, 4.2) + fj * 1.9);
+      field = field + gTint * disc * 0.05 * gAmt;
+    }
+  }
+
+  // ---- «Прорезь»: the logo as light, blended over the field ------------
+  var col = field;
+  if (slitMix > 0.001) {
+    var hoverDir = vec2f(0.0);
+    var hoverAmt = 0.0;
+    for (var j = 0; j < 4; j++) {
+      hoverAmt = hoverAmt + u.beamHover[j];
+      hoverDir = hoverDir + u.beamHover[j] * vec2f(cos(u.linkAngles[j]), sin(u.linkAngles[j]));
+    }
+    var slit: vec3f;
+    if (hasMask > 0.5) {
+      slit = slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx));
+    } else {
+      slit = crossGlyph + vec3f(core); // never blank if the mask failed to load
+    }
+    col = mix(field, slit, slitMix);
+  }
+
+  // dusty register: hot yellowish core falling to deep amber (dust perfect ref)
+  let dusty = mix(vec3f(1.08, 0.94, 0.62), vec3f(1.0, 0.62, 0.27), clamp(r / 620.0, 0.0, 1.0));
+  col = mix(col, col * dusty, modeMix);
 
   let tint = mix(vec3f(1.0, 0.99, 0.955), vec3f(0.9, 0.97, 1.08), clamp(r / 900.0, 0.0, 1.0));
   col = col * tint;
-  col = col * (1.0 + 1.25 * sceneDim);
-  col = mix(col, col * vec3f(1.14, 0.98, 0.80), sceneDim * 0.45);
+  // hover gallery-dark scene: the light surges (modeMix owns the warmth now);
+  // tempered from 1.25 — the old surge whited out the shadow wedge
+  col = col * (1.0 + 0.75 * sceneDim);
+  col = mix(col, col * vec3f(1.14, 0.98, 0.80), sceneDim * 0.2);
   col = col * mix(1.0, 0.72, bgMix);
   col = 1.0 - exp(-col * 1.6);
 

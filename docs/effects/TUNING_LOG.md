@@ -161,6 +161,68 @@ reverted it in `aadd6d2`. Kept for the record only.**
 - Taste dial left open: façade shading contrast vs roofs (hemisphere/directional light
   intensities in `buildScene`) — walls read but are close in tone to roofs.
 
+## Feedback round 3 (2026-07-15/16) — camera-tilt optics, two-mode light, 3 solutions
+
+New refs (gitignored `references/`): `scheme.jpg` (cursor vs beam distortion),
+`light-angles.png` (holographic star variations + ghosts), `dust perfect.png` +
+`dusty-angles.png` (dusty register), `shadow-casting.jpg` (occlusion shadows).
+
+- **Optical model: cursor = cameraman tilting the lens** (`angleWarp` param). Per beam,
+  `toward/away = ±cos(pa − a)`: toward-cursor beams contract (`k·(1+1.1·warp·toward)`),
+  brighten and lengthen; away-side opens into wide fans (`k/(1+0.55·warp·away)`), dims,
+  melts into its halo, shortens. Per-beam radial falloff moved inside the loop.
+- **Fiber bundles replaced the sin() prismatic bands** (`fiberComb` in both shaders).
+  Non-periodic comb: 3 staggered generations at DIFFERENT frequencies (47/65/83 per rad),
+  hash-driven unequal widths/brightness/position, per-fiber 4–9 s birth/death lifecycle,
+  angular drift (`fiberDrift`), radial shear, RGB dispersion across each fiber's
+  cross-section (amount = `ca`-derived, dies in dusty mode). `refraction` now = fiber
+  visibility. **The old periodic bands were the "ladder" artifact — never reintroduce a
+  constant-frequency comb.**
+- **Two-mode light** (`u_modeMix` state uniform, NOT a variant param): 0 = holographic
+  white/rainbow (blue bg only), 1 = dusty warm amber (any dark scene). Driven in
+  MainScreen by `max(sceneDim, showreel.dark)`; Showreel gained a delayed dark veil
+  (1.6 s after photos settle) that flips the mode during idle. Dusty mode: amber
+  radial palette (hot core → deep amber), dispersion/ghosts → 0, dust ×2.7 / motes
+  ×2.5 gated strictly inside beam lobes (`inBeam`), beams contract ×1.45.
+- **Hover = shadow casting** (`shadow` param + `u_linkDist`/`u_linkHalfAng` uniforms,
+  measured in `measureBeams`): the radial field is occluded analytically — behind the
+  hovered label a penumbra wedge (`pw = halfAng·(1 + (r−d)/d)`, noise-roughened edge)
+  carves the light to 8%. The label itself goes near-black via CSS
+  (`.nav-link:hover` color). Zone blaze tempered 1.35→0.95 and sceneDim surge
+  1.25→0.75 — the old values whited out the wedge.
+- **Lens ghosts** (`ghosting` param): 3–4 chromatic soft discs on the center↔cursor
+  axis, gated by `pd²` and a slow noise "sometimes" gate; holographic mode only.
+- **Segmented control restored** with 3 NEW variants (one concept, three readings):
+  `prism`/«Призма» (crystal: thin rods, ca 0.03, ghosting 0.7), `lens`/«Объектив»
+  (photographic: angleWarp 2.0, heaviest dusty cone; **new default**), `disco`/«Диско»
+  (living bundles: fiberDrift 0.35, refraction 1.0, shimmer 0.8). Presets crossfade
+  600 ms via `lerpParams`. Legacy presets 1–5 kept, `?fx=` only.
+- **Gyroscope wind** (pointer.ts): deviceorientation β/γ (clamped ±25°, centered on
+  first reading) maps to a virtual pointer from screen center; iOS 13+ permission on
+  first touch; any real pointer event outranks it.
+- WGSL uniform buffer grew 12 → 16 vec4s (`linkDist`, `linkHalfAng`, `p7`, `p8`);
+  packing indices shifted — keep `struct U` ↔ `render()` in sync.
+
+### Artifacts fixed round 3 — do not reintroduce
+
+4. **"Ladders" (equal parallel lines)** — the periodic `sin(dTh·140)` band comb.
+   Fixed by the non-periodic multi-frequency fiber system (see above).
+5. **"Rice seeds" (hard-cut streak rectangles)** — wind-stretched mote gaussians
+   clipped at Cartesian cell borders. Fixed: stretch cap `σr ≤ 0.28·cell`, border
+   envelope forcing exact zero at cell edges, per-mote σ/brightness variance,
+   smooth density threshold instead of `step`.
+6. **Fiber subpixel moiré** — fibers thinner than a device pixel aliased into
+   concentric arcs. Fixed: per-generation fade below ~2 px cell size + width floor
+   `w ≥ 1.6/cellPx`.
+7. **Dust "onion shell" arcs** (the round-3 hunt): TWO independent causes, both in the
+   polar dust domain. (a) The parallax term `q·0.06·depth·60/(r·0.02+6)` radially
+   squeezed the noise domain whenever the pointer left center → replaced with a pure
+   per-layer translation (`·5.0`). (b) `nUv.y = aa·(3 + rr·0.018)` crossed the angular
+   lattice periodically ALONG THE RADIUS (period ≈ 1/(|aa|·0.018) ≈ 25–50 px) — spiral
+   arc bands immune to radial jitter → angular frequency is now constant (`aa·6.0`).
+   Diagnosed by zeroing `dust` in isolation. **Never multiply an angular noise
+   coordinate by a function of r.** Also: radial rJit strengthened with a second
+   fast angular term (`vnoise(aa·6.1)·1.15`).
 ## Map round 4 (2026-07-16) — plan-oblique («military») projection
 
 - **Map round 3 (baked icon splay) REJECTED** — user: "looks like we've turned buildings
@@ -186,6 +248,133 @@ reverted it in `aadd6d2`. Kept for the record only.**
   `perspective-guide.png` directions; roof outlines identical across all frames
   (translate only); no frustum clipping at full shear; `npm run build` passes.
 
+## Feedback round 4 (2026-07-20) — «Прорезь»: the logo as light
+
+Lead designer's new direction: the hero light must **stay recognizable as the Кресты
+emblem** ("a logo made of light", not an abstract ray burst) — light pushed from behind
+toward the viewer through a **cross-shaped slit cut in cloth**. Refs: `references/sign.svg`
+(the emblem — a cluster of thin radiating strokes = the slits), `references/main screen.png`
+(the target mood), `scheme.jpg` (cursor distortion, reused).
+
+- **New default variant `prorez`/«Прорезь»** + kept `prism`/«Призма»; **`lens`/«Объектив»
+  and `disco`/«Диско» KILLED** from the switcher (`SWITCHER_COUNT = 2`; still `?fx=lens`
+  /`?fx=disco` as data). User verdict from round 3 = keep Призма only.
+- **First texture in the ray field.** `sign.svg` copied to `src/assets/`, imported `?raw`,
+  rasterized in `MainScreen.rasterizeSign()` to a 640² canvas (opaque black bg, white
+  emblem → sample `.r` as antialiased slit coverage), uploaded via new
+  `RayFieldRenderer.setSignMask()`. WebGL2 = `TEXTURE_2D` unit 0 (`UNPACK_FLIP_Y` so top
+  row → v=0, matching `p.y` down); WebGPU = `copyExternalImageToTexture({flipY:true})` +
+  `@binding(1)` texture / `@binding(2)` sampler, bind group rebuilt on upload (a 1×1
+  placeholder keeps it valid before the mask loads). **Never-blank:** `u_hasMask=0` →
+  «Прорезь» falls back to the procedural cross glyph.
+- **Slit path** (`slitLight()` in both twins, gated by `u_slitMix`; `col = mix(field,
+  slit, slitMix)`): emblem centered at convergence, `uv = 0.5 + p/signSize`. Crisp mask
+  `core` (readable logo) + spiral-tap `bloom` halo + **radial god-rays** (march the mask
+  from fragment back to the light-centre uv, per-step decay — light streaming out through
+  the slits, the Z-throw). Cursor shifts the light-centre uv (`par = q·0.06·parallax`,
+  **vector form, no atan2**) and `lean` brightens the cursor side (vector dot). Prism =
+  per-channel chromatic scale about the centre (`ca`). Rays fade out near the very centre
+  (`rayGate = smoothstep(0.02,0.17,|uv−0.5|)`) so the emblem's own strokes read there
+  instead of a blown-white blob. God-ray sample count rides the perf tier.
+- New params `signSize`(440), `godrays`, `bloom`; new state `slitMix` (eased ~400 ms in
+  MainScreen from the active variant). WGSL buffer grew 16 → 18 vec4s (`p8` now
+  modeMix/slitMix/hasMask/signSize, new `p9` godrays/bloom) — keep `struct U` ↔ `render()`
+  packing in sync.
+- Hover in «Прорезь» = the light gently leans + brightens toward the hovered link
+  (`hoverDir`/`hoverAmt`); no hard link shadows there.
+
+### «Призма» cleanup (the kept variant)
+- **Laser "bullet" motes REMOVED** (`moteAmount: 0`) — the center-emitted radial streaks
+  that reversed direction as the cursor crossed centre were the "star-wars laser" + the
+  "rave glitch/jump" the user reported. This was the cursor-crossing jump; the field is
+  continuous without them. (Mote code kept for legacy `?fx=` presets.)
+- **Link shadow re-anchored:** the cone now starts AT the label's outer edge
+  (`behind = smoothstep(ld, ld·1.2, r)` — was `ld·0.88`, which began mid-label — the
+  "starts from the middle of a link" bug) with clean soft cone edges and the noise
+  "contour" removed. Strength 0.92→0.8.
+- Calmer register: `shimmer` 0.45→0.28, `fiberDrift` 0.12→0.06 — "sunlight, not rave".
+
+## Feedback round 5 (2026-07-21) — «Сияние»: the logo dissolved into light
+
+Round-4 «Прорезь» verdict: "good first step in the right approach", but **"too logo with
+some glow — I still see full SVG untouched logo plus glow. Glow is good btw."** The
+wish-image (soft wide white beams, blown bright centre): the logo must become **zoom-blur
+trails** — strokes elongated into light beams from the background, **no sharp SVG paths
+visible**. Built as a 3rd variant `siyanie`/«Сияние», now the default
+(`SWITCHER_COUNT = 3`: Сияние · Прорезь · Призма).
+
+- **`dissolve` param (0 crisp «Прорезь» → 1 «Сияние»)**, packed in the free `p9.z` slot
+  (no buffer growth). Inside `slitLight`: crisp core ×(1−dissolve) (the sharp paths
+  vanish), `rayGate → mix(gate, 1, dissolve)` (the dissolved register WANTS the blown
+  featureless core the gate was protecting «Прорезь» from), god-ray decay
+  `mix(0.93, 0.968, dissolve)` (longer trails), bloom radius ×(1+1.2·dissolve) (wider
+  halo — note the tap-weight normalizer must scale with the radius or outer taps go
+  NEGATIVE), and a radial melt `rays ×= exp(−r/(falloffL·1.15))` so trails fade at the
+  screen edges. `dissolve` is in `NUMERIC_KEYS`, so the switcher crossfade morphs
+  crisp↔dissolved.
+- **"Ladders" ROOT-CAUSED and fixed — do not reintroduce:** two discrete-sampling
+  artifacts in `slitLight`. (a) The god-ray march took N uniform steps, each depositing a
+  full offset copy of the hard mask edge → stair-step banding; (b) the 12 fixed spiral
+  bloom taps → offset "ghost rectangle" copies of the emblem bars (user screenshot over
+  the dark map). Fix: **per-pixel jitter** — dither the march start (`s = uv0 − duv·jit`)
+  and rotate the bloom spiral (`ang += jit·2π`), `jit = hash21(fragPx)`. **Rule: never
+  march/tap a texture at fixed offsets without per-pixel jitter.** Jitter is STATIC (no
+  time term) — temporal jitter would crawl/sparkle; the animated film grain covers the
+  fixed noise. Benefits «Прорезь» equally (verified on the same dark-map crop).
+- **Appearance burst** replaces the round-4 scale-in (user: "funny, the speed and the
+  lack of drama... should be dramatic, hard and epic, like light smashes from nothing
+  like an explosion"). CPU-side only, in `MainScreen.update`: `burstT` resets when a slit
+  variant activates (load + switch); `signSize ×= 0.25+0.75·(1−e^(−t/0.09))` (violent
+  expansion, ~0.25 s) under a flash `k = e^(−t/0.15)`: godrays ×(1+4k), bloom ×(1+3k),
+  core ×(1+2.5k). No new uniforms. dt is clamped so a hidden tab can't skip the flash.
+- Verified (WebGPU + WebGL2 identical): rest vs wish-image — soft wide beams, blown core,
+  zero sharp paths in the centre crop; dark-map hover crop — ladders gone in both slit
+  variants; burst frames at 80/200/600 ms; corner parallax + prism fringing intact.
+
+### Noise follow-up (same day) — anisotropic pre-filter, sharpness kept
+User: the jitter's stipple looked like "problems with my device GPU" (worst over the dark
+scene, where modeMix boosts the light). Root cause: dithering reshapes error, it doesn't
+remove it — ~12 bloom taps + ≤32 march steps against a HARD-edged binary mask is a
+high-variance estimator; the jitter converted the coherent banding into that variance as
+per-pixel noise. First fix (isotropic 6 px pre-blur fed to march + bloom) killed the
+noise but ALSO the look — user: razor-blade rays became "diet yoghurt, no charisma".
+**The noise and the razor edges live in different directions:** the march integrates the
+mask RADIALLY (noise = tap-to-tap jumps along the ray), while the loved sharp edges are
+TANGENTIAL (the trail sides). Final fix: **three-channel mask** in `rasterizeSign` —
+R = crisp emblem («Прорезь» core), G = round blur 6 px (bloom halo only), **B = radial
+smear** (13 copies scaled 0.965–1.035 about the centre, averaged, + 1.5 px blur floor for
+the near-centre region where scale steps barely move) → `signMaskRay()` (.b) feeds the
+god-ray march. The smear length grows with radius exactly like the march step does, so
+the smoothing matches the sampling gap everywhere. Jitter kept. **Rules: dithered sparse
+sampling needs a pre-filtered source, and the pre-filter must be ALIGNED with the
+integration direction** — a round blur trades noise for the look. Remaining grain = the
+intentional `grain` param. Console `contentscript.js` warnings the user saw alongside =
+a browser extension (wallet), not the app.
+
+### HOW TO RESTORE the noisy "razor" version (user liked it; kept as an option)
+The user's verdict: the pre-filtered version WINS, but the noisy pre-fix render
+("razor-blade rays, harsh, charismatic" + heavy stipple) must stay restorable with 100%
+accuracy. Two ways, pick either:
+
+1. **Two-line flip on the living codebase** (the ONLY rendering difference): in BOTH
+   shader twins make the two filtered samplers read the crisp channel —
+   - `src/gpu/webgl2/rayField.frag.glsl`: in `signMaskSoft()` change
+     `return texture(u_signMask, uv).g;` → `.r`; in `signMaskRay()` change
+     `return texture(u_signMask, uv).b;` → `.r`.
+   - `src/gpu/webgpu/rayField.wgsl`: in `signMaskSoft()` change
+     `return textureSampleLevel(signMaskTex, signSamp, uv, 0.0).g;` → `.r`; in
+     `signMaskRay()` the same for `.b` → `.r`.
+   Touch nothing else — the jitter, rasterizer, params are identical in both versions;
+   the G/B channels simply go unused. (Caveat: exact only while `slitLight`'s sampling
+   structure survives; for bit-exactness after future refactors use option 2.)
+2. **Frozen branch `light-v5-prefix`** (commit `34f96c0`) — the complete round-5 state
+   with the flip already applied, bit-exact forever. Do NOT delete this branch: its base
+   is a stash-snapshot commit reachable only through it. To run it side-by-side:
+   `git worktree add ../kresti-prefix light-v5-prefix`, symlink `node_modules` into the
+   worktree, copy the GITIGNORED `public/resources` photos from the main checkout (only
+   fonts/`scene.glb` are committed; `sign.svg` IS committed on that branch), then
+   `npm run dev -- --port 5300 --strictPort` inside the worktree.
+
 ## Open issues
 
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
@@ -193,8 +382,17 @@ reverted it in `aadd6d2`. Kept for the record only.**
 - **[OPEN] Showreel/hover placeholder photos are gitignored** — a completely fresh clone
   will render those two features without images until real client photos are added
   (rays, nav, transition, map are unaffected).
-- v2 default still slightly milky on the horizontal arms — taste dial: `halo` multiplier
-  (shader), `hazeBase`, `primaryIntensity`.
+- ~~v2 default still slightly milky on the horizontal arms~~ — obsolete: round 3 made
+  `lens` the default and reworked the beam interior (fibers).
+- ~~[OPEN] Round-3 variant verdict pending~~ **RESOLVED (round 4):** «Призма» kept,
+  «Объектив»/«Диско» killed, new «Прорезь» is the default hero.
+- ~~[OPEN] «Прорезь» emblem legibility is a taste dial~~ **SUPERSEDED (round 5):** the
+  designer wanted it far more dissolved → the `dissolve` param + «Сияние» variant own
+  that axis now (0 literal … 1 pure light trails; intermediate values are valid presets).
+- **[OPEN] «Сияние» burst envelope tuned by eye** (0.09/0.15 s time constants, ×4/×3/×2.5
+  flash) — awaiting the designer's verdict on "fast and furious enough".
+- **[OPEN] Gyroscope wind untested on a real device** — desktop Chrome has no
+  deviceorientation; needs a phone check (incl. iOS permission prompt on first touch).
 - Hover-scene per-link images are placeholders; client photos expected.
 - Transition flash timing tuned by eye at 720ms; not yet reviewed by user on a real pointer.
 - ALS Chromius VF weight axis range assumed 100–900; not verified with a font inspector.

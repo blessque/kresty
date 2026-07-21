@@ -32,6 +32,14 @@
   inset: 0;
   background: rgba(24, 61, 84, 0.45);
 }
+/* delayed darkening of the showreel — flips the light into dusty mode */
+.showreel .showreel-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #050403;
+  opacity: 0;
+}
 
 /* hover "gallery dark": black drop + section image, revealed by the light */
 .hover-scene {
@@ -105,14 +113,17 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: text-shadow 0.25s ease;
+  transition: text-shadow 0.25s ease, color 0.25s ease;
 }
 .nav-link .nav-rot {
   display: block;
 }
+/* the hovered label goes dark: an object in front of harsh light reads as a
+   silhouette and casts the shadow path (the shader carves the wedge) */
 .nav-link:hover,
 .nav-link:focus-visible {
-  text-shadow: 0 0 18px rgba(255, 255, 255, 0.9), 0 0 42px rgba(255, 255, 255, 0.5);
+  color: #070a10;
+  text-shadow: 0 0 22px rgba(255, 255, 255, 0.35);
   outline: none;
 }
 
@@ -149,5 +160,42 @@
   font-size: 14px;
   opacity: 0.5;
   letter-spacing: 0.08em;
+}
+
+/* segmented control: three solutions of the one light concept */
+.fx-switch {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(6, 12, 20, 0.42);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.fx-switch button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.fx-switch button:hover {
+  color: #fff;
+}
+.fx-switch button.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
