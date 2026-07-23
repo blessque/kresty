@@ -86,10 +86,10 @@ export class MainScreen {
     dark.className = 'hover-dark';
     this.hoverScene.appendChild(dark);
     const hoverImages = [
-      '/resources/reference-light-3.png',
-      '/resources/карта.png',
-      '/resources/reference-light-5.png',
-      '/resources/reference-light-4.png',
+      '/resources/main-1a.png', // История
+      '/resources/main-2a.png', // Концепция
+      '/resources/main-3a.png', // Аренда
+      '/resources/main-4a.png', // Контакты
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');

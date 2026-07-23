@@ -37,11 +37,46 @@ export const NEWS_HEADLINES = [
 ];
 
 export const SHOWREEL_IMAGES = [
-  '/resources/карта.png',
-  '/resources/reference-light-3.png',
-  '/resources/reference-light-5.png',
-  '/resources/Screenshot 2026-07-15 at 14.40.43 1.png',
+  '/resources/main-1a.png',
+  '/resources/main-2a.png',
+  '/resources/main-3a.png',
+  '/resources/main-4a.png',
 ].map((p) => encodeURI(p));
+
+/**
+ * «Слайдер» slides — real client photos, paired by filename: `Na` = nadir
+ * (top-down, inside the star mask), `Nb` = zenith (ground-up, full-bleed
+ * background). Slides 1 and 3 share the sky background `main-1b+3b.png`.
+ * Headlines from Figma frames slider01..04 (node 252:39).
+ */
+export interface SliderSlide {
+  star: string;
+  bg: string;
+  headline: string;
+}
+
+export const SLIDER_SLIDES: SliderSlide[] = [
+  {
+    star: '/resources/main-1a.png',
+    bg: '/resources/main-1b+3b.png',
+    headline: 'Игровые площадки вместо закрытой территории',
+  },
+  {
+    star: '/resources/main-2a.png',
+    bg: '/resources/main-2b.png',
+    headline: 'Объединение вместо заключения',
+  },
+  {
+    star: '/resources/main-3a.png',
+    bg: '/resources/main-1b+3b.png',
+    headline: 'Открытые лекции вместо закрытых замков',
+  },
+  {
+    star: '/resources/main-4a.png',
+    bg: '/resources/main-4b.png',
+    headline: 'Уютные кафе вместо темных коридоров',
+  },
+].map((s) => ({ ...s, star: encodeURI(s.star), bg: encodeURI(s.bg) }));
 
 export function stageScale(): number {
   return Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H);
