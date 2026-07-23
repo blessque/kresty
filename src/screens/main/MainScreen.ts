@@ -366,11 +366,12 @@ export class MainScreen {
       p.coreIntensity *= 1 + 2.5 * k;
     }
 
-    // «Проектор» (round 6.2): the light shines untouched over the slider —
-    // no dimming, no occlusion. The only choreography left is a soft breath
-    // of light on each slide throw — a swell, not a punch. Gated to the
-    // slider tab so a fast tab switch can't leak the tail onto another
-    // variant.
+    // «Проектор» (round 6.3): the light shines at full strength over the
+    // background photos and simply disappears behind the star (plain DOM
+    // stacking — see StarSlider's layering note). The only choreography
+    // left is a soft breath of light on each slide throw — a swell, not a
+    // punch. Gated to the slider tab so a fast tab switch can't leak the
+    // tail onto another variant.
     if (this.sliderFlashT < 2 && VARIANTS[this.variantIndex].id === 'slider') {
       p = { ...p };
       const k = Math.exp(-this.sliderFlashT / 0.3);

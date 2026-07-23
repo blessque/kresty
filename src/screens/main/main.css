@@ -68,11 +68,27 @@
 .star-slider img.bg.visible {
   opacity: 1;
 }
-/* flat legibility overlay (user dial: 0.2; Figma mockup had 0.41) */
+/* flat legibility overlay (user dial: 0.2; Figma mockup had 0.41);
+   z above the bg imgs, whose inline z-index (1/2) orders the fade-over */
 .star-slider .star-overlay {
   position: absolute;
   inset: 0;
+  z-index: 3;
   background: rgba(0, 0, 0, 0.2);
+}
+/* the star's own layer: same z as the ray canvas but appended AFTER it in
+   the DOM, so the star paints on top — the light disappears behind the
+   star while still shining over the background photos (z:1) */
+.star-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+  pointer-events: none;
+}
+.star-layer.active {
+  opacity: 1;
 }
 /* mirror of .stage — the star is positioned in 1440×800 stage px */
 .star-stage {
@@ -90,15 +106,14 @@
    `.dissolve` = the exit: never a scale-down — the star keeps drifting
    slightly LARGER while transparency and blur melt it into the air.
    Durations are mirrored in StarSlider.ts (STAR_IN_MS, DISSOLVE_MS).
-   mask-image + geometry set from TS (star.svg data URI, Figma numbers). */
+   The star mask sits on the IMG while the dissolve filter sits HERE on the
+   wrap — filtering the mask's parent blurs the already-masked result, so
+   the whole star shape (contour included) melts, not just the photo
+   inside a crisp star. Geometry set from TS (Figma numbers). */
 .star-wrap {
   position: absolute;
   width: 1000px;
   height: 1000px;
-  mask-size: 100% 100%;
-  -webkit-mask-size: 100% 100%;
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
   transform: scale(0.55);
   opacity: 0;
   filter: blur(0);
@@ -124,6 +139,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  /* mask-image (the star data URI) set from TS */
 }
 
 /* hover "gallery dark": black drop + section image, revealed by the light */

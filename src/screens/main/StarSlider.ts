@@ -13,6 +13,7 @@ const STAR_IN_MS = 1600; // restrained bloom out of the light centre
 const DISSOLVE_MS = 1200; // the old star melts into the air
 const NEXT_DELAY_MS = 600; // new star starts while the old one is half-gone
 const HEADLINE_IN_MS = 900; // headline enters while the star is still landing
+const BG_FADE_MS = 1400; // background fade-in (mirrors the CSS transition)
 
 /**
  * «Слайдер» idle show: full-bleed zenith photo behind, nadir photo inside a
@@ -20,15 +21,21 @@ const HEADLINE_IN_MS = 900; // headline enters while the star is still landing
  * while the «Слайдер» tab is active (the old Showreel serves the other tabs).
  * Any pointer/key activity = full exit back to flat blue.
  *
- * The star sits in stage coordinates, but the slider layer lives BELOW the
- * ray canvas (z:1) while the stage is above it (z:4) — so `.star-stage`
- * mirrors the stage transform (fed via layout()), and the headline element
- * is appended into the real stage so the light never washes the text. The
- * light itself is left alone — it shines over the whole composition.
+ * Layering (bottom → top): background photos (z:1, `.star-slider`) → the
+ * screen-blended ray canvas (z:3) → the star (`.star-layer`, also z:3 but
+ * appended after the canvas, so it paints above — the light shines over the
+ * photos and disappears BEHIND the star) → the stage with nav + headline
+ * (z:4). The star sits in stage coordinates, so `.star-stage` mirrors the
+ * stage transform (fed via layout()); the headline is appended into the
+ * real stage so neither the light nor the star ever covers the text.
  *
  * Slide change never scales down: the outgoing star DISSOLVES in place
- * (transparency + a slight further scale-up + blur — smoke in the air) on
- * one of two double-buffered wraps, while the next star blooms up behind it.
+ * (transparency + a slight further scale-up + a whole-shape blur — smoke in
+ * the air) on one of two double-buffered wraps, while the next star blooms
+ * up behind it. Background photos never cross-fade both ways: the incoming
+ * photo fades in ON TOP of the outgoing one (which is hidden only after
+ * being fully covered) — a two-way fade lets the blue backdrop flash
+ * through at the tail of the transition.
  */
 export class StarSlider {
   /** 0..1 presence — MainScreen reads it for bgMix */
@@ -37,8 +44,10 @@ export class StarSlider {
   onFlash: () => void = () => {};
 
   private root: HTMLElement;
+  private starLayer: HTMLElement;
   private bgs: HTMLImageElement[] = [];
   private bgFront = 0;
+  private bgSrc = '';
   private starStage: HTMLElement;
   private starWraps: HTMLElement[] = [];
   private starImgs: HTMLImageElement[] = [];
@@ -68,18 +77,23 @@ export class StarSlider {
     overlay.className = 'star-overlay';
     this.root.appendChild(overlay);
 
+    // the star lives on its OWN layer above the ray canvas: the light shines
+    // over the background photo but disappears behind the star (plain
+    // stacking — the star is a physical surface in front of the light)
+    this.starLayer = document.createElement('div');
+    this.starLayer.className = 'star-layer';
     this.starStage = document.createElement('div');
     this.starStage.className = 'star-stage';
-    this.root.appendChild(this.starStage);
+    this.starLayer.appendChild(this.starStage);
 
-    // two star wraps: one blooms while the other dissolves — no scale-down
+    // two star wraps: one blooms while the other dissolves — no scale-down.
+    // The mask sits on the IMG, the dissolve filter on the WRAP: a filter on
+    // the mask's parent blurs the already-masked result, so the whole star
+    // SHAPE melts (soft contour), not just the photo inside a crisp star.
     const maskUrl = `url("data:image/svg+xml;utf8,${encodeURIComponent(starSvg)}")`;
     for (let i = 0; i < 2; i++) {
       const wrap = document.createElement('div');
       wrap.className = 'star-wrap';
-      for (const prop of ['mask-image', '-webkit-mask-image']) {
-        wrap.style.setProperty(prop, maskUrl);
-      }
       // geometry: top-left from the Figma centre; scale origin = the light
       // convergence point in star-local coords, so the star grows exactly
       // out of the light yet lands exactly on the mockup position
@@ -90,17 +104,23 @@ export class StarSlider {
       const img = document.createElement('img');
       img.className = 'star';
       img.alt = '';
+      for (const prop of ['mask-image', '-webkit-mask-image']) {
+        img.style.setProperty(prop, maskUrl);
+      }
       wrap.appendChild(img);
       this.starWraps.push(wrap);
       this.starImgs.push(img);
     }
 
-    // the headline lives in the real stage (z above the light)
+    // the headline lives in the real stage (z above the light AND the star)
     this.headline = document.createElement('p');
     this.headline.className = 'slider-headline';
     stageEl.appendChild(this.headline);
 
     screenEl.appendChild(this.root);
+    // appended after the ray canvas (this component is constructed after
+    // it), so at the same z-index the star layer paints ON TOP of the light
+    screenEl.appendChild(this.starLayer);
     this.idle = new IdleWatcher(IDLE_MS, () => this.activate(), () => this.deactivate());
   }
 
@@ -136,20 +156,36 @@ export class StarSlider {
     clearTimeout(this.cleanupTimer);
     for (const w of this.starWraps) w.classList.remove('in', 'dissolve');
     this.headline.classList.remove('show', 'out');
+    // the spare bg img may have been left visible by an interrupted cycle;
+    // hide it while the whole layer is still faded out
+    this.bgs[1 - this.bgFront].classList.remove('visible');
     this.screenEl.classList.add('slider-on');
     this.root.classList.add('active');
+    this.starLayer.classList.add('active');
     this.showSlide(this.current);
     this.animateMix(1);
   }
 
-  /** throw the slide: bg crossfade + star blooming out of the light centre */
+  /** throw the slide: bg fade-over + star blooming out of the light centre */
   private showSlide(i: number) {
     const slide = SLIDER_SLIDES[i];
-    const back = 1 - this.bgFront;
-    this.bgs[back].src = slide.bg;
-    this.bgs[back].classList.add('visible');
-    this.bgs[this.bgFront].classList.remove('visible');
-    this.bgFront = back;
+    // background: fade the incoming photo in OVER the outgoing one — never
+    // fade two photos simultaneously (the blue bleeds through at the tail),
+    // and never re-fade the same file (slides 1 and 3 share the sky)
+    if (slide.bg !== this.bgSrc) {
+      this.bgSrc = slide.bg;
+      const back = 1 - this.bgFront;
+      const incoming = this.bgs[back];
+      const outgoing = this.bgs[this.bgFront];
+      incoming.src = slide.bg;
+      incoming.style.zIndex = '2';
+      outgoing.style.zIndex = '1';
+      incoming.classList.add('visible');
+      // the old photo is fully covered once the fade completes — release it
+      // silently so it can host the next crossfade
+      this.setTimer(() => outgoing.classList.remove('visible'), BG_FADE_MS + 100);
+      this.bgFront = back;
+    }
 
     const wrap = this.starWraps[this.starFront];
     this.starImgs[this.starFront].src = slide.star;
@@ -188,6 +224,7 @@ export class StarSlider {
     this.clearTimers();
     this.screenEl.classList.remove('slider-on');
     this.root.classList.remove('active');
+    this.starLayer.classList.remove('active');
     const front = this.starWraps[this.starFront];
     front.classList.remove('in');
     front.classList.add('dissolve');
