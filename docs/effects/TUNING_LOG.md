@@ -407,11 +407,56 @@ slides 1+3 share the sky `main-1b+3b.png`). Figma: node 252:39.
   over the photos; dusty amber stays hover/showreel-only. Links dim to 0.5.
 - Wake (any pointer/key) = FULL exit (~0.7 s) back to flat blue + default
   light; nothing persists. Cursor-wind, hover shadows etc. untouched.
-- Review notes (deferred minors, fix only if they annoy): a flash tail can
+- Review notes (deferred minors, fix only if they annoy): ~~a flash tail can
   bleed ~300 ms onto another variant if the tab is switched within 1.2 s of
-  a slide throw (optional gate: `&& variant id === 'slider'`); permanent
-  `will-change: transform` on `.star-wrap`; StarSlider timer-id array grows
-  trivially during one idle session.
+  a slide throw~~ **FIXED (round 6.1):** flash gated to the slider variant;
+  permanent `will-change: transform` on `.star-wrap`; StarSlider timer-id
+  array grows trivially during one idle session.
+
+### Round 6.1 (2026-07-23, same day) — occlusion instead of ember + airy curves
+
+User feedback on round 6: (1) don't dim the light — put it BEHIND the star,
+ideally interfering with the star's contour "like real light beams behind a
+physical surface"; (2) the animation "punches user in face: rough, edgy,
+rapid" → wanted "smooth, clean, airy and rich".
+
+- **Ember REMOVED — the star now occludes the full-intensity light.** The ray
+  canvas gets a two-layer CSS mask while the slider shows: layer 1 =
+  `linear-gradient(#fff,#fff)` (keep everything), layer 2 = a feathered star
+  texture, combined with `mask-composite: exclude` (legacy twin
+  `-webkit-mask-composite: xor`; set the standard prop LAST — the spellings
+  can alias, and the legacy keywords differ). Light vanishes inside the star,
+  survives untouched outside; the 10 px feather (blur baked into a 1280²
+  canvas texture, star 1000² centered) turns the contour into a lit edge —
+  beams visibly break around the star. Built in
+  `StarSlider.buildOcclusionMask()`; on failure the light simply stays
+  unoccluded (never blank).
+- **Mask animates in lockstep with the star.** `setMask(k, dur, curve)` sets
+  `mask-position`/`mask-size` (viewport px, computed from the same
+  light-centre origin math as the CSS `transform-origin`) with a transition
+  of the SAME duration+curve as the star's transform. Both longhands are
+  linear in the scale factor k, so equal timing functions keep the cutout
+  glued to the star through the whole throw/recede. A reflow between the
+  initial and target values makes the transition reliable. Durations/curves
+  are declared once in StarSlider.ts (STAR_IN/OUT_MS, CURVE_IN/OUT) and
+  mirrored in the `.star-wrap` CSS — keep them in sync.
+- **Curves rework (the "punch" → "airy"):** throw 0.5 s expo-out from scale
+  0.05 → **1.2 s `cubic-bezier(0.22,0.9,0.32,1)` from scale 0.35**; recede
+  0.25 s ease-in → 0.6 s soft in-out `cubic-bezier(0.6,0,0.35,1)`; bg
+  crossfade 0.8 → 1.4 s; slider fade 0.7 → 1.1 s; headline 0.3 s fade →
+  0.7 s fade + 16 px upward drift (0.9 s), entering at 660 ms while the star
+  is still landing; hold 6 → 7 s (measured from throw start); swap gap
+  60 → 120 ms.
+- **Flash softened to a breath and gated:** τ 0.15 → 0.3 s, godrays
+  ×(1+1.4k) / bloom ×(1+1.0k) / core ×(1+0.7k) (was 3.5/2.5/2.0), window
+  1.2 → 2 s, and the whole block now requires the slider variant to be
+  active — the tab-switch flash-tail bleed from the round-6 review is gone.
+- On wake the mask recedes with the star (0.6 s) and is dropped ~100 ms
+  later (`maskTimer`, cancelled if the slider re-activates) — the light
+  closes over the retreating star instead of popping.
+- Verified headlessly on BOTH backends (the mask is CSS, backend-agnostic):
+  star photo fully clean of light, full-strength rays breaking around all
+  four contour points over sky and atrium slides, smooth wake, no errors.
 
 ## Open issues
 
@@ -436,5 +481,6 @@ slides 1+3 share the sky `main-1b+3b.png`). Figma: node 252:39.
   **RESOLVED (round 6):** real client photos committed.
 - Transition flash timing tuned by eye at 720ms; not yet reviewed by user on a real pointer.
 - ALS Chromius VF weight axis range assumed 100–900; not verified with a font inspector.
-- **[OPEN] «Слайдер» dials tuned by eye** — overlay 0.2 (Figma had 0.41), hold 6 s,
-  ember/flash factors, star throw 0.5 s / collapse 0.25 s; awaiting designer pass.
+- **[OPEN] «Слайдер» dials tuned by eye** (round-6.1 values) — overlay 0.2 (Figma
+  had 0.41), hold 7 s, flash breath ×1.4/×1.0/×0.7 @ τ 0.3 s, throw 1.2 s /
+  recede 0.6 s, mask feather 10 px, headline drift 16 px; awaiting designer pass.
