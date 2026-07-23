@@ -149,9 +149,8 @@ export class MainScreen {
     mark.textContent = 'КРЕСТЫ · 2026';
     this.stage.appendChild(mark);
 
-    // «Слайдер» idle show (armed only on its tab; headline goes in the stage;
-    // the canvas is handed over so the star can occlude the light via a mask)
-    this.starSlider = new StarSlider(this.el, this.stage, this.canvas);
+    // «Слайдер» idle show (armed only on its tab; headline goes in the stage)
+    this.starSlider = new StarSlider(this.el, this.stage);
     this.starSlider.onFlash = () => (this.sliderFlashT = 0);
 
     // segmented control: Сияние · Прорезь · Призма · Слайдер
@@ -367,12 +366,11 @@ export class MainScreen {
       p.coreIntensity *= 1 + 2.5 * k;
     }
 
-    // «Проектор» (round 6.1): the light is NOT dimmed during the slider —
-    // the star occludes it via a canvas mask (StarSlider.setMask), so the
-    // full-intensity beams physically break around the star's contour. What
-    // remains CPU-side is a soft breath of light on each slide throw — a
-    // swell, not the round-6 punch. Gated to the slider tab so a fast tab
-    // switch can't leak the tail onto another variant.
+    // «Проектор» (round 6.2): the light shines untouched over the slider —
+    // no dimming, no occlusion. The only choreography left is a soft breath
+    // of light on each slide throw — a swell, not a punch. Gated to the
+    // slider tab so a fast tab switch can't leak the tail onto another
+    // variant.
     if (this.sliderFlashT < 2 && VARIANTS[this.variantIndex].id === 'slider') {
       p = { ...p };
       const k = Math.exp(-this.sliderFlashT / 0.3);

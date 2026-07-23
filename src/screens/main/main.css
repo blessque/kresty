@@ -84,10 +84,12 @@
   transform-origin: center;
   /* transform set from JS: translate(-50%,-50%) scale(s) */
 }
-/* base state = rest scale near the light centre; base transition = the soft
-   recede (in-out). .in overrides with the long-tail airy bloom. Durations
-   and curves are mirrored in StarSlider.ts (STAR_IN/OUT_MS, CURVE_IN/OUT)
-   so the canvas occlusion mask animates in lockstep — keep them in sync.
+/* two double-buffered star wraps. Base state = hidden at the pre-bloom
+   scale, NO transition (instant reset for reuse). `.in` = the restrained
+   bloom out of the light centre — one long decelerating settle, no bounce.
+   `.dissolve` = the exit: never a scale-down — the star keeps drifting
+   slightly LARGER while transparency and blur melt it into the air.
+   Durations are mirrored in StarSlider.ts (STAR_IN_MS, DISSOLVE_MS).
    mask-image + geometry set from TS (star.svg data URI, Figma numbers). */
 .star-wrap {
   position: absolute;
@@ -97,19 +99,25 @@
   -webkit-mask-size: 100% 100%;
   mask-repeat: no-repeat;
   -webkit-mask-repeat: no-repeat;
-  transform: scale(0.35);
+  transform: scale(0.55);
   opacity: 0;
-  transition:
-    transform 0.6s cubic-bezier(0.6, 0, 0.35, 1),
-    opacity 0.45s ease 0.1s;
-  will-change: transform;
+  filter: blur(0);
 }
 .star-wrap.in {
   transform: scale(1);
   opacity: 1;
   transition:
-    transform 1.2s cubic-bezier(0.22, 0.9, 0.32, 1),
-    opacity 0.5s ease-out;
+    transform 1.6s cubic-bezier(0.3, 0, 0.12, 1),
+    opacity 0.9s ease-out;
+}
+.star-wrap.dissolve {
+  transform: scale(1.06);
+  opacity: 0;
+  filter: blur(14px);
+  transition:
+    transform 1.2s cubic-bezier(0.25, 0, 0.4, 1),
+    opacity 1s cubic-bezier(0.4, 0, 0.6, 1),
+    filter 1s ease;
 }
 .star-wrap img.star {
   display: block;
@@ -217,16 +225,25 @@
   font-variation-settings: 'wght' 500;
   line-height: normal;
   color: #fff;
+  /* base = hidden below its resting spot, NO transition (instant reset);
+     .show rises in with the star's curve, .out dissolves upward like vapor */
   opacity: 0;
   transform: translateX(-50%) translateY(16px);
-  transition:
-    opacity 0.7s ease,
-    transform 0.9s cubic-bezier(0.22, 0.9, 0.32, 1);
   pointer-events: none;
 }
 .slider-headline.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+  transition:
+    opacity 0.8s ease,
+    transform 1.1s cubic-bezier(0.3, 0, 0.12, 1);
+}
+.slider-headline.out {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-14px);
+  transition:
+    opacity 0.55s ease,
+    transform 0.75s ease;
 }
 
 /* while the slider shows, the nav yields (Figma: 50%) */
