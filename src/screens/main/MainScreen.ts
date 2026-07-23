@@ -149,8 +149,9 @@ export class MainScreen {
     mark.textContent = 'КРЕСТЫ · 2026';
     this.stage.appendChild(mark);
 
-    // «Слайдер» idle show (armed only on its tab; headline goes in the stage)
-    this.starSlider = new StarSlider(this.el, this.stage);
+    // «Слайдер» idle show (armed only on its tab; headline goes in the stage;
+    // the canvas is handed over so the star can occlude the light via a mask)
+    this.starSlider = new StarSlider(this.el, this.stage, this.canvas);
     this.starSlider.onFlash = () => (this.sliderFlashT = 0);
 
     // segmented control: Сияние · Прорезь · Призма · Слайдер
@@ -366,24 +367,18 @@ export class MainScreen {
       p.coreIntensity *= 1 + 2.5 * k;
     }
 
-    // «Проектор» (round 6): while the star slider shows, the light retreats
-    // to an ember — no blown core behind the headline, faint god-rays leaking
-    // from behind the star's points — and flashes to throw each slide out of
-    // its centre. CPU-side param modulation only (same pattern as converge
-    // and the burst): zero shader changes.
-    const sm = this.starSlider.mix;
-    if (sm > 0.001 || this.sliderFlashT < 1.2) {
+    // «Проектор» (round 6.1): the light is NOT dimmed during the slider —
+    // the star occludes it via a canvas mask (StarSlider.setMask), so the
+    // full-intensity beams physically break around the star's contour. What
+    // remains CPU-side is a soft breath of light on each slide throw — a
+    // swell, not the round-6 punch. Gated to the slider tab so a fast tab
+    // switch can't leak the tail onto another variant.
+    if (this.sliderFlashT < 2 && VARIANTS[this.variantIndex].id === 'slider') {
       p = { ...p };
-      p.coreIntensity *= 1 - 0.92 * sm;
-      p.bloom *= 1 - 0.7 * sm;
-      p.godrays *= 1 - 0.55 * sm;
-      p.dustAmount *= 1 - 0.6 * sm;
-      if (this.sliderFlashT < 1.2) {
-        const k = Math.exp(-this.sliderFlashT / 0.15);
-        p.godrays *= 1 + 3.5 * k;
-        p.bloom *= 1 + 2.5 * k;
-        p.coreIntensity *= 1 + 2.0 * k;
-      }
+      const k = Math.exp(-this.sliderFlashT / 0.3);
+      p.godrays *= 1 + 1.4 * k;
+      p.bloom *= 1 + 1.0 * k;
+      p.coreIntensity *= 1 + 0.7 * k;
     }
     this.sliderFlashT += dt;
 
