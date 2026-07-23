@@ -41,6 +41,38 @@ const base: RayFieldParams = {
   compositeMode: 0,
 };
 
+/** «Сияние» params — shared verbatim by the «Слайдер» tab (same light,
+ *  different idle behavior: the star slider instead of the old showreel). */
+const siyanieParams: RayFieldParams = {
+  ...base,
+  dissolve: 1,
+  signSize: 500,
+  godrays: 1.2,
+  bloom: 1.1,
+  coreIntensity: 0.5,
+  coreRadius: 70,
+  crossSize: 460, // fallback cross glyph if the mask fails to load
+  crossIntensity: 1.2,
+  primaryIntensity: 0,
+  secCount: 0,
+  secIntensity: 0,
+  dustAmount: 0.25,
+  moteAmount: 0,
+  grain: 0.06,
+  ca: 0.03,
+  hazeBase: 0.05,
+  rotSpeed: 0.008,
+  parallax: 1.0,
+  breathe: 0.25,
+  refraction: 0,
+  shimmer: 0.3,
+  fiberDrift: 0,
+  angleWarp: 0,
+  ghosting: 0,
+  shadow: 0,
+  hoverMode: 0,
+};
+
 /**
  * ACTIVE variants (feedback round 5). «Сияние» is the hero — the emblem
  * dissolved into zoom-blur light trails (no sharp SVG paths, blown bright
@@ -56,35 +88,7 @@ export const VARIANTS: EffectVariant[] = [
     // zoom-blur beams from the background, centre blown to a bright hotspot,
     // zero crisp SVG paths (dissolve 1 kills the crisp core + opens rayGate).
     // Glow ("good btw") kept: wide bloom + long-decay god-rays carry it all.
-    params: {
-      ...base,
-      dissolve: 1,
-      signSize: 500,
-      godrays: 1.2,
-      bloom: 1.1,
-      coreIntensity: 0.5,
-      coreRadius: 70,
-      crossSize: 460, // fallback cross glyph if the mask fails to load
-      crossIntensity: 1.2,
-      primaryIntensity: 0,
-      secCount: 0,
-      secIntensity: 0,
-      dustAmount: 0.25,
-      moteAmount: 0,
-      grain: 0.06,
-      ca: 0.03,
-      hazeBase: 0.05,
-      rotSpeed: 0.008,
-      parallax: 1.0,
-      breathe: 0.25,
-      refraction: 0,
-      shimmer: 0.3,
-      fiberDrift: 0,
-      angleWarp: 0,
-      ghosting: 0,
-      shadow: 0,
-      hoverMode: 0,
-    },
+    params: { ...siyanieParams },
   },
   {
     id: 'prorez',
@@ -154,6 +158,14 @@ export const VARIANTS: EffectVariant[] = [
       shadow: 0.7,
       hoverMode: 3,
     },
+  },
+  {
+    id: 'slider',
+    label: 'Слайдер',
+    // «Проектор»: the «Сияние» light + the star photo slider as the idle
+    // show — the light throws each slide out of its own centre, then
+    // retreats to an ember (modulated CPU-side in MainScreen).
+    params: { ...siyanieParams },
   },
   // ---- killed variants (round 4), reachable via ?fx=lens / ?fx=disco ----
   {
@@ -341,7 +353,7 @@ export const VARIANTS: EffectVariant[] = [
 ];
 
 /** How many of VARIANTS (from the top) appear in the segmented control. */
-export const SWITCHER_COUNT = 3;
+export const SWITCHER_COUNT = 4;
 
 /** Default: «Сияние» — the dissolved logo-light hero. */
 const DEFAULT_INDEX = 0;
