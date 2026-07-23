@@ -41,6 +41,81 @@
   opacity: 0;
 }
 
+/* «Слайдер»: zenith photo full-bleed + nadir photo in a star mask, thrown
+   out of the light centre. Sits in the showreel's z-slot (only one of the
+   two idle shows is ever armed). The headline is NOT here — it lives in the
+   stage (z:4) so the screen-blended light never washes the text. */
+.star-slider {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+  pointer-events: none;
+}
+.star-slider.active {
+  opacity: 1;
+}
+.star-slider img.bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+.star-slider img.bg.visible {
+  opacity: 1;
+}
+/* flat legibility overlay (user dial: 0.2; Figma mockup had 0.41) */
+.star-slider .star-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+/* mirror of .stage — the star is positioned in 1440×800 stage px */
+.star-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1440px;
+  height: 800px;
+  transform-origin: center;
+  /* transform set from JS: translate(-50%,-50%) scale(s) */
+}
+/* base state = collapsed into the light centre; base transition = the
+   collapse (ease-in). .in overrides with the explosive expo-out throw.
+   mask-image + geometry set from TS (star.svg data URI, Figma numbers). */
+.star-wrap {
+  position: absolute;
+  width: 1000px;
+  height: 1000px;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  transform: scale(0.05);
+  opacity: 0;
+  transition:
+    transform 0.25s cubic-bezier(0.7, 0, 0.84, 0),
+    opacity 0.1s linear 0.15s;
+  will-change: transform;
+}
+.star-wrap.in {
+  transform: scale(1);
+  opacity: 1;
+  transition:
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.15s ease;
+}
+.star-wrap img.star {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* hover "gallery dark": black drop + section image, revealed by the light */
 .hover-scene {
   position: absolute;
@@ -113,7 +188,7 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: text-shadow 0.25s ease, color 0.25s ease;
+  transition: text-shadow 0.25s ease, color 0.25s ease, opacity 0.5s ease;
 }
 .nav-link .nav-rot {
   display: block;
@@ -125,6 +200,33 @@
   color: #070a10;
   text-shadow: 0 0 22px rgba(255, 255, 255, 0.35);
   outline: none;
+}
+
+/* per-slide headline (Figma slider01: Chromius Medium 64, w 692, x 784, y 294) */
+.slider-headline {
+  position: absolute;
+  left: 784px;
+  top: 294px;
+  transform: translateX(-50%);
+  width: 692px;
+  text-align: center;
+  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
+  font-size: 64px;
+  font-weight: 500;
+  font-variation-settings: 'wght' 500;
+  line-height: normal;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.slider-headline.show {
+  opacity: 1;
+}
+
+/* while the slider shows, the nav yields (Figma: 50%) */
+#screen-main.slider-on .nav-link {
+  opacity: 0.5;
 }
 
 .news {
