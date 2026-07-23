@@ -458,6 +458,39 @@ rapid" → wanted "smooth, clean, airy and rich".
   star photo fully clean of light, full-strength rays breaking around all
   four contour points over sky and atrium slides, smooth wake, no errors.
 
+### Round 6.2 (2026-07-23, later) — occlusion KILLED, dissolve-in-air slide change
+
+User verdict on 6.1: the occlusion "looks just weird and cheap", only reads
+while the star is small; the throw/recede still "sketchy and childish…
+bounce… good for a video game, not a premium website"; and slide changes
+must never scale down.
+
+- **Occlusion REMOVED entirely** (all canvas-mask machinery deleted from
+  StarSlider; constructor back to `(screenEl, stageEl)`). The light simply
+  shines over the whole composition, zero interaction with the star — the
+  user's explicit call ("let the light just shine"). Do not resurrect the
+  mask without a new ask; if it ever comes back, the round-6.1 entry above
+  documents the working recipe.
+- **Slide change = dissolve, never scale-down.** TWO double-buffered star
+  wraps: the outgoing star gets `.dissolve` — opacity → 0 (1 s), a slight
+  FURTHER scale-up 1 → 1.06 (1.2 s), blur 0 → 14 px — smoke in the air; the
+  next star blooms up behind it starting 0.6 s in (NEXT_DELAY_MS), fully
+  overlapping. The dissolved wrap snaps back to the hidden base state
+  (base has NO transition) ~1.3 s later for reuse. Wake-up exits the same
+  way: the front star dissolves while the layer fades (dedicated
+  `cleanupTimer`, cancelled on re-activate).
+- **Bloom made "adult":** 1.6 s, `cubic-bezier(0.3, 0, 0.12, 1)` (gentle
+  entry, one long decelerating settle, mathematically zero overshoot), from
+  scale 0.55, opacity 0.9 s ease-out. Headline: base state transitionless;
+  `.show` rises 16 px on the star's curve (0.8/1.1 s); new `.out` state
+  dissolves it upward like vapor (−14 px, 0.55/0.75 s). `will-change`
+  dropped (a 6.1-review minor).
+- Timings: hold 7 s from throw start; headline enters at 0.9 s; flash
+  breath unchanged (×1.4/×1.0/×0.7 @ τ 0.3 s, slider-tab-gated).
+- Verified headlessly: bloom/dissolve/second-bloom/wake frames all correct,
+  old star reads as a blurred ghost melting into the sky, no scale-down
+  anywhere, no page errors.
+
 ## Open issues
 
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
@@ -481,6 +514,11 @@ rapid" → wanted "smooth, clean, airy and rich".
   **RESOLVED (round 6):** real client photos committed.
 - Transition flash timing tuned by eye at 720ms; not yet reviewed by user on a real pointer.
 - ALS Chromius VF weight axis range assumed 100–900; not verified with a font inspector.
-- **[OPEN] «Слайдер» dials tuned by eye** (round-6.1 values) — overlay 0.2 (Figma
-  had 0.41), hold 7 s, flash breath ×1.4/×1.0/×0.7 @ τ 0.3 s, throw 1.2 s /
-  recede 0.6 s, mask feather 10 px, headline drift 16 px; awaiting designer pass.
+- **[OPEN] «Слайдер» dials tuned by eye** (round-6.2 values) — overlay 0.2 (Figma
+  had 0.41), hold 7 s, flash breath ×1.4/×1.0/×0.7 @ τ 0.3 s, bloom 1.6 s from
+  scale 0.55, dissolve 1/1.2 s + blur 14 px, overlap 0.6 s, headline drift
+  16/−14 px; awaiting designer pass.
+- **[OPEN] Headline vs the blown light core** — with occlusion gone (6.2) the
+  «Сияние» hotspot sits right behind the centered headline over bright photos;
+  legible in checks, but if the designer objects the dials are the 0.2 overlay
+  or a local core easing (NOT the killed mask).
