@@ -375,13 +375,52 @@ accuracy. Two ways, pick either:
    fonts/`scene.glb` are committed; `sign.svg` IS committed on that branch), then
    `npm run dev -- --port 5300 --strictPort` inside the worktree.
 
+## Feedback round 6 (2026-07-23) — «Слайдер»: the star photo slider
+
+Second hero feature: after 4.2 s idle a photo slider takes over. Each slide =
+one scene from two angles: zenith shot (looking up) full-bleed behind, nadir
+shot (looking down) inside the 4-pointed star mask (`src/assets/star.svg` —
+points aligned with the beam bisectors). Real client photos replaced ALL
+placeholders (`public/resources/main-*.png`, committed; pairs by filename,
+slides 1+3 share the sky `main-1b+3b.png`). Figma: node 252:39.
+
+- **4th switcher tab `slider`/«Слайдер»** (`SWITCHER_COUNT = 4`) — the
+  «Сияние» light + the star slider as its idle behavior. Tabs 1–3 keep the
+  old crossfade showreel (re-pointed at `main-1a..4a`); exactly one idle
+  show is armed at a time (`armIdleShow`).
+- **«Проектор» choreography** (user-chosen over constant-glow / light-off):
+  the light throws each slide — flash (`k = e^(−t/0.15)`: godrays ×(1+3.5k),
+  bloom ×(1+2.5k), core ×(1+2k)) synced with the star scaling out of the
+  light centre (0.5 s expo-out; collapse 0.25 s ease-in; hold 6 s) — then
+  retreats to an ember (core ×0.08, bloom ×0.3, godrays ×0.45, dust ×0.4 at
+  mix 1). CPU-side param modulation in MainScreen.update, like converge/the
+  burst: ZERO shader changes, twins untouched.
+- **Star geometry** (Figma slider01): 1000×1000 centred at (784, 400) ≠ the
+  light centre (760, 420); `transform-origin` is the light centre in
+  star-local coords (476, 520) — grows out of the light, lands on the mockup.
+  The star lives in `.star-stage`, a stage-transform mirror at z:1 (below
+  the canvas); the headline (Chromius Medium 64, w 692, x 784, y 294) lives
+  in the REAL stage (z:4) so the screen-blended light never washes the text.
+- Photos at natural exposure + flat 0.2 black overlay (user dial; the Figma
+  mockup used 0.41 — the fallback if the sky slide fights the white
+  headline). The slider does NOT drive modeMix — white/holographic light
+  over the photos; dusty amber stays hover/showreel-only. Links dim to 0.5.
+- Wake (any pointer/key) = FULL exit (~0.7 s) back to flat blue + default
+  light; nothing persists. Cursor-wind, hover shadows etc. untouched.
+- Review notes (deferred minors, fix only if they annoy): a flash tail can
+  bleed ~300 ms onto another variant if the tab is switched within 1.2 s of
+  a slide throw (optional gate: `&& variant id === 'slider'`); permanent
+  `will-change: transform` on `.star-wrap`; StarSlider timer-id array grows
+  trivially during one idle session.
+
 ## Open issues
 
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
   true polycentric icon splay baked at load, always on.
-- **[OPEN] Showreel/hover placeholder photos are gitignored** — a completely fresh clone
+- ~~**[OPEN] Showreel/hover placeholder photos are gitignored** — a completely fresh clone
   will render those two features without images until real client photos are added
-  (rays, nav, transition, map are unaffected).
+  (rays, nav, transition, map are unaffected).~~ **RESOLVED (round 6):** real client
+  photos committed.
 - ~~v2 default still slightly milky on the horizontal arms~~ — obsolete: round 3 made
   `lens` the default and reworked the beam interior (fibers).
 - ~~[OPEN] Round-3 variant verdict pending~~ **RESOLVED (round 4):** «Призма» kept,
@@ -393,6 +432,9 @@ accuracy. Two ways, pick either:
   flash) — awaiting the designer's verdict on "fast and furious enough".
 - **[OPEN] Gyroscope wind untested on a real device** — desktop Chrome has no
   deviceorientation; needs a phone check (incl. iOS permission prompt on first touch).
-- Hover-scene per-link images are placeholders; client photos expected.
+- ~~Hover-scene per-link images are placeholders; client photos expected.~~
+  **RESOLVED (round 6):** real client photos committed.
 - Transition flash timing tuned by eye at 720ms; not yet reviewed by user on a real pointer.
 - ALS Chromius VF weight axis range assumed 100–900; not verified with a font inspector.
+- **[OPEN] «Слайдер» dials tuned by eye** — overlay 0.2 (Figma had 0.41), hold 6 s,
+  ember/flash factors, star throw 0.5 s / collapse 0.25 s; awaiting designer pass.
