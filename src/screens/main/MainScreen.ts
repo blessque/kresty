@@ -11,6 +11,7 @@ import {
 import { VARIANTS, variantIndexFromUrl, SWITCHER_COUNT } from './variants';
 import { NewsTicker } from './NewsTicker';
 import { Showreel } from './Showreel';
+import { StarSlider } from './StarSlider';
 import { selectBackend } from '../../gpu/capabilities';
 import { lerpParams } from '../../gpu/rayFieldTypes';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
@@ -18,7 +19,7 @@ import { SmoothPointer } from '../../shared/pointer';
 import { getPerfTier } from '../../shared/performanceTier';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
-const SLIT_IDS = new Set(['siyanie', 'prorez']);
+const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
 
 export class MainScreen {
   el: HTMLElement;
@@ -30,6 +31,9 @@ export class MainScreen {
   private pointer = new SmoothPointer();
   private ticker!: NewsTicker;
   private showreel!: Showreel;
+  private starSlider!: StarSlider;
+  /** seconds since the slider last threw a slide — the projector flash */
+  private sliderFlashT = 10;
   private tier = getPerfTier();
 
   private raf = 0;
@@ -145,7 +149,11 @@ export class MainScreen {
     mark.textContent = 'КРЕСТЫ · 2026';
     this.stage.appendChild(mark);
 
-    // segmented control: «Прорезь» (logo-slit) + «Призма»
+    // «Слайдер» idle show (armed only on its tab; headline goes in the stage)
+    this.starSlider = new StarSlider(this.el, this.stage);
+    this.starSlider.onFlash = () => (this.sliderFlashT = 0);
+
+    // segmented control: Сияние · Прорезь · Призма · Слайдер
     const fx = document.createElement('div');
     fx.className = 'fx-switch';
     VARIANTS.slice(0, SWITCHER_COUNT).forEach((v, i) => {
@@ -171,12 +179,26 @@ export class MainScreen {
     // slit variants appear with the explosive burst, not a polite scale-in
     if (SLIT_IDS.has(VARIANTS[i].id)) this.burstT = 0;
     this.fxButtons.forEach((b, j) => b.classList.toggle('active', j === i));
+    this.armIdleShow();
+  }
+
+  /** the «Слайдер» tab arms the star slider; every other tab, the showreel */
+  private armIdleShow() {
+    if (!this.running) return;
+    if (VARIANTS[this.variantIndex].id === 'slider') {
+      this.showreel.detach();
+      this.starSlider.attach();
+    } else {
+      this.starSlider.detach();
+      this.showreel.attach();
+    }
   }
 
   /** stage transform + canvas backing store */
   layout = () => {
     const s = stageScale();
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+    this.starSlider.layout(s);
     const w = Math.round(innerWidth * this.tier.renderScale);
     const h = Math.round(innerHeight * this.tier.renderScale);
     this.renderer?.resize(w, h);
@@ -246,7 +268,7 @@ export class MainScreen {
     this.running = true;
     this.el.classList.remove('hidden');
     this.pointer.attach();
-    this.showreel.attach();
+    this.armIdleShow();
     this.ticker.start();
     addEventListener('resize', this.layout);
     this.lastT = performance.now();
@@ -267,6 +289,7 @@ export class MainScreen {
     this.el.classList.add('hidden');
     this.pointer.detach();
     this.showreel.detach();
+    this.starSlider.detach();
     this.ticker.stop();
     removeEventListener('resize', this.layout);
   }
@@ -343,6 +366,27 @@ export class MainScreen {
       p.coreIntensity *= 1 + 2.5 * k;
     }
 
+    // «Проектор» (round 6): while the star slider shows, the light retreats
+    // to an ember — no blown core behind the headline, faint god-rays leaking
+    // from behind the star's points — and flashes to throw each slide out of
+    // its centre. CPU-side param modulation only (same pattern as converge
+    // and the burst): zero shader changes.
+    const sm = this.starSlider.mix;
+    if (sm > 0.001 || this.sliderFlashT < 1.2) {
+      p = { ...p };
+      p.coreIntensity *= 1 - 0.92 * sm;
+      p.bloom *= 1 - 0.7 * sm;
+      p.godrays *= 1 - 0.55 * sm;
+      p.dustAmount *= 1 - 0.6 * sm;
+      if (this.sliderFlashT < 1.2) {
+        const k = Math.exp(-this.sliderFlashT / 0.15);
+        p.godrays *= 1 + 3.5 * k;
+        p.bloom *= 1 + 2.5 * k;
+        p.coreIntensity *= 1 + 2.0 * k;
+      }
+    }
+    this.sliderFlashT += dt;
+
     const s = stageScale();
     const rs = this.tier.renderScale;
     const stageRect = this.stage.getBoundingClientRect();
@@ -356,7 +400,7 @@ export class MainScreen {
       linkDist: this.linkDist,
       linkHalfAng: this.linkHalfAng,
       beamHover: [this.hover[0], this.hover[1], this.hover[2], this.hover[3]],
-      bgMix: this.showreel.mix,
+      bgMix: Math.max(this.showreel.mix, this.starSlider.mix),
       sceneDim: this.sceneDim,
       modeMix: this.modeMix,
       slitMix: this.slitMix,
