@@ -9,11 +9,3 @@ memory/
 
 # mood-board / raw source material — archive only, never served or built
 /references/
-
-# placeholder showreel & hover photos — real content TBD from client.
-# Kept locally so `npm run dev` renders them; not committed (see README).
-/public/resources/карта.png
-/public/resources/reference-light-3.png
-/public/resources/reference-light-4.png
-/public/resources/reference-light-5.png
-/public/resources/Screenshot 2026-07-15 at 14.40.43 1.png
