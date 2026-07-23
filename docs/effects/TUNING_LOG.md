@@ -491,6 +491,38 @@ must never scale down.
   old star reads as a blurred ghost melting into the sky, no scale-down
   anywhere, no page errors.
 
+### Round 6.3 (2026-07-23, evening) — star above the light + dissolve/bg fixes
+
+Three user corrections on 6.2:
+
+- **The light goes BELOW the star** (6.2's "light on top" was wrong): the
+  star now lives on its own `.star-layer` — same z-index (3) as the ray
+  canvas but appended AFTER it in the DOM, so it paints above. Layering
+  bottom→top: bg photos (z:1) → 20% overlay → screen-blended light (z:3) →
+  the star (z:3, later sibling) → stage with nav + headline (z:4). The
+  light shines over the photos and simply disappears behind the star — the
+  "physical surface" read via plain stacking, no masks.
+- **Dissolve blurs the whole SHAPE, not the photo inside the star:** CSS
+  filters apply before masking on the same element, so a blur on the masked
+  element softens only the interior while the mask keeps a razor contour.
+  Fix: the star mask moved onto the `img`, the dissolve `filter: blur()`
+  stays on the parent `.star-wrap` — filtering the mask's parent blurs the
+  already-masked result, so the contour melts too. **Rule: to blur a masked
+  shape's silhouette, filter an ancestor of the masked element.**
+- **Bg change flicker at the fade tail:** two causes. (a) A symmetric
+  crossfade (old fades out while new fades in) drops combined coverage
+  below 1 mid-fade and the blue backdrop bleeds through, worst at the tail;
+  (b) slides 1 and 3 share the sky file, and "crossfading" to the identical
+  src caused a pointless dip. Fix: the incoming photo fades in ON TOP
+  (inline z-index 2 vs 1) while the outgoing stays fully opaque underneath,
+  hidden only ~100 ms after being completely covered; same-src changes are
+  skipped entirely (`bgSrc` guard). **Rule: never symmetric-crossfade two
+  stacked full-bleed images over a visible backdrop — fade the new one in
+  on top.**
+- Verified headlessly: settled slides show a clean star with beams
+  disappearing behind its contour; the dissolve reads as a soft-edged ghost
+  of the whole star; slide-2 bg in place with no artifacts; clean wake.
+
 ## Open issues
 
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
@@ -518,7 +550,6 @@ must never scale down.
   had 0.41), hold 7 s, flash breath ×1.4/×1.0/×0.7 @ τ 0.3 s, bloom 1.6 s from
   scale 0.55, dissolve 1/1.2 s + blur 14 px, overlap 0.6 s, headline drift
   16/−14 px; awaiting designer pass.
-- **[OPEN] Headline vs the blown light core** — with occlusion gone (6.2) the
-  «Сияние» hotspot sits right behind the centered headline over bright photos;
-  legible in checks, but if the designer objects the dials are the 0.2 overlay
-  or a local core easing (NOT the killed mask).
+- ~~[OPEN] Headline vs the blown light core~~ **RESOLVED (round 6.3):** the
+  star covers the light's core (plain stacking), so the headline sits over
+  the photo, not over the hotspot.
