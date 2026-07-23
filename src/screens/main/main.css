@@ -306,7 +306,10 @@
   letter-spacing: 0.08em;
 }
 
-/* segmented control: three solutions of the one light concept */
+/* segmented control — hidden in the pitch build; the V key toggles it */
+.fx-switch.hidden {
+  display: none;
+}
 .fx-switch {
   position: absolute;
   left: 50%;

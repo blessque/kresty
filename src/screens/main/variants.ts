@@ -355,8 +355,8 @@ export const VARIANTS: EffectVariant[] = [
 /** How many of VARIANTS (from the top) appear in the segmented control. */
 export const SWITCHER_COUNT = 4;
 
-/** Default: «Сияние» — the dissolved logo-light hero. */
-const DEFAULT_INDEX = 0;
+/** Default: «Слайдер» — the star-mask photo-slider pitch. */
+const DEFAULT_INDEX = VARIANTS.findIndex((v) => v.id === 'slider');
 
 /** `?fx=` still overrides, including the legacy preset ids. */
 export function variantIndexFromUrl(): number {

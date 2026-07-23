@@ -48,6 +48,7 @@ export class MainScreen {
   private paramsTo: RayFieldParams | null = null;
   private paramsBlend = 1;
   private fxButtons: HTMLButtonElement[] = [];
+  private fxSwitch!: HTMLDivElement;
 
   /** 0..1 transition converge amount, driven by TransitionController */
   converge = 0;
@@ -154,8 +155,10 @@ export class MainScreen {
     this.starSlider.onFlash = () => (this.sliderFlashT = 0);
 
     // segmented control: Сияние · Прорезь · Призма · Слайдер
+    // hidden by default (pitch shows «Слайдер» only); the V key reveals it
     const fx = document.createElement('div');
-    fx.className = 'fx-switch';
+    fx.className = 'fx-switch hidden';
+    this.fxSwitch = fx;
     VARIANTS.slice(0, SWITCHER_COUNT).forEach((v, i) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -181,6 +184,12 @@ export class MainScreen {
     this.fxButtons.forEach((b, j) => b.classList.toggle('active', j === i));
     this.armIdleShow();
   }
+
+  /** dev shortcut: physical V key (any layout) shows/hides the variant switcher */
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.code !== 'KeyV' || e.metaKey || e.ctrlKey || e.altKey) return;
+    this.fxSwitch.classList.toggle('hidden');
+  };
 
   /** the «Слайдер» tab arms the star slider; every other tab, the showreel */
   private armIdleShow() {
@@ -271,6 +280,7 @@ export class MainScreen {
     this.armIdleShow();
     this.ticker.start();
     addEventListener('resize', this.layout);
+    addEventListener('keydown', this.onKeyDown);
     this.lastT = performance.now();
     const loop = (now: number) => {
       if (!this.running) return;
@@ -292,6 +302,7 @@ export class MainScreen {
     this.starSlider.detach();
     this.ticker.stop();
     removeEventListener('resize', this.layout);
+    removeEventListener('keydown', this.onKeyDown);
   }
 
   private update(dt: number) {
