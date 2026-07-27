@@ -11,7 +11,7 @@ import {
 import { VARIANTS, variantIndexFromUrl, SWITCHER_COUNT } from './variants';
 import { NewsTicker } from './NewsTicker';
 import { Showreel } from './Showreel';
-import { StarSlider } from './StarSlider';
+import { PhotoSlider } from './PhotoSlider';
 import { selectBackend } from '../../gpu/capabilities';
 import { lerpParams } from '../../gpu/rayFieldTypes';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
@@ -20,6 +20,14 @@ import { getPerfTier } from '../../shared/performanceTier';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
 const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
+
+/**
+ * Slow continuous rotation of the whole light cross, rad/s (round 7).
+ * ~0.6°/s — a quarter turn in ≈2.5 min: alive, never distracting. Drives the
+ * slit-mask sampling (signRot) AND the procedural beam base angles, so every
+ * variant turns in lockstep; cursor wind/parallax stay screen-true on top.
+ */
+const ROT_SPEED = 0.0105;
 
 export class MainScreen {
   el: HTMLElement;
@@ -31,7 +39,7 @@ export class MainScreen {
   private pointer = new SmoothPointer();
   private ticker!: NewsTicker;
   private showreel!: Showreel;
-  private starSlider!: StarSlider;
+  private photoSlider!: PhotoSlider;
   /** seconds since the slider last threw a slide — the projector flash */
   private sliderFlashT = 10;
   private tier = getPerfTier();
@@ -126,7 +134,8 @@ export class MainScreen {
       a.href = spec.route ? '#concept' : '#';
       a.style.left = `${spec.x}px`;
       a.style.top = `${spec.y}px`;
-      a.innerHTML = `<span class="nav-rot" style="transform: rotate(${spec.rot}deg)">${spec.label}</span>`;
+      // data-label feeds the ::after engraved-echo copy on hover
+      a.innerHTML = `<span class="nav-rot" data-label="${spec.label}" style="transform: rotate(${spec.rot}deg)">${spec.label}</span>`;
       a.addEventListener('pointerenter', () => {
         this.hoverTarget[i] = 1;
         this.lastHovered = i;
@@ -151,8 +160,8 @@ export class MainScreen {
     this.stage.appendChild(mark);
 
     // «Слайдер» idle show (armed only on its tab; headline goes in the stage)
-    this.starSlider = new StarSlider(this.el, this.stage);
-    this.starSlider.onFlash = () => (this.sliderFlashT = 0);
+    this.photoSlider = new PhotoSlider(this.el, this.stage);
+    this.photoSlider.onFlash = () => (this.sliderFlashT = 0);
 
     // segmented control: Сияние · Прорезь · Призма · Слайдер
     // hidden by default (pitch shows «Слайдер» only); the V key reveals it
@@ -196,9 +205,9 @@ export class MainScreen {
     if (!this.running) return;
     if (VARIANTS[this.variantIndex].id === 'slider') {
       this.showreel.detach();
-      this.starSlider.attach();
+      this.photoSlider.attach();
     } else {
-      this.starSlider.detach();
+      this.photoSlider.detach();
       this.showreel.attach();
     }
   }
@@ -207,7 +216,6 @@ export class MainScreen {
   layout = () => {
     const s = stageScale();
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
-    this.starSlider.layout(s);
     const w = Math.round(innerWidth * this.tier.renderScale);
     const h = Math.round(innerHeight * this.tier.renderScale);
     this.renderer?.resize(w, h);
@@ -299,7 +307,7 @@ export class MainScreen {
     this.el.classList.add('hidden');
     this.pointer.detach();
     this.showreel.detach();
-    this.starSlider.detach();
+    this.photoSlider.detach();
     this.ticker.stop();
     removeEventListener('resize', this.layout);
     removeEventListener('keydown', this.onKeyDown);
@@ -314,13 +322,13 @@ export class MainScreen {
     }
     this.pointer.update(dt);
 
-    // living beams: slow global sway (never far from the bisectors)
-    // plus small independent per-beam wander
+    // living beams: slow continuous rotation of the whole cross (replaces the
+    // old ±8° sway) plus small independent per-beam wander
     const t = this.timeSec;
-    const sway = Math.sin((t * Math.PI * 2) / 45) * 0.14;
+    const rot = t * ROT_SPEED;
     for (let i = 0; i < 4; i++) {
       const wander = 0.035 * Math.sin(t * 0.23 + i * 2.1) + 0.02 * Math.sin(t * 0.11 + i * 4.7);
-      this.beamAngles[i] = this.baseBeamAngles[i] + sway + wander;
+      this.beamAngles[i] = this.baseBeamAngles[i] + rot + wander;
     }
 
     // hover gallery-dark scene: rise 250ms, release 500ms
@@ -400,12 +408,13 @@ export class MainScreen {
       centerPx: [(stageRect.left + CENTER_X * s) * rs, (stageRect.top + CENTER_Y * s) * rs],
       pointerPx: [this.pointer.smooth.x * rs, this.pointer.smooth.y * rs],
       scale: s * rs,
+      signRot: this.timeSec * ROT_SPEED,
       beamAngles: this.beamAngles,
       linkAngles: this.linkAngles,
       linkDist: this.linkDist,
       linkHalfAng: this.linkHalfAng,
       beamHover: [this.hover[0], this.hover[1], this.hover[2], this.hover[3]],
-      bgMix: Math.max(this.showreel.mix, this.starSlider.mix),
+      bgMix: Math.max(this.showreel.mix, this.photoSlider.mix),
       sceneDim: this.sceneDim,
       modeMix: this.modeMix,
       slitMix: this.slitMix,

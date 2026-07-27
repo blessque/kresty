@@ -21,7 +21,7 @@ struct U {
   p6: vec4f, // octaves, refraction, shimmer, sceneDim
   p7: vec4f, // fiberDrift, angleWarp, ghosting, shadow
   p8: vec4f, // modeMix, slitMix, hasMask, signSize
-  p9: vec4f, // godrays, bloom, dissolve, 0
+  p9: vec4f, // godrays, bloom, dissolve, signRot
 };
 
 @group(0) @binding(0) var<uniform> u: U;
@@ -143,9 +143,15 @@ fn signMaskRay(uv: vec2f) -> f32 {
 // otherwise deposit visible ghost copies of the mask edges ("ladders").
 fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f32) -> vec3f {
   let S = max(u.p8.w, 1.0);
-  let uv0 = vec2f(0.5) + p / S;
+  // slow rotation: the mask is sampled in rotated space — rotate p AND the
+  // parallax vector (below), never q/lean, so the pattern turns rigidly while
+  // the cursor still displaces the light along the true screen direction
+  let cR = cos(u.p9.w); // signRot
+  let sR = sin(u.p9.w);
+  let R = mat2x2f(vec2f(cR, sR), vec2f(-sR, cR));
+  let uv0 = vec2f(0.5) + (R * p) / S;
   let par = (q * 0.06 + hoverDir * 26.0) * u.p4.z; // parallax
-  let lightUv = vec2f(0.5) - par / S;
+  let lightUv = vec2f(0.5) - (R * par) / S;
   let dissolve = u.p9.z;
 
   // crisp emblem core — fades out entirely as the logo dissolves into light

@@ -16,6 +16,9 @@ await page.waitForTimeout(700);
 await page.screenshot({ path: `${out}/hover-koncept.png` });
 
 // 2. walk the segmented control «Сияние» -> «Прорезь» -> «Призма» -> back
+// the switcher ships hidden in the pitch build; the physical V key reveals it
+await page.keyboard.press('v');
+await page.waitForTimeout(100);
 await page.click('.fx-switch button:nth-child(2)'); // Прорезь
 await page.waitForTimeout(900);
 await page.screenshot({ path: `${out}/switched-prorez.png` });

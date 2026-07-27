@@ -41,11 +41,12 @@
   opacity: 0;
 }
 
-/* «Слайдер»: zenith photo full-bleed + nadir photo in a star mask, thrown
-   out of the light centre. Sits in the showreel's z-slot (only one of the
-   two idle shows is ever armed). The headline is NOT here — it lives in the
-   stage (z:4) so the screen-blended light never washes the text. */
-.star-slider {
+/* «Слайдер» (round 7): one full-bleed nadir photo per slide. Sits in the
+   showreel's z-slot (only one of the two idle shows is ever armed). The
+   headline is NOT here — it lives in the stage (z:4) so the screen-blended
+   light never washes the text. The star mask that used to occlude the light
+   is gone; the light shines over the photo unobstructed. */
+.photo-slider {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -53,10 +54,10 @@
   transition: opacity 1.1s ease;
   pointer-events: none;
 }
-.star-slider.active {
+.photo-slider.active {
   opacity: 1;
 }
-.star-slider img.bg {
+.photo-slider img.bg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -65,85 +66,16 @@
   opacity: 0;
   transition: opacity 1.4s ease;
 }
-.star-slider img.bg.visible {
+.photo-slider img.bg.visible {
   opacity: 1;
 }
 /* flat legibility overlay (user dial: 0.2; Figma mockup had 0.41);
    z above the bg imgs, whose inline z-index (1/2) orders the fade-over */
-.star-slider .star-overlay {
+.photo-slider .photo-overlay {
   position: absolute;
   inset: 0;
   z-index: 3;
   background: rgba(0, 0, 0, 0.2);
-}
-/* the star's own layer: same z as the ray canvas but appended AFTER it in
-   the DOM, so the star paints on top — the light disappears behind the
-   star while still shining over the background photos (z:1) */
-.star-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  opacity: 0;
-  transition: opacity 1.1s ease;
-  pointer-events: none;
-}
-.star-layer.active {
-  opacity: 1;
-}
-/* mirror of .stage — the star is positioned in 1440×800 stage px */
-.star-stage {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1440px;
-  height: 800px;
-  transform-origin: center;
-  /* transform set from JS: translate(-50%,-50%) scale(s) */
-}
-/* two double-buffered star wraps. Base state = hidden at the pre-bloom
-   scale, NO transition (instant reset for reuse). `.in` = the restrained
-   bloom out of the light centre — one long decelerating settle, no bounce.
-   `.dissolve` = the exit: never a scale-down — the star keeps drifting
-   slightly LARGER while transparency and blur melt it into the air.
-   Durations are mirrored in StarSlider.ts (STAR_IN_MS, DISSOLVE_MS).
-   The star mask sits on the IMG while the dissolve filter sits HERE on the
-   wrap — filtering the mask's parent blurs the already-masked result, so
-   the whole star shape (contour included) melts, not just the photo
-   inside a crisp star. Geometry set from TS (Figma numbers). */
-.star-wrap {
-  position: absolute;
-  width: 1000px;
-  height: 1000px;
-  transform: scale(0.55);
-  opacity: 0;
-  filter: blur(0);
-}
-.star-wrap.in {
-  transform: scale(1);
-  opacity: 1;
-  transition:
-    transform 1.6s cubic-bezier(0.3, 0, 0.12, 1),
-    opacity 0.9s ease-out;
-}
-.star-wrap.dissolve {
-  transform: scale(1.06);
-  opacity: 0;
-  filter: blur(14px);
-  transition:
-    transform 1.2s cubic-bezier(0.25, 0, 0.4, 1),
-    opacity 1s cubic-bezier(0.4, 0, 0.6, 1),
-    filter 1s ease;
-}
-.star-wrap img.star {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  mask-size: 100% 100%;
-  -webkit-mask-size: 100% 100%;
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
-  /* mask-image (the star data URI) set from TS */
 }
 
 /* hover "gallery dark": black drop + section image, revealed by the light */
@@ -218,52 +150,97 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: text-shadow 0.25s ease, color 0.25s ease, opacity 0.5s ease;
+  outline: none;
+  transition: opacity 0.5s ease;
 }
 .nav-link .nav-rot {
   display: block;
+  position: relative;
 }
-/* the hovered label goes dark: an object in front of harsh light reads as a
-   silhouette and casts the shadow path (the shader carves the wedge) */
-.nav-link:hover,
-.nav-link:focus-visible {
-  color: #070a10;
-  text-shadow: 0 0 22px rgba(255, 255, 255, 0.35);
-  outline: none;
-}
-
-/* per-slide headline (Figma slider01: Chromius Medium 64, w 692, x 784, y 294) */
-.slider-headline {
+/* engraved echo (round 7): an outline-only copy of the label, hidden at rest.
+   It lives INSIDE the rotated .nav-rot span, so its offset is along the glyph
+   axis. On hover it slides out ~3px and fades in while the solid label keeps
+   its fill and gains a soft breathing shine — the logo's doubled-contour look,
+   not a black silhouette. */
+.nav-rot::after {
+  content: attr(data-label);
   position: absolute;
-  left: 784px;
-  top: 294px;
-  width: 692px;
-  text-align: center;
-  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
-  font-size: 64px;
-  font-weight: 500;
-  font-variation-settings: 'wght' 500;
-  line-height: normal;
-  color: #fff;
-  /* base = hidden below its resting spot, NO transition (instant reset);
-     .show rises in with the star's curve, .out dissolves upward like vapor */
+  left: 0;
+  top: 0;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.85);
   opacity: 0;
-  transform: translateX(-50%) translateY(16px);
+  transform: translate(0, 0);
+  transition: transform 0.35s ease, opacity 0.3s ease;
   pointer-events: none;
 }
-.slider-headline.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  transition:
-    opacity 0.8s ease,
-    transform 1.1s cubic-bezier(0.3, 0, 0.12, 1);
+.nav-link:hover .nav-rot,
+.nav-link:focus-visible .nav-rot {
+  animation: nav-shine 2.4s ease-in-out infinite;
 }
+.nav-link:hover .nav-rot::after,
+.nav-link:focus-visible .nav-rot::after {
+  opacity: 0.9;
+  transform: translate(3px, 3px);
+}
+@keyframes nav-shine {
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+  }
+  50% {
+    text-shadow: 0 0 22px rgba(255, 255, 255, 0.55);
+  }
+}
+
+/* per-slide headline — left column (Figma node 305:111: Chromius Medium 56,
+   line-height 1.15, left-aligned, x 40 y 304 w 692). Words reveal one by one. */
+.slider-headline {
+  position: absolute;
+  left: 40px;
+  top: 304px;
+  width: 692px;
+  text-align: left;
+  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
+  font-size: 56px;
+  font-weight: 500;
+  font-variation-settings: 'wght' 500;
+  line-height: 1.15;
+  color: #fff;
+  pointer-events: none;
+}
+/* each word is an inline-block so it never splits mid-word. Base = hidden and
+   blurred, NO transition (instant reset). `.show` on the parent reveals every
+   word: each rises out of blur on its own transition-delay (set from JS). */
+.slider-headline .word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(14px);
+  filter: blur(6px);
+}
+.slider-headline.show .word {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.3, 0, 0.12, 1),
+    filter 0.7s ease;
+}
+/* exit = the whole block melts upward like vapor (no per-word stagger) */
 .slider-headline.out {
   opacity: 0;
-  transform: translateX(-50%) translateY(-14px);
+  transform: translateY(-14px);
   transition:
     opacity 0.55s ease,
     transform 0.75s ease;
+}
+.slider-headline.out .word {
+  /* freeze the words visible so the block dissolves as one */
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition: none;
+  transition-delay: 0ms !important;
 }
 
 /* while the slider shows, the nav yields (Figma: 50%) */

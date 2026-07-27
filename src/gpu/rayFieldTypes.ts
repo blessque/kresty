@@ -88,6 +88,8 @@ export interface RayFieldState {
   pointerPx: [number, number];
   /** internal px per reference (1440-frame) px */
   scale: number;
+  /** slow continuous rotation of the whole light pattern, radians */
+  signRot: number;
   beamAngles: [number, number, number, number];
   /** measured link directions (index-aligned with beamHover) for hover zone light */
   linkAngles: [number, number, number, number];

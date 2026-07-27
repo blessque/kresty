@@ -56,6 +56,7 @@ uniform float u_godrays;       // radial light-scatter strength through the slit
 uniform float u_bloom;         // emissive halo around the emblem
 uniform float u_slitMix;       // 0 procedural field, 1 logo-slit light
 uniform float u_dissolve;      // 0 crisp logo, 1 dissolved into zoom-blur trails
+uniform float u_signRot;       // slow continuous rotation of the light pattern, rad
 
 out vec4 fragColor;
 
@@ -178,12 +179,18 @@ float signMaskRay(vec2 uv) {
 // copies of the mask edges (the "ladder" artifact).
 vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit) {
   float S = max(u_signSize, 1.0);
-  vec2 uv0 = 0.5 + p / S;
+  // slow rotation: the mask is sampled in rotated space — rotate p AND the
+  // parallax vector (below), never q/lean, so the pattern turns rigidly while
+  // the cursor still displaces the light along the true screen direction
+  float cR = cos(u_signRot);
+  float sR = sin(u_signRot);
+  mat2 R = mat2(cR, sR, -sR, cR);
+  vec2 uv0 = 0.5 + (R * p) / S;
 
   // the light "behind the cloth" shifts with the cursor (seam-free vector
   // form — no atan2) and leans toward a hovered link
   vec2 par = (q * 0.06 + hoverDir * 26.0) * u_parallax;
-  vec2 lightUv = 0.5 - par / S;
+  vec2 lightUv = 0.5 - (R * par) / S;
 
   // crisp emblem core — fades out entirely as the logo dissolves into light
   float core = signMask(uv0) * (1.0 - u_dissolve);

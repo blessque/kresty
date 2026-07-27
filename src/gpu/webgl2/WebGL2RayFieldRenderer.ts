@@ -146,6 +146,7 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     gl.uniform1f(u('u_sceneDim'), s.sceneDim);
     gl.uniform1f(u('u_modeMix'), s.modeMix);
     gl.uniform1f(u('u_slitMix'), s.slitMix);
+    gl.uniform1f(u('u_signRot'), s.signRot);
     gl.uniform1f(u('u_hasMask'), this.hasMask);
     gl.uniform1f(u('u_layers'), s.layers);
     gl.uniform1f(u('u_octaves'), s.octaves);

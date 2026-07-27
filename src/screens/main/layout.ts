@@ -9,9 +9,13 @@
 export const STAGE_W = 1440;
 export const STAGE_H = 800;
 
-/** convergence point of the light, in stage px (center +40, +20 per Figma) */
-export const CENTER_X = STAGE_W / 2 + 40;
-export const CENTER_Y = STAGE_H / 2 + 20;
+/**
+ * Convergence point of the light — the EXACT stage center (round 7 / Figma
+ * node 257:116). The stage is scale-to-fit centered in the viewport, so this
+ * puts the light at the exact screen center on any device.
+ */
+export const CENTER_X = STAGE_W / 2;
+export const CENTER_Y = STAGE_H / 2;
 
 export interface NavLinkSpec {
   id: string;
@@ -22,11 +26,16 @@ export interface NavLinkSpec {
   route: 'concept' | null;
 }
 
+/**
+ * Nav links re-centered around the light (Figma node 306:113): centers sit on
+ * the ±45° diagonals from the stage center, so the measured bisector beams
+ * form an exactly upright cross.
+ */
 export const NAV_LINKS: NavLinkSpec[] = [
-  { id: 'istoria', label: 'История', x: 565, y: 140, rot: 51.8, route: null },
-  { id: 'kontseptsia', label: 'Концепция', x: 1040, y: 205, rot: -38.2, route: 'concept' },
-  { id: 'arenda', label: 'Аренда', x: 505, y: 615, rot: -38.2, route: null },
-  { id: 'kontakty', label: 'Контакты', x: 965, y: 655, rot: 51.8, route: null },
+  { id: 'istoria', label: 'История', x: 480, y: 167, rot: 45.29, route: null },
+  { id: 'kontseptsia', label: 'Концепция', x: 955, y: 175, rot: -44.71, route: 'concept' },
+  { id: 'arenda', label: 'Аренда', x: 465, y: 645, rot: -44.71, route: null },
+  { id: 'kontakty', label: 'Контакты', x: 937, y: 644, rot: 45.29, route: null },
 ];
 
 export const NEWS_HEADLINES = [
@@ -44,39 +53,33 @@ export const SHOWREEL_IMAGES = [
 ].map((p) => encodeURI(p));
 
 /**
- * «Слайдер» slides — real client photos, paired by filename: `Na` = nadir
- * (top-down, inside the star mask), `Nb` = zenith (ground-up, full-bleed
- * background). Slides 1 and 3 share the sky background `main-1b+3b.png`.
+ * «Слайдер» slides — one full-bleed nadir photo per slide (round 7: the star
+ * mask is gone; the four distinct top-down shots each match their headline).
  * Headlines from Figma frames slider01..04 (node 252:39).
  */
 export interface SliderSlide {
-  star: string;
-  bg: string;
+  photo: string;
   headline: string;
 }
 
 export const SLIDER_SLIDES: SliderSlide[] = [
   {
-    star: '/resources/main-1a.png',
-    bg: '/resources/main-1b+3b.png',
+    photo: '/resources/main-1a.png',
     headline: 'Игровые площадки вместо закрытой территории',
   },
   {
-    star: '/resources/main-2a.png',
-    bg: '/resources/main-2b.png',
+    photo: '/resources/main-2a.png',
     headline: 'Объединение вместо заключения',
   },
   {
-    star: '/resources/main-3a.png',
-    bg: '/resources/main-1b+3b.png',
+    photo: '/resources/main-3a.png',
     headline: 'Открытые лекции вместо закрытых замков',
   },
   {
-    star: '/resources/main-4a.png',
-    bg: '/resources/main-4b.png',
+    photo: '/resources/main-4a.png',
     headline: 'Уютные кафе вместо темных коридоров',
   },
-].map((s) => ({ ...s, star: encodeURI(s.star), bg: encodeURI(s.bg) }));
+].map((s) => ({ ...s, photo: encodeURI(s.photo) }));
 
 export function stageScale(): number {
   return Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H);
