@@ -523,6 +523,53 @@ Three user corrections on 6.2:
   disappearing behind its contour; the dissolve reads as a soft-edged ghost
   of the whole star; slide-2 bg in place with no artifacts; clean wake.
 
+## Feedback round 7 (2026-07-27) — centered light, engraved-echo hover, slow rotation, star killed
+
+Four changes off the new Figma frame (node 257:116), verified on both backends
+(centering at 1440×800 AND 1100×800, ~24° rotation over 38 s, per-word opacity
+cascade, hover echo computed styles):
+
+- **Light + nav re-centered on the EXACT screen center.** `CENTER_X/Y` dropped
+  the old +40/+20 Figma offset → `STAGE_W/2, STAGE_H/2` (720, 400). The stage is
+  scale-to-fit centered, so the convergence point is the exact pixel center at
+  any viewport. `NAV_LINKS` re-anchored to center + Figma offsets, sitting on the
+  ±45° diagonals so the measured bisector beams read as an upright cross.
+- **Slow continuous rotation of the whole light cross.** New time-driven STATE
+  field `signRot` (radians) — NOT a param (no preset/lerp involvement), threaded
+  through `RayFieldState` → WebGL2 `u_signRot` uniform / WebGPU free `p9.w` slot
+  (no buffer growth). Dial `ROT_SPEED = 0.0105 rad/s` (~0.6°/s, quarter-turn
+  ≈ 2.5 min) in MainScreen drives BOTH the slit-mask sampling and the procedural
+  `beamAngles` base (it REPLACED the old ±8°/45 s sinusoidal sway; per-beam
+  wander kept). **Rule: to rotate the slit light, rotate the mask sample vectors
+  `p` AND the parallax vector `par` by the same `R = rot2(signRot)`, but NEVER
+  `q`/lean — the pattern turns rigidly while the cursor still displaces the light
+  along the true screen direction. `rayGate` is radial ⇒ untouched.** Confirmed
+  coexisting with cursor wind/parallax (corner-lean over a rotated cross reads
+  clean, no seam) and with the idle showreel/dusty mode.
+- **Nav hover = engraved echo, no more black label.** The `color:#070a10` dark
+  silhouette rule is gone; the label stays white and gains a soft breathing
+  `text-shadow` shine (`@keyframes nav-shine`). A `.nav-rot::after` copy
+  (`content: attr(data-label)`, transparent fill, 1 px white `-webkit-text-stroke`)
+  lives INSIDE the rotated span, hidden at rest, sliding to `translate(3px,3px)`
+  at opacity 0.9 on hover — offset along the glyph axis, echoing the logo's
+  doubled contour. The gallery-dark hover scene + shader light surge are
+  unchanged (still fire).
+- **«Слайдер» star KILLED — one full-bleed photo per slide.** `StarSlider.ts` →
+  `PhotoSlider.ts` (`.star-*` → `.photo-*`); deleted the star layer/stage/wraps,
+  the SVG mask data-URI, `src/assets/star.svg`, and the `layout(scale)` stage
+  mirror. `SLIDER_SLIDES` now `{ photo, headline }` = 4 distinct nadir shots
+  (`main-1a..4a`). Idle delay `4200 → 7000 ms`. Kept verbatim: the bg fade-over
+  (incoming on top, never symmetric), 20% overlay, mix/rAF, `slider-on` nav dim,
+  full exit on wake, and the projector-breath flash in MainScreen (`onFlash`).
+- **Headline → left column + word-by-word reveal.** `.slider-headline` moved to
+  the Figma left box (x 40, y 304, w 692), `text-align:left`, 56 px / lh 1.15
+  (was centered 64 px). Reveal: `PhotoSlider.setHeadline` splits the text into
+  `.word` inline-block spans, each with `transition-delay = i × 80 ms`; base is
+  hidden + `blur(6px)` + `translateY(14px)` (no transition = instant reset),
+  `.show` on the parent rises each word to sharp over 0.7 s on the airy curve
+  `cubic-bezier(0.3,0,0.12,1)`. Exit `.out` = the whole block melts upward as one
+  (`.out .word` freezes visible, no stagger). Pure CSS spans — no GSAP, no deps.
+
 ## Open issues
 
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
@@ -546,10 +593,15 @@ Three user corrections on 6.2:
   **RESOLVED (round 6):** real client photos committed.
 - Transition flash timing tuned by eye at 720ms; not yet reviewed by user on a real pointer.
 - ALS Chromius VF weight axis range assumed 100–900; not verified with a font inspector.
-- **[OPEN] «Слайдер» dials tuned by eye** (round-6.2 values) — overlay 0.2 (Figma
-  had 0.41), hold 7 s, flash breath ×1.4/×1.0/×0.7 @ τ 0.3 s, bloom 1.6 s from
-  scale 0.55, dissolve 1/1.2 s + blur 14 px, overlap 0.6 s, headline drift
-  16/−14 px; awaiting designer pass.
-- ~~[OPEN] Headline vs the blown light core~~ **RESOLVED (round 6.3):** the
-  star covers the light's core (plain stacking), so the headline sits over
-  the photo, not over the hotspot.
+- ~~[OPEN] «Слайдер» dials tuned by eye (round-6.2 values)~~ **SUPERSEDED
+  (round 7):** the star and its whole dissolve/occlusion machinery were killed;
+  the slider is now one full-bleed photo + a word-by-word headline. Current
+  dials awaiting a designer pass: overlay 0.2 (Figma had 0.41), idle 7 s,
+  hold 7 s, projector breath ×1.4/×1.0/×0.7 @ τ 0.3 s, headline word stagger
+  80 ms + 0.7 s rise, exit vapor −14 px.
+- ~~[OPEN] Headline vs the blown light core~~ **RESOLVED (round 7):** the
+  headline moved to the left column (Figma), clear of the centered light core.
+- **[OPEN] Cross rotation speed tuned by eye** — `ROT_SPEED = 0.0105 rad/s`
+  (~0.6°/s); may want faster/slower after a live designer pass. On the dev-only
+  «Прорезь» tab the readable logo now rotates too (acceptable — that tab is not
+  in the pitch build).
