@@ -9,3 +9,16 @@ memory/
 
 # mood-board / raw source material — archive only, never served or built
 /references/
+
+# client photo drops — the source PNGs the public/resources/*.webp are baked from
+/new-photos/
+/new_photos/
+
+# scripts/interact-test.mjs writes its screenshots to $OUT, defaulting to the
+# repo root — keep the runs out of git
+/hover-koncept.png
+/switched-*.png
+/transition-mid.png
+/after-transition.png
+/map-tilt-*.png
+/back-on-main.png

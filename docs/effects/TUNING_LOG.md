@@ -243,7 +243,8 @@ New refs (gitignored `references/`): `scheme.jpg` (cursor vs beam distortion),
   patches. The leftover `patchMaterial`/`uRev*`/`REVERSE_K` machinery was deleted
   (resurrect from git history only with an explicit user ask).
 - Dials: `MAX_SHEAR = 0.55` (≈ tan of the old 0.5 rad max tilt — same reveal magnitude);
-  `?ob=<k>` URL override.
+  `?ob=<k>` URL override. **STALE — this value was later raised to 1.6 outside this log,
+  and Map round 5 set it to 0.8. Read the constant, not this line.**
 - Verified 2026-07-16 headless on :5299: rest = flat plan; mouse up/left/corner match
   `perspective-guide.png` directions; roof outlines identical across all frames
   (translate only); no frustum clipping at full shear; `npm run build` passes.
@@ -570,8 +571,826 @@ cascade, hover echo computed styles):
   `cubic-bezier(0.3,0,0.12,1)`. Exit `.out` = the whole block melts upward as one
   (`.out .word` freezes visible, no stagger). Pure CSS spans — no GSAP, no deps.
 
+## Map round 5 (2026-07-28) — new GLB, fitted framing, sky-blue glass
+
+User brief: scene overflows the window (scale it down, but keep good framing); halve the
+oblique stretching ("buildings look like skyscrapers"); make the stretch react fast to
+small cursor moves but stay limited; swap in `map.glb`; sky-blue semi-transparent /
+frosted glass; a three-light setup; dark blue `#060910` page background.
+
+**Geometry.** `scene.glb` (948 tris) → **`map.glb`** (16,903 tris, 1 node / 1 mesh /
+2 primitives, has NORMAL). Raw bounds X 22.17 · Y **2.80** · Z 19.45 → after the
+span-300 normalize: X 300, Y 37.9, **Z 263**. The two primitives (`FrontColor.001`,
+`Color_M00`) are SketchUp colour groups that both span the whole footprint — they are
+NOT ground-vs-buildings, so there is no base plate to split off. `scene.glb` deleted.
+
+**Framing root cause.** `resize()` built `halfH = MODEL_SPAN * 0.62 / ZOOM = 124`, i.e. a
+248-unit-tall frustum for a **263-unit-deep** model — clipped top and bottom before shear
+even applied. It also derived height only, so narrow windows clipped horizontally too.
+Replaced with a real fit against the model's **measured** normalized half-extents plus
+worst-case shear reach, satisfying BOTH axes:
+`halfH = max(halfZ + reach, (halfX + reach)/aspect) · FIT_MARGIN`, `reach = |maxShear|·topY`.
+`ZOOM` and the 0.62 magic number are gone; `FIT_MARGIN = 1.06`, `?fit=<k>` override. The
+fit tracks `maxShear`, so `?ob=` widens the frustum to match. Extents are captured in the
+loader callback (seeded with defaults so an early `resize()` is still sane) and
+`this.resize()` is called once the model lands.
+
+**Stretch magnitude.** `MAX_SHEAR` **1.6 → 0.8** (exactly half, per the brief). At 1.6 the
+walls threw 60.6 units across a 300-wide plan — 20% of the model width, and verified at
+`?ob=1.6` the cross blocks smear into each other and stop reading as crosses.
+
+**Stretch response.** Was linear in cursor distance with a 0.25 s smoothing constant.
+Now a saturating exponential, normalized so the screen edge still lands on exactly 1.0:
+`resp = (1 − e^(−GAIN·raw)) / (1 − e^(−GAIN))`, `RESPONSE_GAIN = 3.5`, plus
+`SMOOTH_TAU 0.25 → 0.12`. Measured: cursor magnitude 0.2 → **37.8%** of full shear
+(was 13%), 0.5 → 82.3% (was 45.7%); monotonic, never exceeds the cap, deadzone 0.08 kept.
+
+**Materials — two traps, both verified in `three/build/three.module.js` (r170):**
+
+1. **`transmission` replaces the diffuse lobe, so `color` does nothing at
+   `transmission: 1`.** Glass tint has to come from `attenuationColor` with
+   `thickness`/`attenuationDistance`. A first pass at `thickness 8 / distance 40`
+   (`e^−0.2 ≈ 0.82`) tinted essentially nothing.
+2. **Top-down is the worst angle for specular glass.** Fresnel bottoms out at normal
+   incidence (~2.8% at `ior 1.4`), and a horizontal roof under this camera reflects the
+   environment *straight up*. So roofs get: no diffuse, negligible specular, and
+   refraction of a near-black ground → the whole plan renders nearly black. The first
+   attempt looked grey only because `RoomEnvironment` is a white studio box and every
+   roof was mirroring its white ceiling.
+
+   → `RoomEnvironment` replaced by a **code-built equirect sky gradient**
+   (`buildSkyGradient()`: zenith `#b6e6ff` → horizon `#1d4a70` → nadir `#060910`, 16×256
+   canvas, PMREM-baked once). The zenith colour IS the roof colour — that is the main
+   dial for the map's overall tone. No HDR asset, no new dependency.
+   → `transmission` set to **0.7**, not 1.0: enough diffuse survives for the sky blue and
+   the light rig to land on, while the refraction still reads. Raise toward 1 for more
+   glass, lower for more solid. Rest: `color 0x8fd0f5`, `roughness 0.25` (frosting —
+   blurs through the transmission target's mipmaps), `thickness 20`,
+   `attenuationColor 0x4a9fd8`, `attenuationDistance 80`, `ior 1.4`, `envMapIntensity 1.2`.
+   → `side: FrontSide` although the GLB declares `doubleSided`: r170 renders an EXTRA
+   BackSide pass into the transmission target for double-sided transmissive materials.
+   If inverted normals ever punch holes, fall back to `DoubleSide` and accept the cost.
+   → `transparent` stays **false** — `transmission > 0` already routes the mesh into
+   three's dedicated transmissive queue.
+
+**Background is load-bearing, not cosmetic.** `renderTransmissionPass` clears its target
+to **white-0.5 whenever `clearAlpha < 1`**. The renderer was `alpha: true` +
+`setClearColor(0x000000, 0)`, which would make the glass refract a milky void. Now
+`setClearColor(BG, 1)` + `scene.background = BG` (`#060910`), matched by
+`concept.css #screen-concept`. The transition's white flash covers the swap from the blue
+main screen, so the colour jump is invisible.
+
+**Ground plate.** Only `opaqueObjects` are drawn into the transmission target —
+transmissive meshes are invisible to each other, so glass over a flat backdrop refracts
+nothing and reads dead. Added a static unlit plane (`GROUND_ON`, `MODEL_SPAN × 5`,
+y = −0.5) carrying a code-built radial gradient (`#1b3552` → `#060910`); a flat colour
+would refract indistinguishably from the background. Unlit (`MeshBasicMaterial`) so the
+key light can't burn a hotspot into it; outside `shearGroup`, so it never shears and
+never touches the roof plan.
+
+**Lights** — world-fixed on the scene, NOT on `shearGroup` (user's choice): revealed walls
+turn into and out of the key as the plan leans. Key `0xffffff` 2.6 at (−220, 320, −180);
+fill `0x9ec9ff` 1.6 at (240, 130, 170); rim `0xd8ecff` 1.8 at (40, 60, 300).
+`ACESFilmicToneMapping`. Screen mapping under this camera: **+X = right, −Z = up**.
+Note three recomputes `normalMatrix` as the inverse-transpose of the modelView matrix
+every frame, so **shear-transformed normals are already correct** — no manual fix needed
+despite the shear being non-orthogonal.
+
+**Deleted:** `splitByHorizontal()`, `paintHeightGradient()`, `ROOF_LOW/HIGH`,
+`WALL_LOW/HIGH`, `ZOOM` (~65 lines). Their only job was faking shading with vertex
+colours; real lights do it now, and dropping the split also removes a `toNonIndexed()`
+expansion of a 16.9k-tri mesh at load.
+
+**Perf note:** r170 has **no `transmissionResolutionScale`** — the transmission target is
+full-viewport with `samples: 4` and `generateMipmaps: true`, every frame. The only lever
+is `renderer.setPixelRatio`, already tiered via `getPerfTier().mapPixelRatio`.
+
+Verified headless at 1440×800, 1100×800 and 900×900 (the square aspect the old
+height-only fit got wrong): full plan inside frame at rest and at all four corner cursor
+positions, both cross blocks legibly cross-shaped, glass refracting dark blue (not the
+white-0.5 trap), no inverted-normal holes, `?ob=1.6` reproducing the old over-stretch.
+`npm run build` clean; interact smoke test clean.
+
+### Round 5.1 (2026-07-28, same day) — three bugs behind "grainy, dirty, not glass"
+
+User verdict on round 5: holes in some roofs; "grainy, dirty, dark and not even close to
+transparency or glass — just blue bricks". Three separate causes, all found and fixed:
+
+1. **Roof holes = the `side: FrontSide` override, not the model.** Analysing the GLB
+   (`weld positions → directed-edge census`) gives, for primitive 0: **1537 down-facing vs
+   1245 up-facing triangles** — a closed model seen from above should be roughly balanced,
+   so a large set of roof faces are wound facing *down*. Plus 221 flipped-winding edges,
+   126 boundary edges and 349 non-manifold edges across the two primitives, and 41
+   degenerate triangles. Under `FrontSide` all of those back-face cull and open holes
+   straight into the interiors. **The GLB declares `doubleSided: true` for a reason —
+   honour it.** Now `side: DoubleSide`; the extra BackSide pass in the transmission stage
+   is the price. Do NOT "optimize" this back to FrontSide.
+2. **`thickness` is multiplied by the model's WORLD SCALE.** three builds the volume
+   transmission ray as `normalize(refract(…)) · thickness · modelScale`, where
+   `modelScale` is the length of the model matrix's columns. The normalize scale here is
+   **×13.53**, so a nominal `thickness: 10` became an optical path of ~135 against an
+   `attenuationDistance` of 55 → attenuation `exp(−(−ln(attenuationColor)/d)·135)` ≈
+   **(0.002, 0.10, 0.52)**, i.e. dark navy. *This*, not the colour choices, is why every
+   early pass came out dark and lifeless. Fixed by `glass.thickness = thickness / scale`
+   in the loader callback, so `thickness` and `attenuationDistance` share one unit system.
+   **Rule: any `MeshPhysicalMaterial.thickness` on a scaled model must divide the scale
+   back out, or attenuation is silently wrong by that factor.**
+3. **The "grain/dirt" was not the 3D render.** `#grain` is a global fixed overlay div in
+   `index.html` (opacity 0.07, `mix-blend-mode: overlay`) tuned for the main screen's
+   bright blue; over the map's large flat surfaces it reads as dirt. Suppressed with
+   `#screen-concept:not(.hidden) ~ #grain { opacity: 0 }` — pure CSS, no JS coupling,
+   relies on `#grain` being a later sibling of `#screen-concept`.
+
+**Background direction reopened.** Confirmed by construction: *glass can only read as
+glass if something brighter sits behind it*. Transmission shows the backdrop, so over
+near-black a transmissive building is just a dark shape no matter how the material is
+tuned — the user's instinct that "dark background is a bad idea" is correct. Look presets
+added (`?look=<id>`, `LOOKS` in ConceptScreen.ts) so directions can be compared live:
+- `sky` (**new default**) — brand `#56b7e6`; most genuinely glassy, buildings read as
+  translucent volumes; weakness: low contrast at rest, the flat plan gets washy.
+- `daylight` — pale `#dfeaf2`; crispest and most legible, but the blue reads as a solid
+  rather than glass.
+- `dark` — the rejected `#060910`, kept for comparison. Much cleaner after fixes 1–3, but
+  still reads as solid mass; retained only as evidence, not a candidate.
+
+## Map round 6 (2026-07-28) — cut-crystal look, three comparable variants
+
+User verdict on round 5.1: *"the materials and light flatten the render, we can't see the
+geometry of the buildings, nor can we see through them… a flat blue blob on a light blue
+background. I want the geometry details distinctively recognizable and the model to look
+rich and sexy. Not risking the performance."* Reference supplied: cut-crystal glass icons
+— near-white field, blown white speculars, crisp bevel highlights, X-shaped glints.
+User asked for three implementations behind a segmented control to compare.
+
+### Three measured causes of the flatness
+
+1. **The exporter smoothed normals across hard edges.** Primitive 1 is **73.9%
+   smooth-shaded** (7128/9646 triangles have per-face-varying normals); primitive 0 is
+   15.8%. Shading was being deliberately blurred exactly where architecture should read
+   sharpest. Fixed with `toCreasedNormals(geometry, 35°)` at load — curved surfaces (apse,
+   dome) stay smooth. **This was the single biggest win**; roof cornices, stepped profiles
+   and detail became legible immediately.
+2. **A smooth gradient environment cannot produce sharp speculars.** The reference's
+   streaks come from small very bright sources. The r5 probe was a soft vertical ramp — it
+   can only ever give soft shading, and no material tuning fixes that.
+3. **`transmission` makes transmissive meshes invisible to each other**, which is
+   structurally why buildings could not be seen through one another. Only alpha blending
+   can do that.
+
+### The environment must be HDR, and its sources must be placed for THIS camera
+
+`buildStudioEnv()` in `mapStudio.ts` is a **`DataTexture` (`FloatType`), not a
+`CanvasTexture`** — a canvas clamps at 1.0, and it is the over-1.0 overdrive that makes
+speculars blow out white instead of reading as light grey.
+
+Source placement is dictated by what an orthographic top-down camera can actually see
+reflected — this is the non-obvious part:
+- a **flat roof reflects exactly the zenith** (v = 0), so *every* flat roof samples one
+  texel. Putting sources there brightens all roofs identically rather than glinting, so
+  the zenith is left as plain base gradient;
+- pitched roofs and creased detail sample a ring a few degrees off zenith → sources at
+  v ≈ 0.09–0.24;
+- a wall tilted by the shear (atan 0.8 ≈ 39°) reflects to just **below** the horizon →
+  the strongest sources sit at v ≈ 0.53–0.58, which is what makes revealed walls flash.
+
+Sources are rectangles ("softboxes") plus **cross-shaped emitters** — the project's own
+motif (cross-shaped prison, hero screen of light through a cross grille), so the glass
+throws cross glints instead of generic streaks.
+
+Also: `roughness` was raised 0.07 → **0.13** on «Кристалл». A mirror-sharp lobe reflects
+so small a solid angle that mostly-flat architecture misses the sources entirely; a little
+spread is what lets surfaces catch them.
+
+### Ground contrast is load-bearing
+The plate's vignette rim went `#dce7f0` → **`#b3c9dc`**. The glass refracts this plate, so
+its gradient *is* the tonal variation seen through the buildings; a flat plate makes every
+volume read as one dead tone.
+
+### The three variants (`?look=<id>`, switcher reuses `.fx-switch`)
+
+| id | label | strategy | cost |
+|---|---|---|---|
+| `crystal` | «Кристалл» | physical glass only — creased normals + env speculars + Fresnel | transmission pass |
+| `facet` | «Огранка» | + `UnrealBloomPass`; closest to the reference | + bloom mip chain |
+| `edges` | «Грани» | alpha fill + ~7,263 fat white edge lines; genuinely see-through | **no transmission pass** |
+
+**Bloom threshold MUST exceed 1.0.** First attempt at 0.85 bloomed the near-white field
+itself (~0.95 linear) and turned the whole frame to mush. `EffectComposer`'s buffer is
+`HalfFloatType`, so the environment's over-1.0 speculars survive and a threshold of
+**1.15** isolates them. Strength 0.75, radius 0.45.
+
+«Грани» uses `LineSegments2` fat lines, not `LineBasicMaterial`: WebGL clamps `linewidth`
+to 1, so plain lines would be hairlines that vanish at high DPR. `LineMaterial.resolution`
+must be updated in `resize()`. Its fill is deliberately deeper (`0x2f86c4` @ 0.42) — the
+white lines are the drawing and need a body to read against.
+
+### Measured performance (headless, 1440×800, 200 frames)
+All three: **median 16.7 ms (60 fps, vsync-capped)**, p95 ~17.6 ms. No variant is a perf
+problem at this size; the measurement is vsync-limited so real headroom is larger than it
+shows. Low tier (`getPerfTier().layers === 1`) never builds the composer.
+
+### Files
+`ConceptScreen.ts` split (it had reached 505 lines vs CODE_STYLE's ~350): now 352, with
+`mapLooks.ts` (variants + material, 156), `mapStudio.ts` (lights, env probe, ground,
+bloom, 212) and `edgeLines.ts` (82). Overlay UI recoloured deep blue `#123a5c` — it was
+white and would have vanished on the near-white field; the logo's hard-coded `fill="white"`
+is overridden in CSS.
+
+Verified: build clean; all three variants at rest and full lean; switcher changes variant
+at runtime with no reload and no geometry rebuild; framing intact at 1440×800 / 1100×800 /
+900×900 at full shear; interact smoke test clean.
+
+## Map round 7 (2026-07-28) — «Грани» only, raking light, clickable buildings
+
+Designer picked **«Грани»** out of round 6's three candidates and hand-tuned it. This round
+collapses to that one look, fixes the flat roofs, and adds the map's first real interaction.
+
+### Collapsed to one variant
+«Кристалл» and «Огранка» deleted along with the segmented control, the `?look=` override,
+`MAP_VARIANTS`, and the whole bloom chain (`buildBloomComposer` + four postprocessing
+imports) — dead once «Огранка» went. `mapLooks.ts` now exports a single `MAP_LOOK`.
+
+### Flat roofs — TWO causes, and the light angle was the smaller one
+
+1. **The key sat above 50°** (`-220, 320, -180`), so light arrived nearly perpendicular to
+   every roof. Moved to `(-300, 170, -230)`, ~24° elevation, and the fill cut to 0.4 (a
+   strong fill washes the raking contrast straight back out).
+2. **The real limiter was clipping.** The renderer ran `NoToneMapping`, so anything above
+   1.0 linear clamps flat to white — and the environment probe alone contributes
+   **≈ 3.85** (base luminance 3.5 × `envMapIntensity` 1.1). Every lit face was already
+   past the clip point, so raising the key added brightness but **no gradation**; a test at
+   intensity 7 washed the model out further instead of sculpting it. Fixed with
+   **`NeutralToneMapping`** (Khronos PBR Neutral), which rolls the 1–4 range off while
+   preserving hue; the key then settled at 4.2.
+   **Rule: on this screen, if the model looks flat, check the tone-mapping shoulder and
+   the environment's ambient level before touching light positions.**
+
+Still true by construction (round 6 open issue): an orthographic top-down camera gives
+every FLAT roof the same normal, so flat roofs are uniformly toned no matter what the rig
+does. Gradation lands on pitched slopes, creased detail and sheared walls.
+
+### Buildings separated — connected components
+
+`map.glb` is one mesh, two primitives, no per-building nodes, so building identity has to
+be *derived*: weld vertices on a quantised key, union-find triangles that share a welded
+vertex, emit one geometry per component (`buildingSplit.ts`). 27 raw components → **19
+buildings** after absorption.
+
+- **Absorb by FOOTPRINT, not triangle count.** The church's four columns are finely
+  modelled (44 tris each) but measure 0.02×0.12 in a 22-unit-wide model — a triangle
+  threshold keeps them as separate "buildings". `MIN_FOOTPRINT_FRAC = 0.03` of the model's
+  longest horizontal span folds them, and every other sliver, into the nearest real part,
+  so clicking a column selects the church.
+- **IDs are ordered by triangle count desc**, which follows modelling *detail*, not size —
+  so `b00` is the 8,482-tri domed church, and the two 9.77×9.77 cross blocks are `b01`/`b02`.
+  A first pass at `buildingsInfo.ts` assumed size order and mislabelled the right cross as
+  «Церковь». The mapping is now verified against each part's measured footprint and screen
+  position, both recorded in comments there.
+- The two cross blocks are each welded to their courtyard and apse, so they select as one
+  unit. Splitting those further needs manual sub-assignment, not connectivity.
+- Replacing `map.glb` re-derives the ids and invalidates `buildingsInfo.ts`.
+
+### Hover / click / drawer
+
+- **Picked per frame, not per pointermove** — the shear moves geometry under a stationary
+  cursor, so the hovered building changes without the pointer moving.
+- `scene.updateMatrixWorld()` before raycasting: `shearGroup.matrixAutoUpdate` is `false`.
+- **`LineSegments2.raycast` is stubbed out** (`edgeLines.ts`) — fat-line raycasting is
+  expensive and the lines would intercept hits meant for the mesh they sit on.
+- Splitting makes picking *cheaper*: three rejects on bounding sphere → box per mesh, so
+  only the few under the cursor reach triangle tests. Measured **median 16.7 ms (60 fps)**,
+  p95 17.4 ms with per-frame picking.
+- Three body materials and two edge materials total, swapped by REFERENCE — never a
+  material clone per building.
+- **The drawer freezes the lean.** The lean maps raw cursor position to shear across the
+  whole screen and `DEADZONE` is now 0, so without the guard the plan keeps tilting while
+  you read the panel. Verified: pose unchanged while the pointer sits on the drawer, and
+  the lean still responds once it closes.
+
+Test note: an early "lean not frozen" failure was a **test** bug — the baseline screenshot
+was captured before the click, so it lacked the selection highlight. Compare poses only
+between captures that share the same selection state.
+
+## Map round 8 (2026-07-28) — isometric focus view
+
+Selecting a building now reframes the map: it zooms into the space right of the drawer,
+everything else recedes, and — the main move — the camera swings to a **classic isometric
+angle** (reference: an axonometric architectural render).
+
+### The round-4 camera rule is SUSPENDED in focus mode, on purpose
+Map round 4 records that camera tilt was built, rejected and replaced by the plan-oblique
+shear, because rotating an ortho camera compresses the roof plan by cos θ. That rule
+protects the **overview**, where the plan must stay a pixel-exact 2D drawing — verified
+still true. A focused detail view of one building is not that state, so it rotates.
+Agreed explicitly with the designer before implementing.
+
+### Three things animate together
+`shear → 0`, `orientation → isometric`, `frustum → framed on the building`. Shear and
+camera rotation compound into a skewed mess if both are applied at once, so
+`updateShear()` multiplies by `(1 − mapCam.focus)`. Side effect: the cursor lean is inert
+while focused and resumes on exit — which also settles the round-7 "should it still lean"
+question, since it falls out of the geometry rather than being a separate choice.
+
+**Bonus: the isometric angle fixes the flat-roof complaint for the focused building.**
+Roof plus two wall faces have different normals, so the raking key finally gives three
+distinct tones. Top-down never could — every flat roof shares one normal (round-6/7 open
+issue), and that remains true of the overview.
+
+### Interpolate ORIENTATION, not azimuth/elevation
+An orbit parameterisation is degenerate at 90° elevation — the up vector goes parallel to
+the view axis — which is exactly where the overview sits. `mapCamera.ts` slerps between
+two explicit quaternions instead, which sidesteps it entirely.
+
+**Trap that cost a debugging round: `Object3D.lookAt()` and camera `lookAt()` use OPPOSITE
+conventions.** three branches on `isCamera || isLight`: a camera points **−Z** at the
+target (cameras look down their own −Z), a plain `Object3D` points **+Z** at it. The
+scratch object used to build both poses was an `Object3D`, so every orientation came out
+reversed — the camera sat *beneath* the model looking up, which on a near-flat model reads
+as a plausible plan view rather than an obvious error. It was caught by noticing the
+overview had become **mirrored** (the round tower and apse jumped from west to east).
+`private tmp = new THREE.Camera()` is the fix. **Rule: never derive a camera orientation
+from a plain Object3D's `lookAt`.**
+
+### Per-building angle
+`buildingSplit.ts` now computes `axisAngle` — the footprint's principal axis by PCA over
+the XZ vertices (`0.5·atan2(2·Sxz, Sxx−Szz)`). A bounding box is useless here: several
+blocks are rotated, so their axis-aligned box says nothing about which way they face.
+View azimuth = `axisAngle + 45°` so both façades read; of the four equivalent diagonals,
+the one **nearest the camera's current azimuth** wins, so consecutive clicks swing the
+short way. Elevation fixed at the classic 35.26° (`atan(1/√2)`).
+
+### Springs, not tweens
+`shared/easing.ts`'s `tween` is fixed-duration and cannot be retargeted mid-flight. The
+camera must redirect when a second building is clicked while still settling, so
+`mapCamera.ts` uses critically-damped springs (`TAU = 0.26`) on halfH, ndcX, focus, target
+and orientation. Verified: clicking B 180 ms into the swing toward A redirects with no
+restart or jump.
+
+### Framing and dimming
+Off-centre framing is a **frustum offset**, not a camera move: with the target at view
+origin, `centreX = −ndcX · halfW`. Overview is the same code path with `ndcX = 0`. The
+drawer's width is **measured from the DOM** so the framing tracks its CSS, including the
+`max-width: 86vw` clamp. `MIN_HALF_H_FRAC = 0.16` stops a small shed filling the screen.
+Unselected buildings drop to `MAP_LOOK_DIMMED` (~40% presence, desaturated) with a faint
+edge material — a fourth state in the existing material-swap mechanism, no new machinery.
+
+### ID renumbering hazard — bit us once
+Part ids are assigned **after** sliver absorption, so tightening `MIN_FOOTPRINT_FRAC`
+renumbered everything from the first dropped part onward: `b13`+ shifted by one and the
+labels silently moved (a small building opened as «Строение 13», and two entries pointed
+at parts that no longer existed). Re-derive the id table whenever those thresholds change.
+Now 19 buildings, `b00`–`b18`, all named.
+
+Verified: all landmarks resolve correctly; overview un-mirrored and still leaning; lean
+resumes after closing; focus framing correct at 1440×800, 1100×800 and 900×900 with the
+drawer never overlapped; **median 16.7 ms (60 fps)** through transitions.
+
+## Feedback round 8 (2026-07-30) — final copy/photos, 1:1 layout, organic dissolve
+
+Client delivered an updated Figma (file `xtd3isfSuz1gnWxTClA2Vs`, section `366:92`), final
+Russian copy, and 9 properly-framed renders. Three separate jobs: asset swap, a 1:1 layout
+pass, and a rebuild of the slide handoff.
+
+### The font `wght` axis was wrong site-wide — read this before touching Chromius
+
+`ALS_Chromius_VF_0.8.ttf` does NOT use the standard 100–900 weight scale. Its `fvar`
+declares **`wght: min=50 default=120 max=232`**, named instances Thin 50 · Light 90 ·
+**Regular 120** · **Medium 150** · Bold 200 · Black 232. Every rule since round 0 asked for
+`font-variation-settings: 'wght' 500`, which **clamps to 232 = Black**, and `@font-face`
+advertised `font-weight: 100 900`. So all Chromius text — nav links, headline, drawer,
+concept hint — has been rendering three weights too heavy for eight rounds.
+
+It stayed invisible because the headline box was 692 px wide; at Black the glyphs are ~5%
+wider, and 692 px was loose enough to wrap acceptably. Tightening the box to Figma's 580 px
+is what exposed it (the headline went to 4 lines where Figma has 3).
+
+Fixed: `@font-face { font-weight: 50 232 }`, and **plain `font-weight: 150` / `120` at the
+use site with NO `font-variation-settings`** — that property overrides `font-weight` and is
+exactly how the trap was set. Applies to `main.css` and `concept.css` alike.
+
+With the axis correct, all 8 headlines wrap to Figma's line counts exactly (7 × 3 lines +
+«Атмосфера сотрудничества» × 4), and the rendered box heights measure 193/258 px against
+Figma's 192/256.
+
+### Layout deltas fixed (all measured off the Figma slide frames)
+
+Logo `top:40→32`, `314×50 → 301.44×48`. News block `271→270` wide, leading `1.2→1.35`,
+Chromius **Regular** (it was inheriting ALS Hauss Next), and it gained the **date row** the
+mockup always had and the code never rendered — so `NEWS_HEADLINES` became `NEWS_ITEMS
+{date, text}`, date and headline fading together. Headline `left:40→32`, `w:692→580`, and
+**vertically centred on y=400 rather than pinned to a top edge** — Figma's boxes are 192 px
+at top 304 and 256 px at top 272, i.e. the centre is the invariant, so the exit transform
+has to carry the `-50%` with it. Nav dim on `.slider-on` `0.5→0.4`. The
+«КРЕСТЫ · 2026» text placeholder became the real **ARTLEBEDEV vector** (`src/assets/als-logo.svg`,
+node `340:574`, includes its "2026" line) at the designer's odd offsets `right:32.49
+bottom:33.7`. Nav link x/y/rot were already correct to within 0.4 px — the *slide* frames
+are the authority; the base `308:228` frame has the group nudged ~7 px.
+
+**Nav link positions and rotations were NOT changed.** Don't "fix" them against `308:228`.
+
+### Photos: hard-bound, WebP, 3.1 MB total
+
+`SLIDER_SLIDES` is 8 pairs and each photo is the illustration of its headline — do not
+reorder or re-pair. `concept-plan.webp` is the «Концепция» hover image only (Figma
+`340:594`) and must never enter the slide list. Other hover links: История → `atrium-roof`,
+Аренда → `table`, Контакты → `forum` (index-aligned with `NAV_LINKS`, positional coupling).
+
+Encoding: **centre-crop to 3:2 first, then cap the long edge at 2400**, `libwebp -quality
+82` (`concept-plan` at 70 — it is a detail-dense plan shown at 0.38 opacity over near-black,
+and was 2× the size of anything else). The crop is the real win, not the quality dial:
+those square 2560² renders get `cover`-ed into a ~1.8-aspect viewport, so ~44% of their
+height is discarded at paint time — bytes shipped to be thrown away. Any desktop viewport
+is ≥1.5 aspect, so full width is always the limiting dimension and a 3:2 crop loses
+nothing the browser could have shown. 9 files, 3.1 MB total, against 10 MB for the four
+PNGs they replace. `skies_1.png` was byte-identical to `skies.png`.
+
+Preload is now slides 1–2 on attach + one slide ahead per throw; eight photos eagerly was
+3 MB on load for nothing, and an 8 s lead is ample for decode.
+
+### The handoff: dissolve + dip, no flash
+
+Round 7's twitch had two causes, and the surge was the bigger one: `onFlash()` multiplied
+`godrays ×2.4 / bloom ×2.0 / core ×1.7` at τ 0.3 s, and it fired in the *empty gap*
+between headlines — read as a flash terminating each slide. **Removed.** The light now
+**dips** with the photos (`×(1 − 0.22·sin)` over 1.6 s, peak at ~0.78 s to match the dark
+peak) — it joins the darkness beat instead of punching. `onFlash`→`onSlideStart`,
+`sliderFlashT`→`slideT`.
+
+The incoming photo now sits **underneath at opacity 1 from frame one**, so the flat blue
+`#56b7e6` is structurally unreachable mid-handoff — round 7's fade-over existed to work
+around exactly that bleed. Measured: **0.0% of pixels near `#56b7e6` at every sample across
+a whole handoff.**
+
+The outgoing photo is *erased* off it by an organic mask: nine `radial-gradient` holes
+unioned via `mask-composite: intersect`, radii driven by nine registered `@property
+<length>` customs. Plain CSS cannot interpolate gradient stops — a typed `@property` can,
+which is what makes this one declarative animation with no rAF.
+
+**First attempt read as visible circles.** Six big lobes clustered near the centre with a
+22%-of-radius feather gave arcs that plainly looked like discs. Two fixes: **nine smaller
+lobes spread across the whole frame** so no single arc dominates, and a **48%-of-radius
+feather** (`transparent 52%`) so each front is a wide soft ramp rather than a rim.
+Overlapping soft ramps read as mottled light burn. Blur is also **front-loaded** (9 px by
+25%) so the photo is soft before much of it is eaten — a blurred edge cannot read as a
+circle. Radii are in **`vmax`**, not px, so the front scales with the viewport instead of
+running out of reach on a wide monitor. The 3% swell on the dying photo keeps the 26 px
+blur from sampling transparency past the element edge.
+
+Note `mask-composite: intersect` **multiplies** alpha across layers, so with soft ramps the
+interior falls off faster than a hard-edged union would — that is a feature here, it is
+what makes the burn smooth.
+
+**One dark layer is both the transient dip and the Figma scrim.** The client asked for the
+0.4 scrim (`338:37`) to arrive *late*, so a fresh photo is briefly visible unscrimmed, with
+the headline timed to the scrim closing rather than to the photo. One restartable
+`@keyframes` track does all of it: `0.40 → 0.62 (dip, 0.75 s) → 0.06 (clean reveal,
+1.5 s) → 0.40 (settled, 2.9 s)`, per-keyframe `animation-timing-function`. Measured mean
+luminance across a handoff: **98 → 79 → 151 → 109** — it sinks before it rises, and the
+reveal is a ~700 ms swell, not a punch. Slide 1 of a run uses `slide-dark-first` (no dip —
+there is nothing to dissolve from).
+
+The photo also creeps **3.5% smaller across the whole 8 s dwell** (`1.035 → 1.0`, never
+below 1 so `cover` cannot gap).
+
+**Two structural traps found the hard way:**
+
+1. **`.settling` and `.dissolving` collide on the `animation` shorthand.** The outgoing
+   element still carried `.settling` from when it was incoming; at equal specificity the
+   later rule won, so `photo-burn` never ran at all and the old photo **hard-cut** off
+   after 1.2 s. Fix: drop `.settling` when starting `.dissolving`, *and* order the
+   `.dissolving` rule after it in the stylesheet. This is also why scale and mask live on
+   **different elements** — the wrapper `.bg-layer` drifts, the `<img>` dissolves.
+2. **Re-entry after an interrupt left the old front photo opaque on the z:2 layer** with
+   its mask stripped, covering the incoming photo. It happened to be invisible because both
+   layers held the same `src`. `activate()` now clears `visible` from **both** imgs.
+
+Timeline: `HOLD 8000` · `DISSOLVE 1500` · `HEADLINE_IN 1600` · `HEADLINE_OUT_AT 7400` ·
+scrim track 2900. 8 slides × 8 s ≈ 64 s loop. `DISSOLVE_MS` must match `photo-burn` and
+`HOLD_MS` must match `photo-drift` in `main.css`.
+
+Fallback (`.dissolve-simple`): gated on `CSS.registerProperty` + `mask-composite`, plus the
+low perf tier; `?ds=0` / `?ds=1` force it either way. Same timeline and same dark track,
+uniform edge.
+
+Also: one-letter Russian words are bound to the next word with U+00A0 (`bindOrphans`) —
+standard Russian typesetting, and it is what reproduces the designer's rag (in «Парковые
+зоны и веранды…» the «и» *fits* on line 1 at 580 px, so Figma breaking before it is a
+deliberate override, not the greedy result). A bound pair reveals as one beat, which is
+right anyway.
+
+Verified: `tsc` + build clean; interact smoke test clean; both dissolve paths at **median
+16.7 ms / worst 18.7 ms / zero frames over 20 ms** with the ray field live; 0% blue bleed;
+brightness sinks-then-swells; mid-dissolve interrupt and re-entry leave exactly one visible
+photo and keep cycling; all 8 headline rags match Figma; logo/news/headline/mark boxes
+measure to Figma within a pixel.
+
+## Feedback round 8.1 (2026-07-30) — inverted the scrim, cheaper tail, hover gate
+
+User verdict on 8.0: *"feels laggy… the moment where text already disappeared, image is still
+on the screen, it is still dark (which is bad) and then voronoi blur appears, and after that
+there is some 'ugh…' lag"* — plus a precise bug report: *"the very last moment, when voronoi
+blobs are 99% revealed the new image, something stops the animation for a very short
+moment."*
+
+### The dark beat was backwards — the scrim now OPENS with the text exit
+
+8.0 dipped to 0.62, i.e. **darker than the resting 0.40**, during the window when the old
+text was already gone and the dissolve had not started. Nothing was moving and the screen
+was at its darkest: that is the "laggy" feeling, and it was a choreography mistake, not a
+performance one.
+
+Inverted. The scrim now opens as the text melts up, so the photo is bright *before* the
+dissolve, and the dissolve is the only thing happening while it runs:
+
+```
+  0ms   scrim .40   old headline starts melting up
+ 416ms  scrim .10   text is gone (measured 433ms) — IN SYNC, as the user asked
+ 700ms  scrim .06   dissolve starts, on a fully bright photo
+1900ms  scrim .06   dissolve done
+3000ms  scrim .40   closed, in step with the new headline rising
+```
+
+**Nothing on the track is ever darker than the resting 0.40** (measured max 0.400) and there
+is no hold or gap anywhere — three continuous phases. `slide-dark`/`slide-dark-first` →
+`slide-scrim`/`slide-scrim-first`, 2900 → 3000 ms. `HEADLINE_OUT_AT_MS` is gone: the text
+now leaves *at* the throw, so the throw is one event instead of two.
+
+### The end-of-dissolve stall was real, and self-inflicted
+
+CSS masks rasterize on the **paint thread**, so cost is (layers × element pixels) *every
+frame* — and 8.0 stacked its three most expensive things at the very end: 9 gradient layers
+at max radius, `blur(26px)` at its peak, and `transform: scale(1.03)` forcing a re-raster at
+a different size. The final frames were the most expensive in the animation, which is
+exactly where the user saw it stop. Then the element was torn down (mask + filter + a
+`will-change` release) while still fully visible.
+
+Four changes, all aimed at that peak:
+
+- **9 lobes → 6** (spread, not clustered — the round-8.0 circle fix was the *spread* and the
+  48% feather, not the count, so the look survives). −33% paint per frame.
+- **Peak blur 26px → 16px**, and the 3% swell **removed**.
+- **`will-change` removed** — `filter` already promotes the layer, and declaring
+  `will-change: mask-image` on a property that changes every frame buys nothing and costs a
+  persistent tile allocation plus a teardown.
+- **An opacity tail**: `photo-burn` now fades the photo 1 → 0 over its last 30%. Opacity is
+  compositor-only, so the frames where the mask is at its most complex are the frames nobody
+  can see, and the element is **already invisible** when its mask and filter are dropped.
+  This is the actual fix for "something stops at 99%". Do not remove it.
+
+Measured per-200ms-bucket through the burn: median 16.7 ms in every bucket, worst 18.5 ms,
+**0/61 frames over 22 ms**. (Verified on this machine only — the user's stall could not be
+reproduced headless, so this is a cost reduction aimed at the reported symptom rather than a
+confirmed repro. `?ds=0` forces the cheap fallback for an instant A/B on real hardware.)
+
+### The slider must not run while a nav link is hovered
+
+Parking the cursor on a link and holding still let the idle timer fire and the slider take
+over on top of the hover scene — which also collided with `.hover-scene` being z:2 above the
+slider's z:1. Fixed with `PhotoSlider.setHoverBlocked()`, driven from MainScreen's existing
+`pointerenter`/`pointerleave` handlers. Activation now goes through a single `tryActivate()`
+gate gated on `idleElapsed && !hoverBlocked`. Verified: parked 11 s on «Концепция» and 9.5 s
+on «Аренда» → slider never activates; moved to empty space → activates; hovered a link while
+running → stands down.
+
+### Type: the rags now match Figma on all eight slides
+
+Two corrections found by actually reading the Figma renders instead of just counting lines:
+
+1. **Line height is a flat 64px, not 1.15.** Figma reports `leading-[1.15]` but its boxes are
+   192px for 3 lines and 256px for 4 — both exactly /64. 56 × 1.15 = 64.4 drifts 0.4px per
+   line (measured 193/258 vs 192/256). Now `line-height: 64px`; measured 192/192 and 256/256.
+2. **Slide 2 did not match.** Figma has «Пространство / для объединения / вместо
+   заключения»; greedy wrapping gives «Пространство для / …». Root cause is the same rule the
+   user asked about — «для» must not be orphaned at a line end.
+
+`bindOrphans` (1-letter words only, local to PhotoSlider) became
+**`src/shared/ruTypography.ts` → `bindShortWords()`**, covering 1-letter words *and* the 2–3
+letter prepositions (во, до, за, из, ко, на, об, от, по, со, без, для, изо, над, обо, под,
+при, про) per Мильчин / «Ководство» §62 — apt, since the studio mark in the corner is
+Артлебедев's. Particles («же», «ли», «бы») are deliberately excluded: those must not *start*
+a line, which is the opposite binding direction.
+
+Applied to the **news block too**, which the user asked about: «по демонтажу» and «для
+начала» now hold together, and on the date row it keeps the day with its month («1 ноября»).
+All four news items still fit the 81px / 3-line row.
+
+**All 8 headline rags and both box heights now match Figma exactly.** The remaining seven
+rags were already correct and are unchanged by the wider binding rule — only «для» and «по»
+occur in the copy at all.
+
+### News metrics re-checked (the user asked): already exact, no change needed
+
+270px wide, `line-height: 1.35` → 27px (20 × 1.35 is exact, unlike the headline), rows
+27/81/27, block 151px — matching Figma node `338:48` to the pixel. Chromius Regular = wght
+120. Nothing to fix here.
+
+## Feedback round 8.2 (2026-07-30) — voronoi killed, three paces behind a picker
+
+> **SUPERSEDED by round 9.** All three transitions, `transitions.ts`, the `.tr-switch`
+> picker, `?tr=`, the T key and `preview()` are deleted — *"all the slider options are bad
+> and buggy."* Kept for the record because its **structural** findings still hold (the
+> lower layer must stay opaque and cover the frame; `fill-mode: both` on any delayed
+> reveal; durations belong in `animation-duration`, not keyframe percentages) and because
+> its central mistake — staging the beats in sequence — is the thing round 9 exists to fix.
+> **Do not rebuild «Наплыв», «Створ» or «Сдвиг».**
+
+User verdict: *"voronoi effect doesn't do well anyways. Let's consider another smooth
+transition effect. make 3 different effects with different pace. add segment control for me
+to pick. kill voronoi."*
+
+### Voronoi is DEAD — do not rebuild it
+
+The nine-lobe `mask-composite: intersect` dissolve of rounds 8/8.1 is deleted: all nine
+`@property --burnN` registrations, `photo-burn`, `photo-fade-out`, `.dissolving`/`.settling`,
+`supportsOrganicDissolve()`, the `dissolve-simple` fallback and the `?ds=` override. It was
+rejected on looks, and it was also the only thing on this screen that could drop frames —
+CSS masks rasterize on the **paint thread**, so cost is (layers × element pixels) every
+frame and never touches the compositor. Two rounds of tuning could not make it read well.
+Do not reintroduce a mask-based dissolve here.
+
+### Three transitions, chosen along the axis of PACE
+
+`src/screens/main/transitions.ts` holds three `TransitionSpec`s; the designer picks one from
+a visible segmented control or `?tr=<id>`. Default is **«Створ»**.
+
+| id | label | pace | mechanism | layer order |
+|---|---|---|---|---|
+| `naplyv` | «Наплыв» | slow, 2.2 s (hold 9.5 s) | the old photo defocuses out of existence — `opacity` + `blur(22px)` + a 5% swell; the incoming only resolves focus | incoming UNDER |
+| `stvor` | «Створ» | medium, 1.3 s (hold 8 s) | a cross-shaped slit opens out of the light's convergence point and the new photo floods through it | incoming OVER |
+| `sdvig` | «Сдвиг» | fast, 0.8 s (hold 7 s) | the new photo pushes in along the light's diagonal while the old one falls away behind it | incoming OVER |
+
+None uses a mask. «Створ» is one `clip-path` polygon per frame; «Сдвиг» is `opacity` +
+`transform` on the incoming (compositor-only for the busiest part) plus one blur on the
+outgoing. All three measured at **median 16.7 ms, worst 18.8 ms, 0 frames over 22 ms** with
+the ray field live.
+
+**«Створ» is the on-brand one** and why it is the default: the cross is centred on 50%/50%,
+which *is* the light's convergence point (round 7 put both at the exact stage centre), so the
+slit reads as the light itself carving the next photo in — the prison's window-grille motif
+rather than a slideshow wipe. Two registered `<percentage>` customs drive one 12-point
+polygon: arms shoot to the frame edge over the first half, then thicken to swallow the
+corners.
+
+### Two structural rules the specs must obey
+
+1. **`incomingOnTop` decides the z-order, and whichever layer is UNDERNEATH must stay fully
+   opaque and cover the frame for the whole handoff.** That is what keeps the flat blue
+   `#56b7e6` unreachable (the invariant from round 8). So an effect may scale the lower layer
+   **up**, never translate it — a translate would expose the backdrop at the trailing edge.
+   «Сдвиг» translates the *incoming* photo, which is on top, precisely for this reason.
+2. **The reveal is phased in CSS, not by a JS timer**: `animation-delay: var(--tr-open)` with
+   `animation-fill-mode: both`. Without `both`, an `incomingOnTop` effect hard-cuts to the new
+   photo for the whole opening beat, because the base `.visible` rule puts it at opacity 1
+   before its animation's 0% keyframe applies. This was found by probing computed styles.
+
+### Durations are CSS customs, not keyframe percentages
+
+Keyframe percentages cannot be var-driven, but `animation-duration` and `animation-delay`
+can. So the scrim was split into `scrim-open` / `scrim-open-first` / `scrim-close` — three
+short animations sequenced by one JS timer — instead of one long track with hand-computed
+stops per pace. `applyTransition()` sets `--tr-open`, `--tr-effect`, `--tr-close` and
+`--tr-hold` on `.photo-slider`, and one rule set then serves any pace. `photo-drift` (the
+dwell-long 3.5% scale-down) reads `--tr-hold`, so it stays in step with each spec's hold.
+
+**The round-8.1 scrim choreography is unchanged and is independent of the mechanism** —
+opens as the text melts up, reveal runs on a bright photo, closes as the new text rises,
+never darker than the resting 0.40. That was the fix for "feels laggy"; only the reveal
+in the middle was replaced.
+
+### Controls
+
+`.tr-switch` (Наплыв · Створ · Сдвиг) ships **visible** — the designer is actively choosing.
+The **T** key hides it; **V** still toggles `.fx-switch` exactly as before, and `.fx-switch`
+moved to `bottom: 64px` so the two stack instead of overlapping. Collapse `.tr-switch` to
+`hidden` by default once a winner is picked.
+
+Clicking a button calls `PhotoSlider.preview()`, which activates the slider and throws a
+slide immediately — selecting from the control is itself pointer activity, so without it the
+designer would click and then have to sit still for 7 s to see the result.
+
+Verified: build + smoke test clean; all three transitions confirmed by computed-style probe
+(opacity/clip-path/transform curves, not eyeballed pixels — the first visual pass wrongly
+looked like «Сдвиг» was hard-cutting when it was simply finishing inside the screenshot
+latency); segmented control switches class, active state and previews on all three; T
+toggles; hover gate and the 9/9 slide pairings still hold.
+
+## Feedback round 9 (2026-07-30) — all three transitions killed, one plain cross-fade
+
+**Verdict on 8.2: "all the slider options are bad and buggy."** All three specs, the
+`.tr-switch` picker, `transitions.ts`, `?tr=`, the T key and `PhotoSlider.preview()` are
+**deleted**. One transition remains and there is nothing to select.
+
+### The defect was SEQUENTIAL STAGING, not the effects — this is the reusable lesson
+
+8.2 staged every transition as `openMs → effectMs → closeMs` (650 + 1300 + 1100 =
+**3050 ms** on the default «Створ»), with the reveal held behind
+`animation-delay: var(--tr-open)`. That put a beat in the middle where the old text had
+gone, the scrim had finished opening, and **the photos had not started moving.** That gap
+is what "lag in the middle" meant. It is the same defect round 8.1 had already fixed once
+on the scrim track, reappearing on the photo track — and swapping in a nicer effect would
+not have touched it.
+
+**Any future transition here must overlap its beats.** A delayed reveal reads as lag no
+matter how good the effect is. Round 9's beats overlap into one continuous move:
+
+```
+0.00s  ┌ heading melts up ────┐            OUT_MS 600
+       ┌ scrim 0.40 → 0 ──────┐            OPEN_MS 600
+0.15s       ┌ photo cross-fade ─────────┐   FADE_DELAY 150 + FADE_MS 800
+0.55s       ·  midpoint — scrim fully open, photo unobstructed
+0.95s       └ fade done ────────────────┘
+0.95s       ┌ scrim 0 → 0.40 ──────┐        CLOSE_MS 750
+            ┌ new heading rises ───────┐    0.7s + 80ms/word stagger
+~1.8s  settled
+6.00s  next throw                          HOLD_MS 6000
+```
+
+Pace (0.8 s fade / 6 s hold) is the designer's pick from three offered.
+
+### The mechanism: one animated element, one compositor-only property
+
+The incoming photo goes **UNDERNEATH** at opacity 1 from frame one; only the **outgoing**
+animates, fading 1 → 0 on top of it. `.entering` is gone — the incoming needs no animation
+at all, just `.visible`.
+
+Two properties follow from that asymmetry, and they are the reason **not** to "improve"
+this into a two-layer fade:
+
+1. **`#56b7e6` is structurally unreachable.** The lower layer is opaque and covers the
+   frame throughout, so the round-8 invariant is satisfied by construction rather than by
+   careful keyframes. Fading BOTH layers would sum to < 1 at the midpoint and flash the
+   flat blue through.
+2. **No mid-transition dip or bloom**, for the same reason.
+
+Curve `cubic-bezier(0.45, 0, 0.55, 1)` — a symmetric S. Linear reads mechanical at 0.8 s.
+
+The `.bg-layer` wrapper / `img.bg` split **stays**: the wrapper runs `photo-drift`
+(`transform`), the img runs `photo-fade` (`opacity`), and one element cannot host two
+`animation` shorthands.
+
+### Scrim: unchanged in shape, now opens fully to 0
+
+The client's "the black overlay follows text: appears and disappears with heading" **is**
+the round-8.1 choreography — it was already built. Only the depth changed: the open now
+reaches **0** instead of 0.06, so the photo is completely unobstructed at the midpoint
+("disappears" is the word). Nothing on this track is ever darker than the resting 0.40;
+the round-8.0 dip stays dead.
+
+`scrim-open-first` is no longer an animation — on the first throw there is no outgoing
+photo to fade and the whole `.photo-slider` layer is still fading in from 0, so the scrim
+has nothing to open *from*. It is a static hold at 0 until the first headline arrives.
+
+### Durations: CSS customs, set on `#screen-main` (not on `.photo-slider`)
+
+All six constants live in `PhotoSlider.ts` and are pushed to `--tr-out` / `--tr-open` /
+`--tr-fade-delay` / `--tr-fade` / `--tr-close` / `--tr-hold` **once in the constructor**, so
+there is no JS↔CSS duration mirror to keep in step (an improvement on the old
+`DISSOLVE_MS`/`photo-burn` pairing). **They are set on the SCREEN element, not on the
+slider root** — the headline lives in the stage (z above the light), *outside* the slider
+subtree, and `.slider-headline.out` needs `--tr-out` to inherit. Setting them on
+`this.root` silently drops the headline's timing to its fallback.
+
+`SLIDE_DIP_S` in `MainScreen.ts` (1.1 s, was 1.6) mirrors this: it is a half-sine, so its
+peak lands at `FADE_DELAY + FADE_MS / 2` = 550 ms — the cross-fade's midpoint. The dip
+depth is unchanged (−22 % godrays / −18 % bloom) and CLAUDE.md's "no flash, it dips" rule
+is untouched.
+
+### Verified (computed-style probe, not eyeballed pixels)
+
+- **No dead beat:** sampled both `img.bg` opacities, the overlay, the headline **and every
+  `.word` span** at 40 ms across a full throw — **0 stalled samples** before 1.9 s. Note the
+  first pass reported two stalls at t≈1008 ms and t≈1747 ms; both were the probe's blind
+  spot, not the animation — the word spans are the only thing moving in that window
+  (measured animating t=1025→1802 ms). Sample the words or the result is wrong.
+- **Outgoing opacity monotonic** 1 → 0, no reversal.
+- **Lower layer min opacity 1.000** across the whole move, covering the viewport, decoded —
+  `#56b7e6` unreachable. Confirmed visually at the midpoint: a clean 50/50 dissolve.
+- **Scrim max 0.400 / min 0.000**, never darker than resting.
+- **Frames: median 16.7 ms, p95 17.4 ms, worst 17.7 ms, 0 of 841 over 22 ms** — better than
+  8.2's worst of 18.8 ms, as expected when `clip-path` + `blur` collapse to one `opacity`.
+- Picker gone from the DOM, T inert, V still toggles `.fx-switch` (back at `bottom: 20px`);
+  hover gate holds, slider re-arms after leaving a link, exit from mid-fade is clean.
+
 ## Open issues
 
+- **[OPEN] The handoff is the brightest moment of the cycle** — the scrim now reaches a
+  full 0 at the midpoint, so the transition happens on a completely unscrimmed photo. This
+  is the requested design (the overlay follows the text; no dark beat) and nothing ever
+  goes darker than the resting 0.40, but it is worth a designer's eye. Dials: the `to`
+  stop of `@keyframes scrim-open` and `OPEN_MS` / `CLOSE_MS`.
+- **[OPEN] Round-9 timings tuned by eye against one screen** — `OUT_MS 600`, `OPEN_MS 600`,
+  `FADE_DELAY 150`, `FADE_MS 800`, `CLOSE_MS 750`, `HOLD_MS 6000`, and the
+  `cubic-bezier(0.45, 0, 0.55, 1)` fade curve. The pace (0.8 s / 6 s) is the designer's
+  pick; the sub-beats within it are not.
+- ~~**[OPEN] The round-8.1 stall fix is unconfirmed on the user's hardware**~~ — moot:
+  round 9 removed every paint-thread effect from the transition. The whole handoff is now
+  one `opacity` animation on one element.
+- **[OPEN] `.hover-scene` reveal dials predate the new photos** — `img.visible` opacity 0.38
+  over `#04070c` @ 0.93 was tuned in round 7 against the darker `main-*.png`. The new
+  renders (especially `concept-plan`) are much lighter, so the «Концепция» hover reads
+  brighter and flatter than Figma `340:594`. Not touched this round; needs a designer pass.
+- **[OPEN] No favicon** — the browser's automatic `/favicon.ico` probe 404s on every load.
+  Harmless, pre-existing, shows up in every console capture.
 - ~~[OPEN] Reverse perspective is currently OFF (K=0)~~ **RESOLVED (Map round 3):**
   true polycentric icon splay baked at load, always on.
 - ~~**[OPEN] Showreel/hover placeholder photos are gitignored** — a completely fresh clone
@@ -605,3 +1424,50 @@ cascade, hover echo computed styles):
   (~0.6°/s); may want faster/slower after a live designer pass. On the dev-only
   «Прорезь» tab the readable logo now rotates too (acceptable — that tab is not
   in the pitch build).
+- ~~**[OPEN] Map round-5 glass is a deviation** — shipped `transmission: 0.7`
+  instead of the chosen 1.0 because a top-down plan rendered nearly black.~~
+  **RESOLVED (round 5.1):** the blackness was the `thickness × modelScale` bug,
+  not Fresnel. With it fixed, the light-background presets run at the chosen
+  `transmission: 1.0`. (`dark` still keeps 0.7 — it needs the diffuse to show
+  anything at all, which is itself the argument against that background.)
+- ~~**[OPEN] Background direction** — `sky` vs `daylight`~~ **RESOLVED (round 6):**
+  near-white studio field (`#f2f6fa`), chosen with the user against the
+  cut-crystal reference.
+- ~~**[OPEN] Map round-6 variant verdict pending**~~ **RESOLVED (round 7):**
+  «Грани» chosen; the other two and the switcher are deleted.
+- **[OPEN] The two cross blocks each select as ONE unit** — each is welded to
+  its courtyard and apse in the GLB, so connected-component splitting cannot
+  separate them. If the designer wants the wings clickable on their own, that
+  needs manual sub-assignment (split by spatial clustering within the
+  component, or re-export the GLB with separate objects).
+- **[OPEN] `buildingsInfo.ts` copy is placeholder** — plausible Russian
+  programme, not client content. Names were assigned by matching each part's
+  measured footprint and screen position; re-verify if the model changes.
+- **[OPEN] Map round-8 dials tuned by eye** — iso elevation 35.26°, spring
+  `TAU 0.26`, `FOCUS_PAD 0.78`, `MIN_HALF_H_FRAC 0.16`, `MAP_LOOK_DIMMED`
+  (opacity 0.2, desaturated) and the dimmed edge opacity 0.12.
+- **[OPEN] Map round-7 dials tuned by eye** — key 4.2 @ (−300, 170, −230),
+  fill 0.4, rim 1.0, `NeutralToneMapping`, hover/selected material overrides
+  in `mapLooks.ts`, `MIN_FOOTPRINT_FRAC 0.03`, drawer width 380 px.
+- **[OPEN] Flat roofs cannot glint under this camera — by construction.** An
+  orthographic top-down view gives every flat roof the same reflection vector,
+  so they all sample one environment texel and stay evenly toned no matter how
+  the probe is authored. Speculars only land on pitched roofs, creased detail
+  and sheared walls. If the designer wants sparkle on the big flat roofs, the
+  honest options are edge lines, bloom, or a light-perturbing normal/roughness
+  map — NOT more environment tuning.
+- **[OPEN] Map round-6 dials tuned by eye** — crease angle 35°, edge threshold
+  30° / linewidth 1.3 / opacity 0.85, bloom 0.75/0.45/1.15, ground rim
+  `#b3c9dc`, env source placement and gains, «Грани» fill `0x2f86c4` @ 0.42.
+- **[OPEN] Map round-5 dials tuned by eye** — `FIT_MARGIN 1.06` (framing
+  tightness), `RESPONSE_GAIN 3.5` + `SMOOTH_TAU 0.12` (how fast the lean bites),
+  glass `roughness 0.25` / `thickness 20` / `attenuationDistance 80`, the sky
+  gradient's zenith `#b6e6ff` (which *is* the roof colour — the single strongest
+  dial for the map's tone), light rig intensities 2.6 / 1.6 / 1.8, ground glow
+  `#1b3552`. All await a designer pass.
+- **[OPEN] Map transmission perf unmeasured on a real device.** r170 gives no
+  `transmissionResolutionScale`, so the extra pass is full-viewport with 4×MSAA
+  + mipmaps every frame. Fine on desktop headless; the mobile lever is
+  `mapPixelRatio` in `shared/performanceTier.ts`, not a material rework.
+- ~~**Status: map v2 awaiting user verdict**~~ — superseded: round 5 rebuilt the
+  map's geometry, framing, response curve and materials. Awaiting a fresh verdict.
