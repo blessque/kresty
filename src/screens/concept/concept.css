@@ -1,6 +1,17 @@
+/* Must match MAP_BG in mapLooks.ts — the renderer clears to the same value,
+   but the CSS avoids a flash of the wrong colour before the JS runs. */
 #screen-concept {
-  background: #56b7e6;
+  background: #f2f6fa;
   touch-action: none;
+  /* overlay UI sits on a near-white studio field, so it is dark, not white */
+  color: #123a5c;
+}
+
+/* The global film grain is tuned for the main screen's bright blue. Over the
+   map's large flat surfaces it reads as dirt, so it is suppressed whenever the
+   concept screen is visible (#grain is a later sibling of #screen-concept). */
+#screen-concept:not(.hidden) ~ #grain {
+  opacity: 0;
 }
 
 #screen-concept canvas {
@@ -23,6 +34,11 @@
   width: 100%;
   height: auto;
 }
+/* the logo ships with a hard-coded fill="white"; CSS overrides the
+   presentation attribute so it reads on the light field */
+.concept-home svg path {
+  fill: #123a5c;
+}
 
 .concept-title {
   position: absolute;
@@ -31,7 +47,8 @@
   z-index: 5;
   font-family: 'ALS Chromius', sans-serif;
   font-size: 24px;
-  font-variation-settings: 'wght' 500;
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  font-weight: 150;
 }
 
 .concept-hint {
@@ -41,7 +58,109 @@
   transform: translateX(-50%);
   z-index: 5;
   font-size: 14px;
-  opacity: 0.55;
+  opacity: 0.5;
   text-align: center;
   pointer-events: none;
+}
+
+/* a building is under the cursor */
+#screen-concept.picking canvas {
+  cursor: pointer;
+}
+
+/* the lean is inert while a building is focused (the shear unwinds so the
+   isometric camera reads cleanly), so the hint would be lying */
+#screen-concept.focused .concept-hint {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ---------------------------------------------------- building drawer */
+
+.bld-drawer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 86vw;
+  z-index: 8;
+  padding: 40px 32px 32px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-right: 1px solid rgba(18, 58, 92, 0.12);
+  /* the airy curve used across the project (rounds 6–7) */
+  transition: transform 0.55s cubic-bezier(0.3, 0, 0.12, 1),
+    opacity 0.4s cubic-bezier(0.3, 0, 0.12, 1);
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.bld-drawer.open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bld-close {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  width: 32px;
+  height: 32px;
+  font-size: 26px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+}
+.bld-close:hover {
+  opacity: 1;
+}
+
+.bld-kind {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.bld-name {
+  margin: 8px 0 4px;
+  font-family: 'ALS Chromius', sans-serif;
+  font-size: 34px;
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  font-weight: 150;
+  line-height: 1.1;
+}
+
+.bld-count {
+  font-size: 14px;
+  opacity: 0.55;
+  margin-bottom: 24px;
+}
+
+.bld-list {
+  list-style: none;
+}
+
+.bld-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+  font-size: 15px;
+  border-top: 1px solid rgba(18, 58, 92, 0.12);
+}
+
+.bld-floor {
+  flex: none;
+  opacity: 0.5;
+  font-size: 13px;
+}
+
+.bld-empty {
+  opacity: 0.5;
+  font-style: italic;
 }
