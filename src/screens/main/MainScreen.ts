@@ -1,4 +1,5 @@
 import logoSvg from '../../assets/logo.svg?raw';
+import alsLogoSvg from '../../assets/als-logo.svg?raw';
 import signSvg from '../../assets/sign.svg?raw';
 import {
   STAGE_W,
@@ -29,6 +30,13 @@ const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
  */
 const ROT_SPEED = 0.0105;
 
+/**
+ * Length of the light's dip on a slide throw, seconds. A half-sine, so it peaks
+ * at half this — which must coincide with the cross-fade's midpoint. Mirrors
+ * `FADE_DELAY + FADE_MS / 2` in PhotoSlider.ts (round 9: 150 + 400 = 550ms).
+ */
+const SLIDE_DIP_S = 1.1;
+
 export class MainScreen {
   el: HTMLElement;
   onNavigate: (to: 'concept') => void = () => {};
@@ -40,8 +48,8 @@ export class MainScreen {
   private ticker!: NewsTicker;
   private showreel!: Showreel;
   private photoSlider!: PhotoSlider;
-  /** seconds since the slider last threw a slide — the projector flash */
-  private sliderFlashT = 10;
+  /** seconds since the last slide throw — drives the light dip (round 8) */
+  private slideT = 10;
   private tier = getPerfTier();
 
   private raf = 0;
@@ -87,6 +95,14 @@ export class MainScreen {
     this.buildDom();
   }
 
+  /**
+   * The slider must not take the screen while the pointer rests on a nav link —
+   * the hover "gallery dark" scene is the hero interaction and owns that moment.
+   */
+  private syncSliderHoverGate() {
+    this.photoSlider?.setHoverBlocked(this.hoverTarget.some((v) => v > 0));
+  }
+
   private buildDom() {
     this.el.innerHTML = '';
 
@@ -98,11 +114,14 @@ export class MainScreen {
     const dark = document.createElement('div');
     dark.className = 'hover-dark';
     this.hoverScene.appendChild(dark);
+    // index-aligned with NAV_LINKS (positional coupling — keep the order).
+    // «Концепция» gets its own plan render, fixed by Figma frame 340:594; the
+    // rest borrow the closest slide photo by meaning.
     const hoverImages = [
-      '/resources/main-1a.png', // История
-      '/resources/main-2a.png', // Концепция
-      '/resources/main-3a.png', // Аренда
-      '/resources/main-4a.png', // Контакты
+      '/resources/atrium-roof.webp', // История — the cross-shaped block from above
+      '/resources/concept-plan.webp', // Концепция — hover-only, never a slide
+      '/resources/table.webp', // Аренда
+      '/resources/forum.webp', // Контакты
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');
@@ -139,8 +158,12 @@ export class MainScreen {
       a.addEventListener('pointerenter', () => {
         this.hoverTarget[i] = 1;
         this.lastHovered = i;
+        this.syncSliderHoverGate();
       });
-      a.addEventListener('pointerleave', () => (this.hoverTarget[i] = 0));
+      a.addEventListener('pointerleave', () => {
+        this.hoverTarget[i] = 0;
+        this.syncSliderHoverGate();
+      });
       a.addEventListener('click', (e) => {
         e.preventDefault();
         if (spec.route === 'concept') this.onNavigate('concept');
@@ -154,14 +177,20 @@ export class MainScreen {
     this.stage.appendChild(news);
     this.ticker = new NewsTicker(news);
 
+    // bottom-right studio mark (Figma node 340:574) — the ARTLEBEDEV stroke
+    // logo with its "2026" line, one vector. Replaced the «КРЕСТЫ · 2026» text
+    // placeholder in round 8.
     const mark = document.createElement('div');
     mark.className = 'corner-mark';
-    mark.textContent = 'КРЕСТЫ · 2026';
+    mark.innerHTML = alsLogoSvg;
+    mark.setAttribute('aria-label', 'Артлебедев, 2026');
     this.stage.appendChild(mark);
 
-    // «Слайдер» idle show (armed only on its tab; headline goes in the stage)
+    // «Слайдер» idle show (armed only on its tab; headline goes in the stage).
+    // NOTE built after the nav links, whose handlers call
+    // `syncSliderHoverGate()` — that method guards on `photoSlider` being set.
     this.photoSlider = new PhotoSlider(this.el, this.stage);
-    this.photoSlider.onFlash = () => (this.sliderFlashT = 0);
+    this.photoSlider.onSlideStart = () => (this.slideT = 0);
 
     // segmented control: Сияние · Прорезь · Призма · Слайдер
     // hidden by default (pitch shows «Слайдер» only); the V key reveals it
@@ -194,10 +223,14 @@ export class MainScreen {
     this.armIdleShow();
   }
 
-  /** dev shortcut: physical V key (any layout) shows/hides the variant switcher */
+  /**
+   * Dev shortcut, on a physical key code so it works on the Russian layout:
+   *   V — the light-variant switcher (hidden by default, as since round 6)
+   * Round 9 deleted the T key with the `.tr-switch` transition picker.
+   */
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.code !== 'KeyV' || e.metaKey || e.ctrlKey || e.altKey) return;
-    this.fxSwitch.classList.toggle('hidden');
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === 'KeyV') this.fxSwitch.classList.toggle('hidden');
   };
 
   /** the «Слайдер» tab arms the star slider; every other tab, the showreel */
@@ -385,20 +418,22 @@ export class MainScreen {
       p.coreIntensity *= 1 + 2.5 * k;
     }
 
-    // «Проектор» (round 6.3): the light shines at full strength over the
-    // background photos and simply disappears behind the star (plain DOM
-    // stacking — see StarSlider's layering note). The only choreography
-    // left is a soft breath of light on each slide throw — a swell, not a
-    // punch. Gated to the slider tab so a fast tab switch can't leak the
-    // tail onto another variant.
-    if (this.sliderFlashT < 2 && VARIANTS[this.variantIndex].id === 'slider') {
+    // Round 8: the slide throw used to SURGE (×2.4 godrays, τ 0.3s) and it
+    // landed in the empty gap between headlines, which is what read as a flash
+    // "at the end" of every slide. Now the light DIPS with the photos instead —
+    // it joins the change and recovers as the new photo resolves.
+    //
+    // The window is a half-sine, so its peak sits at SLIDE_DIP_S/2; that has to
+    // land on the cross-fade's midpoint, which round 9 moved to 550ms
+    // (FADE_DELAY 150 + FADE_MS 800 / 2). Gated to the slider tab so a fast tab
+    // switch can't leak the tail onto another variant.
+    if (this.slideT < SLIDE_DIP_S && VARIANTS[this.variantIndex].id === 'slider') {
       p = { ...p };
-      const k = Math.exp(-this.sliderFlashT / 0.3);
-      p.godrays *= 1 + 1.4 * k;
-      p.bloom *= 1 + 1.0 * k;
-      p.coreIntensity *= 1 + 0.7 * k;
+      const k = Math.sin((this.slideT / SLIDE_DIP_S) * Math.PI); // 0 → 1 → 0
+      p.godrays *= 1 - 0.22 * k;
+      p.bloom *= 1 - 0.18 * k;
     }
-    this.sliderFlashT += dt;
+    this.slideT += dt;
 
     const s = stageScale();
     const rs = this.tier.renderScale;

@@ -41,11 +41,16 @@
   opacity: 0;
 }
 
-/* «Слайдер» (round 7): one full-bleed nadir photo per slide. Sits in the
-   showreel's z-slot (only one of the two idle shows is ever armed). The
-   headline is NOT here — it lives in the stage (z:4) so the screen-blended
-   light never washes the text. The star mask that used to occlude the light
-   is gone; the light shines over the photo unobstructed. */
+/* «Слайдер» (round 8): one full-bleed photo per slide. Sits in the showreel's
+   z-slot (only one of the two idle shows is ever armed). The headline is NOT
+   here — it lives in the stage (z:4) so the screen-blended light never washes
+   the text.
+
+   Each photo gets a WRAPPER (`.bg-layer`) plus the `<img>`. The split is
+   load-bearing: the wrapper animates the slow dwell-long scale-down, the img
+   animates the per-slide transition. Both want `transform`, and one element
+   cannot run two `animation` shorthands — that is the collision, and it is why
+   «Сдвиг» can translate the incoming photo while it is still drifting. */
 .photo-slider {
   position: absolute;
   inset: 0;
@@ -57,6 +62,12 @@
 .photo-slider.active {
   opacity: 1;
 }
+.photo-slider .bg-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform: scale(1);
+}
 .photo-slider img.bg {
   position: absolute;
   inset: 0;
@@ -64,18 +75,116 @@
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity 1.4s ease;
 }
 .photo-slider img.bg.visible {
   opacity: 1;
 }
-/* flat legibility overlay (user dial: 0.2; Figma mockup had 0.41);
-   z above the bg imgs, whose inline z-index (1/2) orders the fade-over */
+
+/* ─── the slide handoff (round 9) ─────────────────────────────────────────
+   ONE transition: a plain cross-fade. Everything before it is dead and must
+   not be rebuilt — the round-8 voronoi dissolve (nine `radial-gradient` mask
+   layers composited with `mask-composite: intersect`, rasterized on the PAINT
+   thread every frame) and the round-8.2 trio «Наплыв» / «Створ» / «Сдвиг»
+   behind the `.tr-switch` picker.
+
+   8.2's real defect was not its effects, it was SEQUENTIAL STAGING: the reveal
+   sat behind `animation-delay: var(--tr-open)`, so there was a beat where the
+   text had gone, the scrim had opened, and the photos had not started. That
+   gap is what read as lag. Here the fade starts 150ms in and finishes as the
+   scrim closes, so no sample of the timeline has nothing moving.
+
+   The mechanism is one animated element on one compositor-only property. The
+   incoming photo is UNDERNEATH at opacity 1 from frame one; only the outgoing
+   animates, fading 1 → 0 on top of it. Two things follow, and both are the
+   reason not to "improve" this into a two-layer fade:
+
+     - the flat blue `#56b7e6` is structurally unreachable, because the lower
+       layer is opaque and covers the frame throughout. Fading BOTH layers
+       would sum to < 1 at the midpoint and flash the backdrop through;
+     - there is no mid-transition dip or bloom, for the same reason.
+
+   Durations are `--tr-*` customs set once from the constants in
+   PhotoSlider.ts, which stays the single source of truth (keyframe
+   percentages can't be var-driven; `animation-duration`/`-delay` can). */
+.photo-slider img.bg.leaving {
+  animation: photo-fade var(--tr-fade) cubic-bezier(0.45, 0, 0.55, 1) var(--tr-fade-delay)
+    both;
+}
+@keyframes photo-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* the slow scale-down across the whole dwell — 3.5%, on the wrapper so it stays
+   compositor-only. Never goes below 1, so `cover` can't leave a gap. This is
+   why the wrapper/img split exists: the drift wants `transform` and the fade
+   wants `opacity`, and one element cannot host two `animation` shorthands. */
+.photo-slider .bg-layer.drifting {
+  animation: photo-drift var(--tr-hold) linear forwards;
+}
+@keyframes photo-drift {
+  from {
+    transform: scale(1.035);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* The Figma scrim (rgba(0,0,0,.4), node 338:37). It FOLLOWS THE HEADLINE:
+   resting at .40 while text is up, opening to 0 as the text melts away, closing
+   back to .40 as the new text rises. Split into an opening and a closing
+   animation because keyframe percentages cannot be var-driven while
+   `animation-duration` can.
+
+   Round 8.0 dipped DARKER than the resting .40 while the old text was already
+   gone and nothing else moved: a dead, laggy beat, and the client read it as
+   lag. 8.1 inverted it and every round since keeps that. Nothing on this track
+   is ever darker than .40. */
 .photo-slider .photo-overlay {
   position: absolute;
   inset: 0;
   z-index: 3;
-  background: rgba(0, 0, 0, 0.2);
+  background: #000;
+  opacity: 0.4;
+}
+.photo-slider .photo-overlay.scrim-open {
+  animation: scrim-open var(--tr-open) cubic-bezier(0.32, 0, 0.24, 1) forwards;
+}
+/* first slide of a run: no outgoing photo to fade, and the whole `.photo-slider`
+   layer is still fading in from opacity 0 — so the scrim has nothing to open
+   FROM. It just holds open until the first headline arrives. */
+.photo-slider .photo-overlay.scrim-open-first {
+  opacity: 0;
+}
+.photo-slider .photo-overlay.scrim-close {
+  animation: scrim-close var(--tr-close) cubic-bezier(0.4, 0, 0.5, 1) both;
+}
+@keyframes scrim-open {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes scrim-close {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-slider .bg-layer.drifting {
+    animation: none;
+  }
 }
 
 /* hover "gallery dark": black drop + section image, revealed by the light */
@@ -126,12 +235,14 @@
   /* transform set from JS: translate(-50%,-50%) scale(s) */
 }
 
+/* Figma node 308:230: 32/32, 301.44×48. The svg viewBox is 0 0 314 50 — same
+   6.28 aspect, so it just rescales into the smaller box. */
 .stage .logo {
   position: absolute;
   left: 32px;
-  top: 40px;
-  width: 314px;
-  height: 50px;
+  top: 32px;
+  width: 301.44px;
+  height: 48px;
 }
 .stage .logo svg {
   display: block;
@@ -144,8 +255,8 @@
   transform: translate(-50%, -50%);
   font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
   font-size: 32px;
-  font-weight: 500;
-  font-variation-settings: 'wght' 500;
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  font-weight: 150;
   color: #fff;
   white-space: nowrap;
   cursor: pointer;
@@ -192,19 +303,29 @@
   }
 }
 
-/* per-slide headline — left column (Figma node 305:111: Chromius Medium 56,
-   line-height 1.15, left-aligned, x 40 y 304 w 692). Words reveal one by one. */
+/* per-slide headline — left column (Figma slide frames: Chromius Medium 56,
+   line-height 1.15, left-aligned, x 32, w 580). Words reveal one by one.
+
+   VERTICALLY CENTRED ON y=400, not pinned to a top edge: the mockup boxes are
+   192px at top 304 for 3-line headlines and 256px at top 272 for the 4-line
+   «Атмосфера сотрудничества» — both centred on 400. So the centre is the
+   invariant, and the exit translate has to carry the -50% with it. */
 .slider-headline {
   position: absolute;
-  left: 40px;
-  top: 304px;
-  width: 692px;
+  left: 32px;
+  top: 400px;
+  width: 580px;
+  transform: translateY(-50%);
   text-align: left;
   font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
   font-size: 56px;
-  font-weight: 500;
-  font-variation-settings: 'wght' 500;
-  line-height: 1.15;
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  font-weight: 150;
+  /* Figma reports leading as "1.15" but its boxes are 192px for 3 lines and
+     256px for 4 — i.e. a flat 64px line box, not 56 x 1.15 = 64.4. Use the
+     exact px so the block height matches the mockup instead of drifting
+     0.4px per line. */
+  line-height: 64px;
   color: #fff;
   pointer-events: none;
 }
@@ -226,13 +347,18 @@
     transform 0.7s cubic-bezier(0.3, 0, 0.12, 1),
     filter 0.7s ease;
 }
-/* exit = the whole block melts upward like vapor (no per-word stagger) */
+/* exit = the whole block melts upward like vapor (no per-word stagger).
+   The -50% centring lives in the same transform, so it has to be restated.
+   Timed off `--tr-out` (PhotoSlider's OUT_MS, set on #screen-main) so the scrim
+   opening and the text leaving stay locked together — that pairing IS the
+   effect: the overlay follows the heading. Opacity leads the transform slightly
+   so the block is gone before it finishes travelling. */
 .slider-headline.out {
   opacity: 0;
-  transform: translateY(-14px);
+  transform: translateY(calc(-50% - 14px));
   transition:
-    opacity 0.55s ease,
-    transform 0.75s ease;
+    opacity calc(var(--tr-out, 600ms) * 0.9) ease,
+    transform var(--tr-out, 600ms) ease;
 }
 .slider-headline.out .word {
   /* freeze the words visible so the block dissolves as one */
@@ -243,47 +369,67 @@
   transition-delay: 0ms !important;
 }
 
-/* while the slider shows, the nav yields (Figma: 50%) */
+/* while the slider shows, the nav yields (Figma slide frames: 40%) */
 #screen-main.slider-on .nav-link {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
+/* news block (Figma node 338:48): 32/32 from the bottom-left corner, 270 wide,
+   ALS Chromius Regular 20/1.35, rows gapped 8. The block measures 27+8+81+8+27
+   = 151 — the headline row reserves 3 lines so «Все новости» never shifts. */
 .news {
   position: absolute;
   left: 32px;
   bottom: 32px;
-  width: 271px;
+  width: 270px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
   font-size: 20px;
-  line-height: 1.2;
+  /* Chromius Regular = wght 120 on this font's axis — see fonts.css */
+  font-weight: 120;
+  line-height: 1.35;
+}
+.news .news-date,
+.news .headline {
+  color: rgba(255, 255, 255, 0.65);
+  transition: opacity 0.4s ease;
 }
 .news .headline {
-  opacity: 0.5;
-  transition: opacity 0.4s ease;
-  min-height: 48px;
+  min-height: 81px;
 }
+.news .news-date.fading,
 .news .headline.fading {
   opacity: 0;
 }
 .news a {
   width: fit-content;
+  color: #fff;
 }
 .news a:hover {
   text-decoration: underline;
 }
 
+/* bottom-right ARTLEBEDEV mark (Figma node 340:574) — the offsets are the
+   designer's, odd decimals and all. */
 .corner-mark {
   position: absolute;
-  right: 32px;
-  bottom: 32px;
-  font-size: 14px;
-  opacity: 0.5;
-  letter-spacing: 0.08em;
+  right: 32.49px;
+  bottom: 33.7px;
+  width: 169.012px;
+  height: 56.324px;
+}
+.corner-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-/* segmented control — hidden in the pitch build; the V key toggles it */
+/* `.fx-switch` — the light-variant switcher, hidden in the pitch build since
+   round 6; the V key shows it. It is the only segmented control left: round 9
+   deleted `.tr-switch` (the 8.2 transition picker) along with the three
+   transitions it selected, so this sits back at the bottom edge on its own. */
 .fx-switch.hidden {
   display: none;
 }

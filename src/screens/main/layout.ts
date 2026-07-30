@@ -38,24 +38,40 @@ export const NAV_LINKS: NavLinkSpec[] = [
   { id: 'kontakty', label: 'Контакты', x: 937, y: 644, rot: 45.29, route: null },
 ];
 
-export const NEWS_HEADLINES = [
-  'Проведена реконструкция дома для надзирателей',
-  'Открыт причал «Кресты» на Арсенальной набережной',
-  'Началась реставрация церкви Александра Невского',
-  'Музей истории «Крестов» откроется в 2027 году',
+/**
+ * News ticker items (Figma node 338:48 + the loose headlines at 349:715..717).
+ * The block is three rows — date, headline, «Все новости» — and the date row
+ * swaps together with its headline. Dates ascend; the KVS purchase keeps the
+ * one date the mockup supplied, the rest are placeholder 2026.
+ */
+export interface NewsItem {
+  date: string;
+  text: string;
+}
+
+export const NEWS_ITEMS: NewsItem[] = [
+  { date: '1 ноября 2025', text: 'Застройщик KVS выкупил территорию бывшей тюрьмы «Кресты»' },
+  { date: '12 февраля 2026', text: 'Застройщик начал работы по демонтажу аварийных конструкций' },
+  { date: '28 апреля 2026', text: 'Прошла презентация концепции отельного комплекса Cosmos' },
+  { date: '16 июля 2026', text: 'Подписаны последние акты для начала строительства' },
 ];
 
 export const SHOWREEL_IMAGES = [
-  '/resources/main-1a.png',
-  '/resources/main-2a.png',
-  '/resources/main-3a.png',
-  '/resources/main-4a.png',
+  '/resources/skies.webp',
+  '/resources/atrium-roof.webp',
+  '/resources/forum.webp',
+  '/resources/pool.webp',
 ].map((p) => encodeURI(p));
 
 /**
- * «Слайдер» slides — one full-bleed nadir photo per slide (round 7: the star
- * mask is gone; the four distinct top-down shots each match their headline).
- * Headlines from Figma frames slider01..04 (node 252:39).
+ * «Слайдер» slides — one full-bleed photo per slide. Round 8: the client's
+ * final renders, each HARD-BOUND to the headline it was framed for (Figma
+ * section 366:92, slide frames 306:152 · 340:81 · 340:250 · 340:162 · 340:210 ·
+ * 340:231 · 342:653 · 342:677, in that canvas order). Do not reorder or
+ * re-pair — the photo is the headline's illustration, not decoration.
+ *
+ * `concept-plan.webp` is deliberately absent: it is the «Концепция» nav-hover
+ * image only (Figma 340:594), never a slide.
  */
 export interface SliderSlide {
   photo: string;
@@ -64,20 +80,36 @@ export interface SliderSlide {
 
 export const SLIDER_SLIDES: SliderSlide[] = [
   {
-    photo: '/resources/main-1a.png',
-    headline: 'Игровые площадки вместо закрытой территории',
+    photo: '/resources/skies.webp',
+    headline: 'Парковые зоны и веранды вместо колючей проволоки',
   },
   {
-    photo: '/resources/main-2a.png',
-    headline: 'Объединение вместо заключения',
+    photo: '/resources/atrium-roof.webp',
+    headline: 'Пространство для объединения вместо заключения',
   },
   {
-    photo: '/resources/main-3a.png',
-    headline: 'Открытые лекции вместо закрытых замков',
+    photo: '/resources/atrium-floor.webp',
+    headline: 'Место встречи вместо точки наблюдения',
   },
   {
-    photo: '/resources/main-4a.png',
-    headline: 'Уютные кафе вместо темных коридоров',
+    photo: '/resources/kids-playground.webp',
+    headline: 'Детские площадки вместо тюремных заграждений',
+  },
+  {
+    photo: '/resources/forum.webp',
+    headline: 'Открытые лекции вместо темных подвалов',
+  },
+  {
+    photo: '/resources/table.webp',
+    headline: 'Уютные кафе вместо холодных стен',
+  },
+  {
+    photo: '/resources/glass-roof.webp',
+    headline: 'Атмосфера сотрудничества вместо принуждения',
+  },
+  {
+    photo: '/resources/pool.webp',
+    headline: 'Свобода быть собой и заботиться о душе и теле',
   },
 ].map((s) => ({ ...s, photo: encodeURI(s.photo) }));
 

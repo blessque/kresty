@@ -26,10 +26,21 @@
   font-style: italic;
   font-display: swap;
 }
+/**
+ * ALS Chromius VF — CAREFUL: this font's `wght` axis is NOT the standard
+ * 100–900 scale. `fvar` declares min=50 default=120 max=232, with named
+ * instances Thin 50 · Light 90 · Regular 120 · Medium 150 · Bold 200 ·
+ * Black 232. So `font-weight: 500` clamps to 232 = Black, which is what every
+ * Chromius rule on the site was accidentally asking for before round 8.
+ *
+ * Declare the real range here and set plain `font-weight: 120 / 150` at the use
+ * site — do NOT add `font-variation-settings`, it overrides `font-weight` and
+ * reintroduces the same trap.
+ */
 @font-face {
   font-family: 'ALS Chromius';
   src: url('/resources/ALS_Chromius_VF_0.8.ttf') format('truetype-variations');
-  font-weight: 100 900;
+  font-weight: 50 232;
   font-style: normal;
   font-display: swap;
 }
