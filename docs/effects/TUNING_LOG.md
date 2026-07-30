@@ -554,7 +554,7 @@ cascade, hover echo computed styles):
   lives INSIDE the rotated span, hidden at rest, sliding to `translate(3px,3px)`
   at opacity 0.9 on hover — offset along the glyph axis, echoing the logo's
   doubled contour. The gallery-dark hover scene + shader light surge are
-  unchanged (still fire).
+  unchanged (still fire). **The stroke was replaced in round 9.1 — see below.**
 - **«Слайдер» star KILLED — one full-bleed photo per slide.** `StarSlider.ts` →
   `PhotoSlider.ts` (`.star-*` → `.photo-*`); deleted the star layer/stage/wraps,
   the SVG mask data-URI, `src/assets/star.svg`, and the `layout(scale)` stage
@@ -1371,8 +1371,49 @@ is untouched.
 - Picker gone from the DOM, T inert, V still toggles `.fx-switch` (back at `bottom: 20px`);
   hover gate holds, slider re-arms after leaving a link, exit from mid-fade is clean.
 
+## Feedback round 9.1 (2026-07-30) — nav doubling: filled + translucent, not a stroke
+
+User verdict on the round-7 echo: *"Now you add a stroke layer. It looks cheap. Instead
+it's better to add another filled layer, but with transparency. The upper level can get
+some glow."*
+
+**Do not go back to `-webkit-text-stroke` here.** The outline copy (`color: transparent` +
+1 px stroke) left the glyph interiors *hollow*, so what you actually saw through the
+doubled letters was the backdrop photo, framed by a hairline. That is a graphic-editor
+artifact, not light, and it is the opposite of this project's register. The replacement is
+a **filled** copy at `rgba(255,255,255,0.45)` — the same doubling reads as a second pane of
+glass, with weight, and it varies with what is behind it instead of being a constant
+hairline.
+
+Three details that are load-bearing:
+
+- **`text-shadow: none` on the `::after` is required, not cosmetic.** `text-shadow`
+  inherits, and `nav-shine` animates it on the parent `.nav-rot`, so without the override
+  the echo inherits the breathing glow and *both* layers glow — which smears the two into
+  one blob and destroys the offset. The asymmetry is the effect: lower layer flat and
+  dimmer, upper layer the only one that glows.
+- **Offset 3 px → 4 px.** An outline only had to clear the glyph *edge* to be legible; a
+  filled copy has to clear the stroke *width* or it hides under the label it doubles.
+- **Alpha 0.45, not the ~0.3 that looks right in isolation.** The nav sits close to the
+  light's convergence and `u_sceneDim` surges on hover, so the backdrop behind these labels
+  is the brightest part of the screen. A white fill has to clear that, and white-on-white
+  has no contrast to spare. At 0.34 the doubling was verified present but barely readable.
+
+Glow is now two-tier — a tight 6–10 px core plus an 18–34 px halo — so it survives both a
+bright backdrop (the core) and a dark one (the halo), rather than depending on a hover
+scene whose brightness is itself an open issue.
+
+Verified by computed-style probe (`::after` colour/transform/`text-shadow`/stroke-width and
+the parent's animated shadow, caught mid-breath) plus 2× DPR hover screenshots on
+«Концепция» and «История».
+
 ## Open issues
 
+- **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
+  labels sit where the light surge is brightest, so a white-on-white echo has little
+  contrast to work with, and 0.45 alpha is compensation for that rather than a considered
+  value. If the hover scene is darkened (see the `.hover-scene` dials issue below), the
+  echo alpha should come back down toward 0.3.
 - **[OPEN] The handoff is the brightest moment of the cycle** — the scrim now reaches a
   full 0 at the midpoint, so the transition happens on a completely unscrimmed photo. This
   is the requested design (the overlay follows the text; no dark beat) and nothing ever

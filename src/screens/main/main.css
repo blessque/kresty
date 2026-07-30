@@ -268,18 +268,33 @@
   display: block;
   position: relative;
 }
-/* engraved echo (round 7): an outline-only copy of the label, hidden at rest.
-   It lives INSIDE the rotated .nav-rot span, so its offset is along the glyph
-   axis. On hover it slides out ~3px and fades in while the solid label keeps
-   its fill and gains a soft breathing shine — the logo's doubled-contour look,
-   not a black silhouette. */
+/* Doubled-label echo (round 9.1). A second FILLED copy of the label at low
+   alpha, hidden at rest, sliding out along the glyph axis on hover. It lives
+   INSIDE the rotated .nav-rot span, so the offset follows the 51.8°/−38.2°
+   rotation instead of fighting it.
+
+   Round 7 built this as an OUTLINE copy (`color: transparent` +
+   `-webkit-text-stroke: 1px`) and it read as a cheap sticker outline: a hard
+   1px contour is a graphic-editor artifact, not light. A translucent fill is
+   the same doubling read as a second pane of glass — it has weight, and it
+   varies with whatever is behind it instead of being a constant hairline.
+
+   The two layers are deliberately asymmetric: the LOWER (this echo) is flat
+   and dimmer, the UPPER (the solid label) is the only one that glows. Hence
+   `text-shadow: none` — `text-shadow` inherits, so without it the parent's
+   animated nav-shine bleeds onto the echo and both layers glow, which muddies
+   the offset into a single smeared blob. */
 .nav-rot::after {
   content: attr(data-label);
   position: absolute;
   left: 0;
   top: 0;
-  color: transparent;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.85);
+  /* 0.45, not the 0.3-ish that looks right in isolation: the nav sits close to
+     the light's convergence, and on hover u_sceneDim surges it, so the backdrop
+     behind these labels is the brightest part of the screen. A white fill has
+     to clear that, and white-on-white has no contrast to spare. */
+  color: rgba(255, 255, 255, 0.45);
+  text-shadow: none;
   opacity: 0;
   transform: translate(0, 0);
   transition: transform 0.35s ease, opacity 0.3s ease;
@@ -289,17 +304,27 @@
 .nav-link:focus-visible .nav-rot {
   animation: nav-shine 2.4s ease-in-out infinite;
 }
+/* 4px rather than round 7's 3px: an outline only had to clear the glyph edge to
+   be legible, a filled copy has to clear the stroke WIDTH or it hides under the
+   label it is doubling. */
 .nav-link:hover .nav-rot::after,
 .nav-link:focus-visible .nav-rot::after {
-  opacity: 0.9;
-  transform: translate(3px, 3px);
+  opacity: 1;
+  transform: translate(4px, 4px);
 }
+/* Two tiers, not one: a tight core that survives a bright backdrop plus a wide
+   halo that reads on a dark one. The hover scene's brightness is an open issue
+   (its dials predate the new photos), so the glow must not depend on it. */
 @keyframes nav-shine {
   0%, 100% {
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+    text-shadow:
+      0 0 6px rgba(255, 255, 255, 0.45),
+      0 0 18px rgba(255, 255, 255, 0.22);
   }
   50% {
-    text-shadow: 0 0 22px rgba(255, 255, 255, 0.55);
+    text-shadow:
+      0 0 10px rgba(255, 255, 255, 0.75),
+      0 0 34px rgba(255, 255, 255, 0.5);
   }
 }
 
