@@ -7,6 +7,7 @@ import { MAP_BG } from './mapLooks';
 import { buildStudioEnv, buildGround, buildLights } from './mapStudio';
 import { buildEdgeLines } from './edgeLines';
 import { splitConnectedParts } from './buildingSplit';
+import { GroundPlan, FLAT_RATIO, type FlatSurface } from './groundPlan';
 import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
@@ -27,7 +28,26 @@ import { BuildingDrawer } from './BuildingDrawer';
  * Materials in mapLooks.ts, studio in mapStudio.ts; TUNING_LOG map rounds 4–7.
  */
 
-const MODEL_GLB = '/resources/map.glb';
+const MODEL_GLB = '/resources/map-w-river.glb';
+/**
+ * Yaw applied to the whole model so geographic NORTH points up the screen.
+ *
+ * The GLB is authored on the site's own grid, not on the compass: the Neva
+ * slab lies entirely on the local −X side and both roads (Арсенальная наб.,
+ * ул. Комсомола) run along local ±Y. Against the real map those two run at a
+ * bearing of ~81°/261° with the water south of the complex — so the model
+ * arrives with south pointing up and needs roughly a half turn plus the
+ * street grid's tilt. Baked into the geometry at load, so every downstream
+ * bbox, centroid and axisAngle is already in the final world frame.
+ *
+ * 189° = a half turn (to put the water south) + 9° for the street grid. Both
+ * numbers were checked against the Yandex plan two independent ways — the
+ * shoreline bearing, and the axis joining the Западный and Восточный cross
+ * blocks — which agreed to under a degree.
+ *
+ * Dev override: ?yaw=<degrees>
+ */
+const MODEL_YAW_DEG = 189;
 /** max shear (wall reveal per unit height) at the screen edge; ?ob=<k> */
 const MAX_SHEAR = 0.55;
 /** cursor deadzone around the center — inside it the view is a flat plan */
@@ -59,10 +79,12 @@ export class ConceptScreen {
 
   private model?: THREE.Object3D;
   private picker = new BuildingPicker();
+  private ground?: GroundPlan;
   private drawer!: BuildingDrawer;
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
+  private yawDeg = MODEL_YAW_DEG;
   private raf = 0;
   private running = false;
 
@@ -80,6 +102,8 @@ export class ConceptScreen {
     if (Number.isFinite(ob)) this.maxShear = ob;
     const fit = parseFloat(q.get('fit') ?? '');
     if (Number.isFinite(fit)) this.fitMargin = fit;
+    const yaw = parseFloat(q.get('yaw') ?? '');
+    if (Number.isFinite(yaw)) this.yawDeg = yaw;
     this.buildDom();
     this.buildScene();
   }
@@ -180,15 +204,46 @@ export class ConceptScreen {
   }
 
   private onModelLoaded(root: THREE.Object3D) {
-    // re-harden the exporter's averaged normals so architectural corners shade
-    // as corners again; genuinely curved surfaces stay smooth
-    const source: THREE.BufferGeometry[] = [];
+    // The node transform must be BAKED, not discarded. map-w-river.glb is a
+    // Blender Z-up export whose entire orientation lives in the node quaternion
+    // ([0.5,−0.5,0.5,0.5], i.e. local +Z → world −Y) while everything below
+    // this point works in one flat local space — without this the model loads
+    // on its side. (The previous map.glb happened to ship Y-up geometry, which
+    // is the only reason nothing needed it before.)
+    //
+    // The north yaw rides in the SAME matrix on purpose: baking it means every
+    // bbox, centroid and BuildingPart.axisAngle downstream is already in the
+    // final world frame, so no consumer needs yaw bookkeeping. MapCamera's
+    // focus azimuth in particular reads axisAngle as a world angle.
+    root.updateMatrixWorld(true);
+    const yaw = new THREE.Matrix4().makeRotationY((this.yawDeg * Math.PI) / 180);
+    const bake = new THREE.Matrix4();
+
+    const volumes: THREE.BufferGeometry[] = [];
+    const flats: FlatSurface[] = [];
     const dead: THREE.Mesh[] = [];
+    const size = new THREE.Vector3();
+
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
-      source.push(toCreasedNormals(mesh.geometry, (CREASE_DEG * Math.PI) / 180));
       dead.push(mesh);
+      const geo = mesh.geometry
+        .clone()
+        .applyMatrix4(bake.multiplyMatrices(yaw, mesh.matrixWorld));
+      geo.computeBoundingBox();
+      geo.boundingBox!.getSize(size);
+      // Flatness is decided geometrically but TONED by material name: the GLB
+      // ships one material per surface class, and nothing about a polygon's
+      // shape says whether it is a river or a road.
+      if (size.y < FLAT_RATIO * Math.max(size.x, size.z)) {
+        flats.push({ materialName: materialName(mesh), geometry: geo });
+      } else {
+        // re-harden the exporter's averaged normals so architectural corners
+        // shade as corners again; genuinely curved surfaces stay smooth
+        volumes.push(toCreasedNormals(geo, (CREASE_DEG * Math.PI) / 180));
+        geo.dispose();
+      }
     });
     for (const m of dead) {
       m.geometry.dispose();
@@ -197,28 +252,52 @@ export class ConceptScreen {
       m.removeFromParent();
     }
 
-    // one mesh per building, all under the model root so they inherit the
-    // normalize transform and the per-frame shear unchanged
-    const parts = splitConnectedParts(source);
-    for (const g of source) g.dispose();
+    // Buildings and plan go in SEPARATE groups: edge lines are built by
+    // traversal, and the plan must not get them — a white contour is invisible
+    // on the near-white roads and far too loud on the water.
+    const buildings = new THREE.Group();
+    const parts = splitConnectedParts(volumes);
+    for (const g of volumes) g.dispose();
     for (const part of parts) {
       const mesh = new THREE.Mesh(part.geometry);
       this.picker.add(mesh, part);
-      root.add(mesh);
+      buildings.add(mesh);
     }
-    buildEdgeLines(root, this.picker.edge);
-    console.info(`[kresty] map split into ${parts.length} buildings`);
+    buildEdgeLines(buildings, this.picker.edge);
+    root.add(buildings);
 
-    // normalize: center on origin, base at y=0, span = MODEL_SPAN
-    const box = new THREE.Box3().setFromObject(root);
-    const size = box.getSize(new THREE.Vector3());
+    this.ground = new GroundPlan(flats);
+    root.add(this.ground.group);
+    console.info(
+      `[kresty] map: ${parts.length} buildings, ${flats.length} flat surfaces`
+    );
+
+    // Normalize on the BUILDINGS alone. The plan spans ~3× their footprint (the
+    // Neva slab reaches far off-site), so measuring the whole root would
+    // silently shrink the volumes to a third of the size MAX_SHEAR and
+    // FIT_MARGIN were tuned against. The plan is meant to bleed off every edge.
+    const box = new THREE.Box3().setFromObject(buildings);
+    const bsize = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const scale = MODEL_SPAN / Math.max(size.x, size.z);
+    const scale = MODEL_SPAN / Math.max(bsize.x, bsize.z);
+
+    // The base must land on the SHEAR-INVARIANT plane y = 0 — that plane is the
+    // entire mechanism keeping the plan undistorted (see groundPlan.ts). Take
+    // it from the flat surfaces themselves, not from the buildings' minimum, so
+    // an export whose foundations dip below grade cannot drag the plan off it.
+    const groundY = flats.length
+      ? new THREE.Box3().setFromObject(this.ground.group).min.y
+      : box.min.y;
+
     root.scale.setScalar(scale);
-    root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+    root.position.set(-center.x * scale, -groundY * scale, -center.z * scale);
     this.picker.setModelScale(scale);
 
-    this.mapCam.setModelExtents((size.x * scale) / 2, (size.z * scale) / 2, size.y * scale);
+    this.mapCam.setModelExtents(
+      (bsize.x * scale) / 2,
+      (bsize.z * scale) / 2,
+      (box.max.y - groundY) * scale
+    );
     root.updateMatrix();
     this.mapCam.setModelMatrix(root.matrix);
 
@@ -267,6 +346,7 @@ export class ConceptScreen {
       this.smX += (this.inputX - this.smX) * k;
       this.smY += (this.inputY - this.smY) * k;
       this.mapCam.update(dt);
+      this.ground?.setFocus(this.mapCam.focus);
       this.updateShear();
       this.picker.update(this.scene, this.mapCam.camera);
       this.renderer.render(this.scene, this.mapCam.camera);
@@ -287,6 +367,7 @@ export class ConceptScreen {
   /** render a single frame even when paused (transition priming) */
   primeFrame() {
     this.mapCam.snap();
+    this.ground?.setFocus(this.mapCam.focus);
     this.updateShear();
     this.renderer.render(this.scene, this.mapCam.camera);
   }
@@ -316,4 +397,10 @@ export class ConceptScreen {
     );
     this.shearGroup.matrixWorldNeedsUpdate = true;
   }
+}
+
+/** the GLTF material name — the only per-surface identity this export carries */
+function materialName(mesh: THREE.Mesh): string {
+  const m = mesh.material;
+  return (Array.isArray(m) ? m[0]?.name : m?.name) ?? '';
 }

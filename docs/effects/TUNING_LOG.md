@@ -1407,6 +1407,107 @@ Verified by computed-style probe (`::after` colour/transform/`text-shadow`/strok
 the parent's animated shadow, caught mid-breath) plus 2× DPR hover screenshots on
 «Концепция» and «История».
 
+## Map round 9 (2026-07-31) — the flat site plan, and geographic north
+
+New GLB `map-w-river.glb` (supersedes `map.glb`): same buildings, plus the Neva, the two
+roads and the neighbouring city blocks as zero-thickness surfaces.
+
+### The plan does not need anti-distortion machinery — y = 0 is the shear's fixed point
+
+The requirement was "the schematic must not distort on cursor movement". That is free, and
+it is worth understanding why rather than re-solving it later. The plan-oblique shear is
+
+    x' = x + sx·y      z' = z + sz·y
+
+so at `y = 0` it is the identity, for every `sx`/`sz`. Flat geometry on that plane is
+pointwise invariant under any lean. No second render pass, no CSS underlay, no
+special-casing — the layer just has to LIE on the invariant plane.
+
+The GLB cooperates exactly: all three flat prims sit on one plane (local z ≡ 614.914)
+which, after the node's Z-up→Y-up rotation, is the model's minimum world y — and the
+normalize already puts the minimum at y = 0. `groundY` is nevertheless taken from the flat
+surfaces rather than from `box.min.y`, so an export whose foundations dip below grade
+cannot silently drag the plan off the invariant plane.
+
+**Verified numerically, not by eye:** two plan-only screen regions (shoreline/water, and
+road/blocks) are byte-identical between cursor-centre, one corner and the opposite corner —
+`max` pixel delta **0**. A control region over the west cross moves by max 152 / mean 12.6
+in the same comparison, so the test is not vacuous.
+
+The same geometry becomes a real ground surface in focus mode for free, because focus
+rotates the CAMERA and no plane is invariant under that.
+
+### The node transform must be BAKED, not discarded
+
+The old loader dropped the GLB's node transform and used raw local geometry. That worked
+only because `map.glb` happened to ship Y-up geometry. `map-w-river.glb` is a Blender Z-up
+export whose entire orientation lives in the node quaternion `[0.5,−0.5,0.5,0.5]` (local
++Z → world −Y) — discarding it loads the model on its side. `onModelLoaded` now bakes
+`mesh.matrixWorld` into the geometry. **Do not "simplify" this back out.**
+
+### North: yaw 189°, baked into the same matrix
+
+The model is authored on the site's grid, not the compass: the Neva slab lies wholly on
+local −X and both roads run along local ±Y, which puts SOUTH up at yaw 0. 189° = a half
+turn + 9° for the street grid. Checked two independent ways against the Yandex plan — the
+shoreline bearing (~81°) and the Западный↔Восточный cross axis — which agreed to under a
+degree. Dial: `MODEL_YAW_DEG`, dev override `?yaw=<deg>`.
+
+Baked into the geometry alongside the node transform ON PURPOSE: every downstream bbox,
+centroid and `BuildingPart.axisAngle` then arrives already in the final world frame, so no
+consumer needs yaw bookkeeping. `MapCamera.focusOn` in particular reads `axisAngle` as a
+world angle — a `root.rotation.y` instead would have silently mis-aimed every focus swing.
+
+### Framing must be measured on the BUILDINGS alone
+
+The plan spans ~3× the buildings' footprint (the river slab reaches local x −22178 against
+the site's −4660). Measuring the whole root for `MODEL_SPAN` and `setModelExtents` shrinks
+the volumes to a third of the size `MAX_SHEAR`/`FIT_MARGIN` were tuned against. The plan is
+*meant* to bleed off every edge — a context map that bleeds reads as "the city continues",
+one fully in frame reads as a floating island.
+
+### Look: monochrome, tone only
+
+Designer's call — the glass volumes stay the only colour on screen. Water `#d8e2ec`
+(darkest, reads as a mass), neighbouring blocks `#e6ecf3`, roads `#ffffff` (lighter than
+the field, so they read as ribbons cut through it rather than as more blocks).
+
+Two non-obvious bits in `groundPlan.ts`:
+
+- **`toneMapped: false` is load-bearing.** The renderer runs `NeutralToneMapping`, which
+  rolls `#ffffff` down to a grey, while `MAP_BG` is written as the clear colour and is NOT
+  tone mapped. Without it the plan and the field sit in two different tonal spaces and the
+  ramp above is meaningless. (This also explains why `mapStudio`'s white ground plate reads
+  as grey on screen — it *is* tone mapped. That is the established round-5–7 look; left
+  alone deliberately.)
+- **All three prims are coplanar**, so they z-fight without an explicit order.
+  `polygonOffset` handles it; under the top-down ortho camera the slope term is ~0, so
+  `polygonOffsetUnits` is what actually separates them.
+
+Surface class comes from the GLTF material name (`Color_H08` water, `Color_M04` roads,
+`Color_M02` blocks), not from geometry — nothing about a polygon's shape says whether it is
+a river or a road. Flatness itself is geometric (`FLAT_RATIO`, height vs footprint), so a
+renamed material degrades to a fallback tone instead of turning the river into a building.
+
+### The GLB swap did NOT re-key the buildings
+
+CLAUDE.md warns that replacing the GLB invalidates the `b00…` → `buildingsInfo.ts` mapping.
+Checked rather than assumed, by running the real split pipeline over both files: 19
+components each, identical triangle counts and identical footprint aspect ratios, in the
+same order. **The keys are still valid.** The new export is the same building geometry with
+the flat surfaces added.
+
+### Open on this round
+
+- Tones, and `FOCUS_FADE` (0.55), are a first pass — all in the `TONES` table.
+- The neighbouring blocks are deliberately very quiet and may be too quiet.
+- No edge lines on the plan (a white contour is invisible on the near-white roads and loud
+  on the water). Trying them is a one-line change: pass the ground group to
+  `buildEdgeLines`.
+- The light rig is world-fixed, so the 189° yaw changed which façades the raking key
+  strikes. The rig was tuned at the old orientation and may want a re-check.
+- `map.glb` is now unused but still committed; deleting it is the user's call.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
