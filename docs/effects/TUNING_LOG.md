@@ -1508,6 +1508,99 @@ the flat surfaces added.
   strikes. The rig was tuned at the old orientation and may want a re-check.
 - `map.glb` is now unused but still committed; deleting it is the user's call.
 
+## Map round 9.1 (2026-07-31) — pier flicker, designer palette, captions, river drift
+
+### The pier flicker was z-fighting with the river, and the fix must not move geometry
+
+Reported as "the pier flickers right after I get back from the building view". Diagnosed,
+not guessed: `b18` is a slab 0.0924 tall (buildings here are 1–2.5) with a 7 × 2.53
+footprint, and its base sits EXACTLY on the flat plane.
+
+The fight is not its top face — that clears the water by 0.09, about 750 depth-buffer steps.
+It is the slab's BOTTOM face, which `side: DoubleSide` renders and which is precisely
+coplanar with the river polygon. Two coplanar triangles from different meshes interpolate
+depth from different vertices, so per-pixel float error decides the winner: some pixels take
+the water, some the pier, and the overlap dissolves into moiré. Any sub-pixel camera change
+reshuffles the pattern — which is why it reads as FLICKER while the return spring settles,
+and as a static dither once it stops.
+
+Every building's base is on that plane; only the pier overhangs a plan polygon, which is why
+only the pier showed it.
+
+Fixed with `polygonOffset` (`PLAN_PUSH = 16`) pushing the whole plan behind the volumes.
+**This choice is load-bearing.** Nudging the plan down by an epsilon would also have worked
+and would have quietly forfeited the round-9 guarantee — polygonOffset biases only the depth
+VALUE written, never the vertex, so the plan stays pointwise on y = 0. Re-verified after the
+fix: max pixel delta still **0** across centre → corner → opposite corner.
+
+### Palette: sampled, not eyeballed
+
+Values taken by modal-colour sampling of the designer's snapshot rather than by eye:
+
+| surface | round 9 | round 9.1 |
+|---|---|---|
+| water `Color_H08` | `#d8e2ec` | `#d4eaf5` |
+| blocks `Color_M02` | `#e6ecf3` | `#ccd7dd` |
+| streets `Color_M04` | `#ffffff` | `#f5f5f5` |
+| site ground (`mapStudio` plate) | `#ffffff` | `#dde6e9` |
+
+The round-9 monochrome ramp was too quiet — the blocks vanished into the field and the water
+read as haze. The river is now the one plan surface with real hue.
+
+**`buildGround`'s plate needed `toneMapped: false` too.** It was authored `#ffffff` and read
+as a mid grey on screen, because `NeutralToneMapping` rolls it down while `MAP_BG` — written
+as the clear colour — is untouched. Same trap as the plan surfaces, one file over.
+
+NOTE: the designer's snapshot is at the PRE-rotation orientation (cross-axis tilt 18.7°, and
+the round structure upper-left of the west cross). It is a mockup over an older screenshot,
+so its label POSITIONS are not a north-up reference; only its colours transfer.
+
+### Captions are derived from geometry, never authored
+
+`mapLabels.ts`. DOM nodes projected per frame, faded out with `MapCamera.focus` (a plan
+caption in the isometric view reads as a mistake). Three lessons worth keeping:
+
+- **Anchor on the nearest SURFACE point, not the nearest vertex.** These polygons are coarse
+  — a whole street is 8–11 corners — so the nearest vertex is whichever corner happens to be
+  closest and can sit at the far end of the street. The nearest surface point is the
+  perpendicular foot, i.e. the middle of the stretch facing the site.
+- **Nudge into view by the SHORTER of slide-along-axis and perpendicular-clamp.** Sliding
+  alone looks principled and fails badly: `ул. Комсомола` runs ~5° off horizontal, so
+  clearing a 10px top-inset violation by sliding cost ~113px along the street and walked the
+  caption off the visible road. Taking whichever correction moves less keeps it deliberate.
+- **Stagger parallel features.** River and embankment are parallel and adjacent, so
+  "nearest point to centre" put both captions in one column. `RIVER_ALONG` shifts the river
+  along the shore — what a cartographer does anyway.
+
+The embankment is told from ул. Комсомола by which lies nearer the river, so nothing depends
+on the yaw, the framing or a hand-tuned coordinate.
+
+### River drift
+
+Three travelling sines summed into a ±3.5% lightness modulation, flowing WEST (world −X),
+`WATER_SPEED` 1.4 units/s against a 300-unit model — a drift, not a current. 2GIS register.
+
+- **Injected via `onBeforeCompile` on MeshBasicMaterial, NOT a ShaderMaterial.** A raw
+  ShaderMaterial drops three's `colorspace_fragment` chunk, so the linear colour would be
+  written straight to an sRGB target and the river would come out visibly dark — and it would
+  also lose the `setFocus` tint, which drives the stock `diffuse` uniform.
+- World XZ, not uv: the polygon has no useful uvs, and world space also makes the drift
+  independent of the shear (which is the identity there anyway).
+- Gated on `prefers-reduced-motion`. That gate doubles as a test hook — emulating reduced
+  motion freezes the river, which is how invariance is still provable over the water region.
+- Cost is three `sin` per fragment on a surface already being drawn; the map renders on rAF
+  regardless, so no extra frames and no extra pass.
+
+Measured: water region changes (max 3) over 2.2s while the road region is byte-identical
+(max 0) — the drift is confined to the river.
+
+### Open on this round
+
+- `RIVER_ALONG` (0.5) and `INSET` are framing-dependent; they hold at 1440×800 and were not
+  checked at extreme aspect ratios.
+- Caption type is 16px ALS Hauss Next, `#7e8f9b` streets / `#6f9ab8` river — a first pass.
+- `WATER_AMP` 0.035 is near the floor of visibility; above ~0.05 it reads as banding.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the

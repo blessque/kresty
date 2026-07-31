@@ -11,8 +11,12 @@ import { MAP_BG } from './mapLooks';
  *  than the background — the glass refracts this plate, so its gradient is the
  *  tonal variation you see THROUGH the buildings. A flat plate makes every
  *  volume read as one dead tone. */
-const GROUND_CENTRE = '#ffffff';
-const GROUND_RIM = '#ffffff';
+/* Round 9.1: sampled from the designer's snapshot. This plate IS the site's
+   ground — the GLB carries no surface for the site itself, only for the river,
+   the streets and the neighbouring blocks — so its tone sets what the buildings
+   stand on, and the plan's ramp is calibrated against it. */
+const GROUND_CENTRE = '#dde6e9';
+const GROUND_RIM = '#dde6e9';
 
 // ---------------------------------------------------------------- light rig
 
@@ -179,7 +183,12 @@ export function buildGround(size: number): THREE.Mesh {
 
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(size, size),
-    new THREE.MeshBasicMaterial({ map: tex })
+    // toneMapped:false for the same reason as the plan surfaces (groundPlan.ts):
+    // NeutralToneMapping would darken this plate while MAP_BG, written as the
+    // clear colour, is untouched — putting the ground and the field in two
+    // different tonal spaces. That is exactly why the old #ffffff plate read as
+    // a mid grey on screen.
+    new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
   );
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = -0.5; // just under the model base

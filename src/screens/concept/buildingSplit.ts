@@ -47,9 +47,12 @@ const MIN_TRIS = 20;
 /** weld tolerance as a fraction of the model's bounding-box diagonal */
 const WELD_FRAC = 1e-4;
 
+/** one connected component, before it is promoted to an identified building */
+export type MeshComponent = Omit<BuildingPart, 'id'>;
+
 export function splitConnectedParts(geometries: THREE.BufferGeometry[]): BuildingPart[] {
-  const raw: Omit<BuildingPart, 'id'>[] = [];
-  for (const geo of geometries) raw.push(...componentsOf(geo));
+  const raw: MeshComponent[] = [];
+  for (const geo of geometries) raw.push(...connectedComponents(geo));
 
   // deterministic order → stable ids across reloads
   raw.sort(
@@ -65,7 +68,7 @@ export function splitConnectedParts(geometries: THREE.BufferGeometry[]): Buildin
   const span = Math.max(whole.max.x - whole.min.x, whole.max.z - whole.min.z);
   const minFootprint = span * MIN_FOOTPRINT_FRAC;
 
-  const isBuilding = (p: Omit<BuildingPart, 'id'>) => {
+  const isBuilding = (p: MeshComponent) => {
     const s = p.bbox.getSize(new THREE.Vector3());
     return p.triCount >= MIN_TRIS && Math.max(s.x, s.z) >= minFootprint;
   };
@@ -106,7 +109,13 @@ export function splitConnectedParts(geometries: THREE.BufferGeometry[]): Buildin
 
 // ---------------------------------------------------------------- internals
 
-function componentsOf(geo: THREE.BufferGeometry): Omit<BuildingPart, 'id'>[] {
+/**
+ * Splits one geometry into its connected components. Exported because the flat
+ * site plan needs the same analysis for a different reason: `Color_M04` is a
+ * single primitive holding BOTH streets, and a caption has to be placed on each
+ * one separately (mapLabels.ts).
+ */
+export function connectedComponents(geo: THREE.BufferGeometry): MeshComponent[] {
   const src = geo.index ? geo.toNonIndexed() : geo;
   const pos = src.getAttribute('position');
   const nrm = src.getAttribute('normal');
@@ -155,7 +164,7 @@ function componentsOf(geo: THREE.BufferGeometry): Omit<BuildingPart, 'id'>[] {
     buckets.set(r, list);
   }
 
-  const out: Omit<BuildingPart, 'id'>[] = [];
+  const out: MeshComponent[] = [];
   for (const tris of buckets.values()) {
     const p = new Float32Array(tris.length * 9);
     const n = nrm ? new Float32Array(tris.length * 9) : null;

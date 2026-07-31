@@ -8,6 +8,7 @@ import { buildStudioEnv, buildGround, buildLights } from './mapStudio';
 import { buildEdgeLines } from './edgeLines';
 import { splitConnectedParts } from './buildingSplit';
 import { GroundPlan, FLAT_RATIO, type FlatSurface } from './groundPlan';
+import { MapLabels } from './mapLabels';
 import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
@@ -80,6 +81,7 @@ export class ConceptScreen {
   private model?: THREE.Object3D;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
+  private labels!: MapLabels;
   private drawer!: BuildingDrawer;
 
   private maxShear = MAX_SHEAR;
@@ -140,6 +142,7 @@ export class ConceptScreen {
     add('div', 'concept-title', 'Концепция');
     add('div', 'concept-hint', 'Наведите на здание, чтобы узнать о резидентах');
 
+    this.labels = new MapLabels(this.el);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
     this.picker.onHoverChange = (id) => this.el.classList.toggle('picking', id !== null);
@@ -300,6 +303,9 @@ export class ConceptScreen {
     );
     root.updateMatrix();
     this.mapCam.setModelMatrix(root.matrix);
+    // after root.updateMatrix(): the captions project world-space anchors, so
+    // they need the normalize transform that is only final at this point
+    this.labels.build(flats, root.matrix, Math.max(bsize.x, bsize.z));
 
     this.model = root;
     this.shearGroup.add(root);
@@ -347,8 +353,10 @@ export class ConceptScreen {
       this.smY += (this.inputY - this.smY) * k;
       this.mapCam.update(dt);
       this.ground?.setFocus(this.mapCam.focus);
+      this.ground?.update(now / 1000);
       this.updateShear();
       this.picker.update(this.scene, this.mapCam.camera);
+      this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
       this.renderer.render(this.scene, this.mapCam.camera);
       this.raf = requestAnimationFrame(loop);
     };
@@ -369,6 +377,7 @@ export class ConceptScreen {
     this.mapCam.snap();
     this.ground?.setFocus(this.mapCam.focus);
     this.updateShear();
+    this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
     this.renderer.render(this.scene, this.mapCam.camera);
   }
 

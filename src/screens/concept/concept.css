@@ -164,3 +164,42 @@
   opacity: 0.5;
   font-style: italic;
 }
+
+/* ---------------------------------------------------------------- captions */
+
+/* Positioned by MapLabels.update, which projects a model-space anchor every
+   frame. The layer is inert: captions must never intercept a building click,
+   and they sit UNDER the drawer (z-index 5) so a focused panel covers them. */
+.map-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  /* the whole layer fades with MapCamera.focus, so one opacity write per frame
+     replaces one per caption */
+  transition: none;
+}
+
+.map-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-family: 'ALS Hauss Next', sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  /* transform-origin stays at the element centre; MapLabels writes
+     translate(-50%,-50%) first so the anchor is the caption's middle */
+  will-change: transform;
+}
+
+/* the streets are lettering ON the plan — quiet, the same family of greys as
+   the surfaces they sit on */
+.map-label--street {
+  color: #7e8f9b;
+}
+
+/* the river carries the only hue on the plan, so its caption may too */
+.map-label--river {
+  color: #6f9ab8;
+}
