@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { MAP_BG } from './mapLooks';
-import { buildRippleTexture } from './rippleTexture';
+import {
+  applyWaterMode,
+  isWaterMode,
+  DEFAULT_WATER,
+  type WaterHandle,
+  type WaterMode,
+} from './waterModes';
 
 /**
  * The flat site plan under the buildings — the Neva, the two roads and the
@@ -92,74 +98,17 @@ const PLAN_PUSH = 16;
  *  all the way: the site keeps its ground, it just stops competing. */
 const FOCUS_FADE = 0.55;
 
-// ------------------------------------------------------------------- water
-
-/**
- * Wind chop on the river, drifting WEST (world −X, screen-left at this yaw).
- *
- * ROUND 9.2 REWRITE. The previous version summed three sine waves and was
- * essentially invisible. The cause was FREQUENCY, not amplitude, and the
- * arithmetic is worth keeping: the overview frustum is ~529 world units across
- * 1440 px, so one world unit is ~2.7 px — which made those 26/17/41-unit waves
- * render at 71 px / 46 px / 111 px. Those are not ripples, they are broad
- * gradients, and a ±3.5% swing spread over 70 px is far below perception.
- *
- * Two things changed. Tile sizes are now chosen so the visible chop lands
- * around 8-25 px. And the field is sampled from a baked tiling FBM
- * (rippleTexture.ts) instead of summed sines, because sines interfere into a
- * regular plaid — raise their contrast enough to see them and you see the
- * plaid, not water.
- *
- * Cost: two texture fetches plus ~10 ALU per WATER fragment, on a surface
- * already being drawn, in a loop that already runs on rAF. If it ever needs
- * cutting, the lever is `mapPixelRatio` in shared/performanceTier.ts.
- */
-
-/**
- * Sampling layers. `tile` is how many world units one wrap of the texture
- * covers — at ~2.7 px per world unit, `tile` 190 is a ~517 px wrap, which maps the
- * 512-texel texture at roughly one texel per screen pixel so its full detail is
- * used without aliasing. Two incommensurate scales at different speeds stop the
- * repeat from being legible.
- */
-const RIPPLE_LAYERS = [
-  { tile: 190, speed: 1.0, weight: 0.6 },
-  { tile: 105, speed: 1.7, weight: 0.4 },
-];
-/**
- * Crests are stretched ACROSS the direction of travel by this factor — a wave
- * front runs perpendicular to the way it propagates, which is what gives the
- * reference photo its streaky look instead of a field of blobs.
- */
-const RIPPLE_ANISO = 2.2;
-/** how much the troughs darken. The designer asked for darkening rather than
- *  lightening, and on a light-blue plan that is also what carries contrast. */
-const WATER_DARK = 0.15;
-/** …and a narrow bright ridge on the crests, the one lightening that survives.
- *  This is the reference's structure: dark body, fine bright lines. */
-const WATER_CREST = 0.11;
-/** crest window, applied to the RIDGE field (not the raw noise) — narrow and
- *  high, so the ridges stay as thin lines rather than widening into blotches */
-const CREST_LO = 0.82;
-const CREST_HI = 0.98;
-/** a slow, very large swell that gathers the crests into patches, the way wind
- *  does on real water. One `sin`, and it is what stops the chop reading as an
- *  even mechanical texture. */
-const SWELL_TILE = 260;
-const SWELL_SPEED = 0.6;
-
 export class GroundPlan {
   readonly group = new THREE.Group();
 
   private mats: THREE.MeshBasicMaterial[] = [];
   private base: THREE.Color[] = [];
   private readonly bg = new THREE.Color(MAP_BG);
-  private readonly time = { value: 0 };
-  private animateWater = false;
-  private ripple?: THREE.DataTexture;
+  private water?: WaterHandle;
+  private still = false;
 
-  constructor(surfaces: FlatSurface[]) {
-    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  constructor(surfaces: FlatSurface[], mode: WaterMode = readWaterMode()) {
+    this.still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     for (const s of surfaces) {
       const tone = TONES[s.materialName] ?? FALLBACK;
@@ -188,9 +137,9 @@ export class GroundPlan {
         polygonOffsetUnits: PLAN_PUSH - 4 * tone.depth,
       });
 
-      if (s.materialName === WATER_MATERIAL && !still) {
-        this.applyWaterDrift(mat);
-        this.animateWater = true;
+      if (s.materialName === WATER_MATERIAL) {
+        this.water = applyWaterMode(mode, mat, s.geometry);
+        if (this.water.object) this.group.add(this.water.object);
       }
 
       const mesh = new THREE.Mesh(s.geometry, mat);
@@ -205,81 +154,11 @@ export class GroundPlan {
     }
   }
 
-  /**
-   * Injected into MeshBasicMaterial rather than written as a ShaderMaterial on
-   * purpose. A raw ShaderMaterial would drop three's `colorspace_fragment`
-   * chunk, so the linear colour would be written straight to an sRGB target and
-   * the river would come out visibly too dark — and it would also lose the
-   * `setFocus` tint, which drives the stock `diffuse` uniform.
-   */
-  private applyWaterDrift(mat: THREE.MeshBasicMaterial) {
-    this.ripple = buildRippleTexture();
-
-    // flow basis: F is the drift direction (west), P is across it. Sampling in
-    // this frame is what lets the crests be stretched across the flow.
-    const layers = RIPPLE_LAYERS.map(
-      (l) => `texture2D(uRipple, vec2(
-        (q.x - uTime * ${l.speed.toFixed(3)}) / ${l.tile.toFixed(2)},
-        q.y / ${(l.tile * RIPPLE_ANISO).toFixed(2)}
-      )).r * ${l.weight.toFixed(3)}`
-    ).join('\n      + ');
-
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = this.time;
-      shader.uniforms.uRipple = { value: this.ripple };
-      shader.vertexShader = shader.vertexShader
-        .replace('void main() {', 'varying vec2 vFlow;\nvoid main() {')
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>
-  // WORLD xz, not uv: the river polygon carries no useful uvs, and world space
-  // also makes the drift independent of the shear (which is the identity here).
-  vFlow = (modelMatrix * vec4(transformed, 1.0)).xz;`
-        );
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          'void main() {',
-          'varying vec2 vFlow;\nuniform float uTime;\nuniform sampler2D uRipple;\nvoid main() {'
-        )
-        .replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-  {
-    // flow-aligned coordinates: x runs downstream, y across the stream
-    const vec2 F = vec2(-1.0, 0.0);
-    const vec2 P = vec2(0.0, 1.0);
-    vec2 q = vec2(dot(vFlow, F), dot(vFlow, P));
-
-    float n = ${layers};
-
-    // broad wind patches, so the chop is not uniformly dense everywhere
-    float swell = 0.72 + 0.28 * sin(
-      q.y * ${((Math.PI * 2) / SWELL_TILE).toFixed(6)} + uTime * ${SWELL_SPEED.toFixed(3)}
-    );
-
-    // Broad tonal variation comes from the smooth field: darken the troughs.
-    float trough = 1.0 - ${WATER_DARK.toFixed(4)}
-      * (1.0 - smoothstep(0.30, 0.62, n));
-
-    // Crests come from a RIDGE transform, not from thresholding the smooth
-    // field. Thresholding an FBM high gives wide soft blobs, because the field's
-    // gradient is gentle wherever it is high — that is what made the first two
-    // attempts read as mottling. Folding it about its midpoint puts a sharp
-    // crease along every n = 0.5 contour, and contours are naturally thin,
-    // continuous and line-like: wave crests. One extra abs().
-    float ridge = 1.0 - abs(n * 2.0 - 1.0);
-    float crest = smoothstep(${CREST_LO.toFixed(3)}, ${CREST_HI.toFixed(3)}, ridge) * swell;
-
-    diffuseColor.rgb *= trough;
-    diffuseColor.rgb += crest * ${WATER_CREST.toFixed(4)};
-  }`
-        );
-    };
-  }
-
-  /** advance the river drift; `t` is elapsed seconds */
+  /** advance the river; `t` is elapsed seconds. Frozen under reduced motion —
+   *  which is also the hook that lets the plan's shear invariance be re-proved
+   *  over the water region, since a still river makes the whole plan static. */
   update(t: number) {
-    if (this.animateWater) this.time.value = t;
+    if (!this.still) this.water?.update(t);
   }
 
   /** `t` = MapCamera.focus, 0 = overview, 1 = focused on one building */
@@ -291,7 +170,7 @@ export class GroundPlan {
   }
 
   dispose() {
-    this.ripple?.dispose();
+    this.water?.dispose();
     for (const m of this.mats) m.dispose();
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -299,4 +178,10 @@ export class GroundPlan {
     });
     this.group.removeFromParent();
   }
+}
+
+/** dev override: ?water=chop|lines|glints|gloss */
+function readWaterMode(): WaterMode {
+  const q = new URLSearchParams(location.search).get('water');
+  return isWaterMode(q) ? q : DEFAULT_WATER;
 }

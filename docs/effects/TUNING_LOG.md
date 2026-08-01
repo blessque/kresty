@@ -1694,6 +1694,51 @@ river at delta 0 over 2 s, confirming the gate.
   identical (−6.4° / −5.0°).
 - `WATER_DARK` 0.15 / `WATER_CREST` 0.11 / `RIPPLE_ANISO` 2.2 are the designer's dials.
 
+## Map round 9.3 (2026-08-01) — four water modes to choose from
+
+`?water=chop|lines|glints|gloss`, in `waterModes.ts`. Different LOOK **and** different
+technique each, so the choice is a direction rather than a parameter. None displaces
+geometry: the river polygon stays pointwise on y = 0.
+
+| mode | technique | VRAM | look |
+|---|---|---|---|
+| `chop` | baked tiling FBM, 2 samples | 341 KB | tonal, granular (round 9.2) |
+| `lines` | pure procedural, `fwidth` isolines | 0 | engraved survey drawing |
+| `glints` | `THREE.Points` geometry | 0 | flat water, drifting specks |
+| `gloss` | analytic wave normals + Blinn-Phong | 0 | wet, specular |
+
+### Two mistakes worth not repeating
+
+**A flat normal already scores 0.85 against this key light.** `gloss` first shipped with
+wave slopes of `amp × k ≈ 0.067` (3.8°) and showed no specular at all. With
+H ≈ (−0.43, 0.85, −0.33), a flat normal gives `dot(N,H) = 0.85` and `pow(0.85, 42) ≈ 0.001`
+— the normal has to tilt ~32° toward the light before a highlight exists. Waves are now
+parameterised by **slope**, not amplitude, peaking near 0.9. If a specular ever looks
+"missing", check the flat-normal baseline before touching the exponent.
+
+**Sines interfere into plaid — again.** Four summed waves gave `gloss` a mechanical
+diagonal lattice, exactly the failure that killed the sine version of the chop. Fixed with a
+two-sine DOMAIN WARP on the sample position, which keeps the mode texture-free.
+
+Also: `glints` drifting 9 world units west carried specks clean across the shoreline onto the
+embankment. Points ignore `polygonOffset`, so a stray speck wins the depth test over the road
+and there is no cheap clip. Fixed by short travel (3.2) plus a centroid inset when scattering.
+
+### Invariance: geometry still exact, procedural shading is ±1 LSB
+
+Re-measured per mode, cursor-centre → corner, under reduced motion:
+
+- road and block regions: **max delta 0** in every mode.
+- `glints` (water not shaded): **max delta 0** everywhere.
+- `chop` / `lines` / `gloss`: water region **max delta 1** — a single LSB.
+
+The cause is not geometry moving. `vFlow` is `(modelMatrix * position).xz` and `modelMatrix`
+is `shear × root`, so the x term evaluates as `sx·scale·y_local + sx·ty` — two separately
+rounded products that cancel mathematically but not exactly in float. The lookup shifts by
+~1e-7, which occasionally flips a quantised output by one level. Sub-perceptual, and the
+schematic itself (roads, blocks) is still bit-exact. If it ever needs to be exactly 0, pass
+the root matrix as a uniform and compute `vFlow` from it instead of from `modelMatrix`.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
