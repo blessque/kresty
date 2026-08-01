@@ -128,6 +128,8 @@ const LINE_SPACING = 3.8;
  *  when the focus camera zooms in */
 const LINE_PX = 1.15;
 const LINE_INK = 0.13;
+/** world units per second the contours travel west */
+const LINE_DRIFT = 1.6;
 
 /**
  * «Гравюра» — engraved contour lines, the register of an old survey drawing.
@@ -149,11 +151,14 @@ function injectLines(mat: THREE.MeshBasicMaterial, time: { value: number }) {
     mat,
     time,
     `vec2 q = vec2(-vFlow.x, vFlow.y);
-    // field runs across the river; warping it in q.x makes the contours wave
-    float f = q.y / ${LINE_SPACING.toFixed(3)}
-      + 0.42 * sin(q.x * 0.055 - uTime * 0.55)
-      + 0.20 * sin(q.x * 0.131 + q.y * 0.021 + uTime * 0.9)
-      + 0.10 * sin(q.x * 0.245 - uTime * 1.6);
+    // The field varies along q.x, so the contours run ACROSS the river — square
+    // to the bank — and the -uTime term marches them west (+q.x is west, since
+    // q.x = -world.x). Warping in q.y is what makes each line undulate along
+    // its own length instead of staying a ruled straight edge.
+    float f = (q.x - uTime * ${LINE_DRIFT.toFixed(2)}) / ${LINE_SPACING.toFixed(3)}
+      + 0.42 * sin(q.y * 0.055 - uTime * 0.55)
+      + 0.20 * sin(q.y * 0.131 + q.x * 0.021 + uTime * 0.9)
+      + 0.10 * sin(q.y * 0.245 - uTime * 1.6);
     float dist = abs(fract(f - 0.5) - 0.5);
     float line = 1.0 - smoothstep(0.0, fwidth(f) * ${LINE_PX.toFixed(2)}, dist);
     diffuseColor.rgb -= line * ${LINE_INK};`
@@ -182,21 +187,33 @@ function injectLines(mat: THREE.MeshBasicMaterial, time: { value: number }) {
  * 0.067 (3.8°) could never fire; these peak near 0.9, which crosses it.
  */
 const GLOSS_WAVES = [
-  { dir: [-1.0, 0.12], len: 15, slope: 0.34, speed: 1.0 },
-  { dir: [-1.0, -0.31], len: 9, slope: 0.26, speed: 1.5 },
-  { dir: [-0.72, 0.69], len: 23, slope: 0.22, speed: 0.7 },
-  { dir: [-0.9, 0.44], len: 5.5, slope: 0.12, speed: 2.2 },
+  { dir: [-1.0, 0.12], len: 7.5, slope: 0.34, speed: 1.0 },
+  { dir: [-1.0, -0.31], len: 4.5, slope: 0.26, speed: 1.5 },
+  { dir: [-0.72, 0.69], len: 11.5, slope: 0.22, speed: 0.7 },
+  { dir: [-0.9, 0.44], len: 2.75, slope: 0.12, speed: 2.2 },
 ];
 const GLOSS_SHINE = 26;
-const GLOSS_SPEC = 0.55;
-const GLOSS_SHADE = 0.14;
+/** how hard the sharp crest highlight pulls back up toward the base tone */
+const GLOSS_SPEC = 0.9;
+/** and the broad shading from the wave slopes, which fills the mid-tones */
+const GLOSS_BROAD = 0.85;
+/**
+ * The darkest the surface goes, as a per-channel multiplier on the base water
+ * colour. Red is pulled down hardest so the shadow side shifts BLUER rather
+ * than merely greyer. Derived from the base rather than hardcoded, so
+ * `setFocus`'s fade toward the field still works — a fixed dark colour would
+ * stay dark while everything around it faded out.
+ */
+const GLOSS_DARK: [number, number, number] = [0.68, 0.8, 0.93];
 
 function injectGloss(mat: THREE.MeshBasicMaterial, time: { value: number }) {
   const slope = GLOSS_WAVES.map((w) => {
     const n = Math.hypot(w.dir[0], w.dir[1]);
     const d = `vec2(${(w.dir[0] / n).toFixed(4)}, ${(w.dir[1] / n).toFixed(4)})`;
     const k = ((Math.PI * 2) / w.len).toFixed(5);
-    return `${d} * (${w.slope.toFixed(3)} * cos(${k} * dot(q, ${d}) - uTime * ${w.speed.toFixed(3)}))`;
+    // `+ uTime` (not `-`) is what sends the crests WEST, matching the drift
+    // direction every other mode uses
+    return `${d} * (${w.slope.toFixed(3)} * cos(${k} * dot(q, ${d}) + uTime * ${w.speed.toFixed(3)}))`;
   }).join('\n      + ');
   inject(
     mat,
@@ -207,8 +224,8 @@ function injectGloss(mat: THREE.MeshBasicMaterial, time: { value: number }) {
     // as woven fabric, not water. Displacing the sample position by two slow,
     // incommensurate sines destroys the repeat while keeping the whole mode
     // texture-free.
-    q += vec2(sin(q.y * 0.031 + uTime * 0.21),
-              sin(q.x * 0.027 - uTime * 0.17)) * 3.4;
+    q += vec2(sin(q.y * 0.062 + uTime * 0.21),
+              sin(q.x * 0.054 - uTime * 0.17)) * 1.7;
     // d(height)/d(q): the summed waves' analytic gradient
     vec2 slope = ${slope};
     vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
@@ -216,10 +233,23 @@ function injectGloss(mat: THREE.MeshBasicMaterial, time: { value: number }) {
     vec3 L = normalize(vec3(-300.0, 170.0, -230.0));
     vec3 H = normalize(L + vec3(0.0, 1.0, 0.0));
     float spec = pow(max(dot(N, H), 0.0), ${GLOSS_SHINE.toFixed(1)});
-    // gentle diffuse tilt so the troughs still darken
-    float tilt = 1.0 - ${GLOSS_SHADE} * (1.0 - max(dot(N, L), 0.0));
-    diffuseColor.rgb *= tilt;
-    diffuseColor.rgb += spec * ${GLOSS_SPEC};`
+    // Broad tonal shading, driven by how far the surface tilts TOWARD the
+    // light in the horizontal plane. Deliberately not smoothstep(dot(N, L)):
+    // N is dominated by its +Y component, so dot(N, L) sits in a narrow band
+    // near 0.6-0.8 and any smoothstep over it saturates at 1 across most of the
+    // surface — which left the river flat and stuck ~40% short of the dark end.
+    // dot(slope, L.xz) has a known range (|slope| <= ~0.9), so the ramp below
+    // genuinely spans 0..1.
+    float facing = -dot(slope, vec2(L.x, L.z));
+    float broad = smoothstep(-0.3, 0.3, facing);
+
+    // The surface only ever DARKENS: full base colour is the ceiling, reached
+    // on the crests, and everything else falls toward a bluer shadow. Adding
+    // light instead (the previous approach) pushed the river brighter than the
+    // flat #d4eaf5 it is supposed to be.
+    float lit = clamp(broad * ${GLOSS_BROAD} + spec * ${GLOSS_SPEC}, 0.0, 1.0);
+    vec3 dark = diffuseColor.rgb * vec3(${GLOSS_DARK[0]}, ${GLOSS_DARK[1]}, ${GLOSS_DARK[2]});
+    diffuseColor.rgb = mix(dark, diffuseColor.rgb, lit);`
   );
 }
 

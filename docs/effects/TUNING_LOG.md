@@ -1739,6 +1739,48 @@ rounded products that cancel mathematically but not exactly in float. The lookup
 schematic itself (roads, blocks) is still bit-exact. If it ever needs to be exactly 0, pass
 the root matrix as a uniform and compute `vFlow` from it instead of from `modelMatrix`.
 
+## Map round 9.4 (2026-08-01) — gloss reversed/finer/darker, lines turned 90°
+
+Designer pass on two of the four modes.
+
+- **`gloss` crests now travel WEST** (`+ uTime` in the phase, not `-`), matching every other
+  mode. **Scale halved** (wavelengths 15/9/23/5.5 → 7.5/4.5/11.5/2.75, warp frequencies
+  doubled and its amplitude halved to match).
+- **`gloss` only ever DARKENS now.** Full base colour is the ceiling, reached on the crests;
+  everything else falls toward a bluer shadow via a per-channel multiplier
+  `[0.68, 0.80, 0.93]` on the base — derived from the base, never hardcoded, so `setFocus`'s
+  fade toward the field still works. The previous version *added* light and pushed the river
+  brighter than the flat `#d4eaf5` it is meant to be.
+- **`lines` turned 90°.** The field now varies along `q.x`, so contours run ACROSS the river
+  square to the bank, and a `-uTime * LINE_DRIFT` term marches them west. Warping moved to
+  `q.y` so each line still undulates along its own length.
+
+### Don't shade off `dot(N, L)` on a near-flat surface
+
+`gloss` went flat when the darkening was first wired up, and the reason generalises. These
+normals are dominated by their +Y component, so `dot(N, L)` sits in a narrow band around
+0.6-0.8 — any `smoothstep` over it saturates at 1 across most of the surface. Measured: the
+darkest pixel got only ~40% of the way to the dark end and the river looked untouched.
+
+Shading is now driven by `dot(slope, L.xz)`, whose range is bounded and known (`|slope| ≲
+0.9`), so the ramp genuinely spans 0..1. **When a shading term looks inert on a nearly flat
+surface, check the RANGE of the quantity you are ramping before touching the ramp.**
+
+### Verified
+
+Travel direction measured by cross-correlating two frames 500 ms apart: `lines` −3 px,
+`gloss` −2 px, `chop` −2 px — all **west**. Tonal range on a water-only crop: `gloss`
+max **212,234,245** (exactly the base `#d4eaf5`) and min **178,212,237** — nothing brighter
+than base, darkest a clear blue.
+
+**A periodic pattern aliases in cross-correlation.** The first direction measurement reported
+`lines` moving EAST at +15 px, which on a ~10 px line period is the same as −5. Constrain the
+search window to under half the period, and crop to water only — a crop that catches the
+static road swamps the correlation and reports "still".
+
+Invariance unchanged: road and block **0** in all four modes, water **0** for `chop`/`glints`
+and **1** (single LSB, see round 9.3) for `lines`/`gloss`; control 140.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
