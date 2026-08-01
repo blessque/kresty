@@ -1601,6 +1601,99 @@ Measured: water region changes (max 3) over 2.2s while the road region is byte-i
 - Caption type is 16px ALS Hauss Next, `#7e8f9b` streets / `#6f9ab8` river — a first pass.
 - `WATER_AMP` 0.035 is near the floor of visibility; above ~0.05 it reads as banding.
 
+## Map round 9.2 (2026-08-01) — captions to the Figma spec, water that reads
+
+Source of truth: Figma `xtd3isfSuz1gnWxTClA2Vs` node `477:440`.
+
+### The caption rotation was MIRRORED — a real bug, not a taste difference
+
+`footprintAxis()` (buildingSplit.ts) returns `0.5·atan2(2·sxz, sxx − szz)`, whose dominant
+eigenvector is `(cos θ, sin θ)` in **(x, z)**. Round 9.1's `axisVector()` built
+`(sin(θ+π/2), 0, cos(θ+π/2))` — which expands to `(cos θ, 0, −sin θ)`. The flipped z
+mirrored every caption's on-screen tilt.
+
+It hid well because the mirrored angle is *plausible*: the cross blocks and the streets lean
+~9° either side of horizontal, so the captions looked like they were following something.
+Caught only by comparing against Figma (−8.6° / −11.7°) versus ours (+6.4° / +5.0°).
+
+**`MapCamera.focusOn` reads the same `axisAngle` under a different (azimuth-from-+Z)
+convention and was deliberately NOT changed.** It picks among four diagonals 90° apart by
+nearest-to-current, so a mirrored axis still lands on a valid isometric pose, and round 8's
+focus framing is signed off. Left as-is on purpose; do not "fix" it without a new verdict.
+
+The same `axisVector` drives the along-feature offsets, so `RIVER_ALONG` / `STREET_ALONG`
+were re-signed to negative to match Figma's left-of-centre placement.
+
+### Type: ALS Chromius 22px, and the weight trap again
+
+Figma spec, identical for all three: **ALS Chromius Regular, 22px / 1.4**, streets `#a8bac1`,
+river `#5992ab`. Round 9.1 had guessed Hauss Next 16px in different greys.
+
+`font-weight: 120`, not 400 — Chromius's `wght` axis is min 50 / default 120 / max 232, so
+400 clamps to Black. Third time this trap has come up (round 8, round 9, here). No
+`font-variation-settings`.
+
+**«р. Нева» is horizontal, the streets are not.** Its Figma bounding box is exactly one line
+box tall, so it is unrotated — which is also the cartographic convention: water bodies are
+labelled level, thoroughfares along their length. Driven by a `rotates` flag per caption.
+
+NOTE: the designer's earlier snapshot (round 9.1) was at the PRE-rotation orientation, so its
+label positions were not usable. This Figma node is north-up and is.
+
+### Water: the defect was FREQUENCY, not amplitude
+
+Reported as "you need perfect sight to notice them". The arithmetic is worth keeping: the
+overview frustum is ~529 world units across 1440 px, so one world unit ≈ 2.7 px — which
+rendered round 9.1's 26/17/41-unit waves at **71 px / 46 px / 111 px**. Those are broad
+gradients, not ripples, and a ±3.5% swing spread over 70 px is far below perception. Raising
+the amplitude would never have fixed it.
+
+Rebuilt as a baked tiling FBM (`rippleTexture.ts`) sampled twice, not summed sines.
+
+- **Sines cannot make water.** They interfere into a regular plaid; raise the contrast enough
+  to see them and you see the plaid. Value noise has no preferred direction and no beat.
+- **A baked texture beats in-shader noise on cost**: two texture fetches per water fragment
+  versus ~12 hash evaluations. 256 KB, built once, fixed-seed LCG so the bytes are identical
+  every reload and a screenshot diff stays meaningful.
+- **Tiling** comes from taking each octave's lattice indices modulo its grid size.
+- **`BASE_GRID` is the dial that decides the look**, because an FBM's dominant feature is
+  `tile / BASE_GRID` and the coarsest octave carries the most amplitude. 4 → ~31 px, read as
+  soft curtains. 12 → ~21 px, read as camouflage. **32 → ~16 px with octaves at 8/4/2 px
+  under it**, which reads as chop. `tile` 190 maps the 512-texel texture at ~1 texel per
+  screen pixel, so its full detail is used without aliasing.
+- **Crests come from a RIDGE transform, `1 − abs(2n − 1)`, not from thresholding the smooth
+  field.** Thresholding an FBM high gives wide soft blobs, because the gradient is gentle
+  wherever the field is high — that is exactly what made the first two attempts mottled.
+  Folding about the midpoint puts a sharp crease along every `n = 0.5` contour, and contours
+  are naturally thin and continuous. One extra `abs`.
+- **Darken troughs, add a thin bright crest** — the designer asked for darkening rather than
+  lightening, and it is also the reference photo's structure (dark body, fine bright lines).
+- **Mipmaps are mandatory**, not polish: the finest octave lands near one screen pixel, so
+  without mip filtering the ripple crawls, worst at focus mode's grazing angles. `size` must
+  stay a power of two.
+- Still `onBeforeCompile` on MeshBasicMaterial, still world-XZ sampling, still gated on
+  `prefers-reduced-motion` — all three for the round 9.1 reasons.
+
+Measured: water-crop contrast σ **0 → 8.2**, range 31; river moves max **26** over 2.2 s
+(was 3) while the road stays byte-identical.
+
+### Round-9 invariance re-proved
+
+water / road / block regions all **max pixel delta 0** across centre → corner → opposite
+corner (under `reducedMotion: reduce`, which freezes the river and makes the plan fully
+static); control region over the west cross moves max 140–158. Reduced motion also holds the
+river at delta 0 over 2 s, confirming the gate.
+
+### Open on this round
+
+- 22px Chromius is a big step up from 16px, and Figma's frame is 1440×1169 against our
+  1440×800 map viewport, so the captions occupy proportionally more of our frame than the
+  design's. Awaiting a verdict.
+- Figma rotates the two streets by different amounts (−8.6° vs −11.7°), suggesting they were
+  angled by eye; ours derive one angle per street from geometry, so they land close but not
+  identical (−6.4° / −5.0°).
+- `WATER_DARK` 0.15 / `WATER_CREST` 0.11 / `RIPPLE_ANISO` 2.2 are the designer's dials.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the

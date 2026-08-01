@@ -53,7 +53,15 @@ const RIVER_OFFSET = 0.09;
  * direction for both. Separating them along the shore is what a cartographer
  * would do anyway — labels for parallel features get staggered, never stacked.
  */
-const RIVER_ALONG = 0.5;
+const RIVER_ALONG = -0.5;
+
+/**
+ * Street captions are nudged along their own street by this fraction of the
+ * site span. The geometric anchor is the perpendicular foot — cartographically
+ * correct, but Figma (477:440) sits both captions left of it, and the design is
+ * the spec.
+ */
+const STREET_ALONG = -0.22;
 
 /**
  * Captions keep clear of the screen edges AND of the fixed UI: the logo and the
@@ -71,6 +79,11 @@ interface Label {
   /** a second model-space point along the feature, so the caption can be
    *  rotated to run WITH the street instead of across it */
   along: THREE.Vector3;
+  /** Streets are lettered along their own run; the river is NOT. Figma sets
+   *  «р. Нева» horizontal (its bounding box is exactly one line box tall), which
+   *  is also the cartographic convention — a water body is labelled level, a
+   *  thoroughfare is labelled along its length. */
+  rotates: boolean;
 }
 
 export class MapLabels {
@@ -121,11 +134,14 @@ export class MapLabels {
       .normalize()
       .multiplyScalar(siteSpan * RIVER_OFFSET);
     const along = axisVector(water.axisAngle).multiplyScalar(siteSpan * RIVER_ALONG);
-    this.add(TEXT.river, bank.add(out).add(along), water.axisAngle, modelMatrix, 'river');
+    this.add(TEXT.river, bank.add(out).add(along), water.axisAngle, modelMatrix, 'river', false);
 
     const names = [TEXT.embankment, TEXT.inland];
     streets.forEach((s, i) => {
-      this.add(names[i], nearestSurfacePoint(s, centre), s.axisAngle, modelMatrix, 'street');
+      const at = nearestSurfacePoint(s, centre).add(
+        axisVector(s.axisAngle).multiplyScalar(siteSpan * STREET_ALONG)
+      );
+      this.add(names[i], at, s.axisAngle, modelMatrix, 'street', true);
     });
   }
 
@@ -134,7 +150,8 @@ export class MapLabels {
     at: THREE.Vector3,
     axis: number,
     modelMatrix: THREE.Matrix4,
-    kind: string
+    kind: string,
+    rotates: boolean
   ) {
     const el = document.createElement('div');
     el.className = `map-label map-label--${kind}`;
@@ -149,6 +166,7 @@ export class MapLabels {
       el,
       at: at.clone().applyMatrix4(modelMatrix),
       along: along.applyMatrix4(modelMatrix),
+      rotates,
     });
   }
 
@@ -163,16 +181,19 @@ export class MapLabels {
 
     for (const l of this.labels) {
       this.a.copy(l.at).project(camera);
-      this.b.copy(l.along).project(camera);
       const x = (this.a.x * 0.5 + 0.5) * w;
       const y = (-this.a.y * 0.5 + 0.5) * h;
-      const bx = (this.b.x * 0.5 + 0.5) * w;
-      const by = (-this.b.y * 0.5 + 0.5) * h;
 
-      // keep the caption reading left-to-right whichever way the axis points
-      let ang = Math.atan2(by - y, bx - x);
-      if (ang > Math.PI / 2) ang -= Math.PI;
-      if (ang < -Math.PI / 2) ang += Math.PI;
+      let ang = 0;
+      if (l.rotates) {
+        this.b.copy(l.along).project(camera);
+        const bx = (this.b.x * 0.5 + 0.5) * w;
+        const by = (-this.b.y * 0.5 + 0.5) * h;
+        // keep the caption reading left-to-right whichever way the axis points
+        ang = Math.atan2(by - y, bx - x);
+        if (ang > Math.PI / 2) ang -= Math.PI;
+        if (ang < -Math.PI / 2) ang += Math.PI;
+      }
 
       const p = nudgeIntoView(x, y, Math.cos(ang), Math.sin(ang), w, h);
       l.el.style.transform = `translate(-50%, -50%) translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) rotate(${ang.toFixed(4)}rad)`;
@@ -196,9 +217,25 @@ function components(surfaces: FlatSurface[], material: string): MeshComponent[] 
   return out;
 }
 
-/** unit vector along a footprint's principal axis, in the XZ plane */
+/**
+ * Unit vector along a footprint's principal axis, in the XZ plane.
+ *
+ * `footprintAxis` (buildingSplit.ts) returns `0.5·atan2(2·sxz, sxx − szz)`,
+ * whose dominant eigenvector is `(cos θ, sin θ)` in **(x, z)**. Round 9.1 built
+ * `(sin(θ+π/2), 0, cos(θ+π/2))` here, which expands to `(cos θ, 0, −sin θ)` —
+ * the flipped z MIRRORED every caption's on-screen tilt, so the streets leaned
+ * down-to-the-right when the real streets lean up-to-the-right. It was not
+ * obvious because the mirrored angle is still plausible: the cross blocks
+ * genuinely do lean the other way, so the captions looked like they were
+ * following *something*.
+ *
+ * NOTE: `MapCamera.focusOn` reads the same `axisAngle` under a different
+ * (azimuth-from-+Z) convention. It is deliberately NOT changed — it chooses
+ * among four diagonals 90° apart by nearest-to-current, so a mirrored axis still
+ * lands on a valid isometric pose, and round 8's focus framing is signed off.
+ */
 function axisVector(axis: number): THREE.Vector3 {
-  return new THREE.Vector3(Math.sin(axis + Math.PI / 2), 0, Math.cos(axis + Math.PI / 2));
+  return new THREE.Vector3(Math.cos(axis), 0, Math.sin(axis));
 }
 
 function biggest(list: MeshComponent[]): MeshComponent | undefined {

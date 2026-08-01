@@ -185,21 +185,29 @@
   left: 0;
   top: 0;
   white-space: nowrap;
-  font-family: 'ALS Hauss Next', sans-serif;
-  font-size: 16px;
-  letter-spacing: 0.01em;
+  /* Figma 477:440 — ALS Chromius Regular 22/1.4.
+     CAREFUL: Chromius's `wght` axis is min 50 / default 120 / max 232, so
+     `font-weight: 400` would clamp to 232 = Black. Regular is 120. And never
+     add `font-variation-settings` here — it overrides `font-weight` and
+     reintroduces exactly the bug round 8 fixed. See styles/fonts.css. */
+  font-family: 'ALS Chromius', sans-serif;
+  font-weight: 120;
+  font-size: 22px;
+  line-height: 1.4;
   /* transform-origin stays at the element centre; MapLabels writes
      translate(-50%,-50%) first so the anchor is the caption's middle */
   will-change: transform;
 }
 
 /* the streets are lettering ON the plan — quiet, the same family of greys as
-   the surfaces they sit on */
+   the surfaces they sit on (Figma #a8bac1) */
 .map-label--street {
-  color: #7e8f9b;
+  color: #a8bac1;
 }
 
-/* the river carries the only hue on the plan, so its caption may too */
+/* the river carries the only hue on the plan, so its caption does too, and it
+   sits a good deal darker than the streets — it has more tone to read against
+   (Figma #5992ab) */
 .map-label--river {
-  color: #6f9ab8;
+  color: #5992ab;
 }
