@@ -9,8 +9,8 @@ import { buildRippleTexture } from './rippleTexture';
  * river polygon stays pointwise on y = 0, which is what keeps the plan
  * undistorted under the plan-oblique shear (see groundPlan.ts).
  *
- *   chop   — baked tiling FBM sampled twice, tonal. Round 9.2's current look.
- *   lines  — engraved contour lines. Pure procedural, NO texture at all.
+ *   lines  — engraved contour lines. Pure procedural, NO texture at all. DEFAULT.
+ *   chop   — baked tiling FBM sampled twice, tonal. Round 9.2's look.
  *   glints — drifting specks of light. Geometry (THREE.Points), not a surface
  *            shader; the water itself stays a flat fill.
  *   gloss  — analytic wave normals lit by a real specular highlight. No
@@ -19,7 +19,12 @@ import { buildRippleTexture } from './rippleTexture';
 
 export type WaterMode = 'chop' | 'lines' | 'glints' | 'gloss';
 export const WATER_MODES: WaterMode[] = ['chop', 'lines', 'glints', 'gloss'];
-export const DEFAULT_WATER: WaterMode = 'chop';
+/**
+ * «Гравюра» is the shipped look (round 9.5, designer's pick): engraved contour
+ * lines, the most native of the four to a map whose whole language is already
+ * edge-forward. The other three stay reachable by explicit `?water=` link.
+ */
+export const DEFAULT_WATER: WaterMode = 'lines';
 
 export interface WaterHandle {
   /** extra scene content the mode needs (only `glints` uses this) */

@@ -1781,6 +1781,18 @@ static road swamps the correlation and reports "still".
 Invariance unchanged: road and block **0** in all four modes, water **0** for `chop`/`glints`
 and **1** (single LSB, see round 9.3) for `lines`/`gloss`; control 140.
 
+## Map round 9.5 (2026-08-01) — «Гравюра» is the shipped water
+
+`DEFAULT_WATER = 'lines'`. The designer's pick out of the four, and the one that argues for
+itself: the map's whole language is already edge-forward — «Грани» IS fat white edge lines —
+so water drawn as LINEWORK is the most native of the four rather than a texture laid on top
+of a drawing. It is also the cheapest: zero VRAM, ~4 `sin` and one `fwidth` per fragment, no
+texture bake at load.
+
+`chop`, `glints` and `gloss` stay reachable by explicit `?water=` link. `chop`'s
+`rippleTexture.ts` is now only built when that mode is asked for, so the default path does
+no texture bake at all.
+
 ## Open issues
 
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
