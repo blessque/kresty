@@ -1793,8 +1793,533 @@ texture bake at load.
 `rippleTexture.ts` is now only built when that mode is asked for, so the default path does
 no texture bake at all.
 
+## Round 10 (2026-08-03) — corner furniture pinned to the viewport; captions solved, not nudged
+
+Two layout complaints from the designer, with the same shape underneath: a position that
+mixed units, so it could not hold at more than one window size.
+
+### Main screen — the corners drifted toward the centre
+
+`.logo`, `.news` and `.corner-mark` were children of `.stage`, a fixed 1440×800 box under
+a contain-fit `scale(s)` (`layout.ts: stageScale = min(w/1440, h/800)`). A child at
+`left: 32px` therefore lands at `(innerWidth − 1440·s)/2 + 32·s` from the window edge —
+BOTH terms grow with the window. At 2560×1080 that is 308 + 43 = 351px instead of 32.
+
+Fixed by moving the three into a new `.corners` layer (`position: absolute; inset: 0;
+z-index: 5`) on the screen root, outside the scaled stage, at a flat **32 left/right,
+40 top/bottom**. The layer is `pointer-events: none` with `.news` opting back in, so it
+cannot eat nav hover — verified with `elementFromPoint`. Figma's odd decimals on
+`.corner-mark` (32.49 / 33.7) were dropped in favour of the uniform rule; the three now
+agree with each other at the edge.
+
+Only geometry that must stay locked to the light centre (nav links, slider headline)
+belongs in the stage. That is the rule to apply to anything added later.
+
+### Map — captions were a model-space anchor plus two corrections
+
+Round 9.2 placed each caption at its feature's perpendicular foot (correct), then sailed
+it away again with hand-tuned fractions of the site span (`RIVER_OFFSET`, `RIVER_ALONG
+−0.5`, `STREET_ALONG −0.22`) with **nothing re-testing that the result was still inside
+the polygon**. The Neva bends across the frame, so sliding half a site-span along an axis
+measured back at the anchor walked «р. Нева» onto the embankment. A second correction,
+`nudgeIntoView`, then clamped captions against a fixed pixel `INSET` box.
+
+**The diagnostic is the units.** `RIVER_ALONG` is a fraction of the site span (model
+units — invariant); `INSET` is CSS pixels (viewport units — not). Any position summing
+model-space and screen-space terms is framing-dependent by construction, and no amount of
+tuning the constants fixes it. Get the screen-space term out of the position.
+
+**The enabling property:** the plan-oblique shear is `x' = x + sx·y`, the IDENTITY at
+y = 0, and the overview camera is orthographic — so for flat ground geometry the whole
+model→screen chain is a single **affine** map, and affine maps preserve interiority. A
+point chosen inside a polygon in model space projects inside that polygon's projection at
+every shear, zoom and window size. Placement is therefore a **one-off search**, not a
+per-frame correction.
+
+`mapLabels.ts` rewritten around that: `solve()` grid-searches the feature's projected
+polygon for an interior point (inside-any-triangle + ≥13px clearance from the **boundary**
+edges — edges used by exactly one triangle, so tessellation diagonals don't report the
+middle of a wide river as cramped), converts the winner back to a world point through the
+inverted 2×2 affine part, and `update()` is reduced to a projection plus a transform
+write. There is no pixel clamp anywhere in the per-frame path. Re-solved on viewport
+change only; the shear cannot invalidate an anchor.
+
+Chosen with the designer: river **bottom-left of the visible water**, streets **left of
+centre** (`STREET_BIAS 0.3`, Figma 477:440), both constrained to stay on their feature.
+
+Three traps, all found by measurement rather than reasoning:
+
+- **A preference and a quality cannot share one linear score.** First pass scored the
+  river as `−bias·100 + clearance`; the wide right-hand stretch of the Neva scores ~300px
+  of clearance and simply outbid a bias capped at 200, sending the caption bottom-RIGHT.
+  Scaling the preference past any reachable clearance (`·1e6`) makes the ordering
+  lexicographic, which is what "prefer this corner, break ties by room" actually means.
+- **Constrain the label's BOX, not its anchor.** A legal centre still hangs half the text
+  off-screen. `halfExtents()` measures the live element (`white-space: nowrap` makes
+  `offsetWidth` the true text width) and uses the ROTATED AABB for street captions.
+- **Reserved bands wall off the corners you want.** A 96px full-width bottom band existed
+  to dodge one *centred* hint, and it excluded the bottom-left water — the exact spot the
+  river caption was asked to occupy — pushing it onto the pier instead. Replaced by
+  measured rects for `.concept-home` / `.concept-title` / `.concept-hint` plus a uniform
+  28px edge margin. An element obstructs the box it occupies, nothing more.
+
+Verified: captions **byte-identical** across four cursor positions (28.11, 836.20 at all
+four) while a control screenshot of the buildings differs — the lean was engaging, so the
+invariance is real and not a vacuous test. Correct placement confirmed visually at
+1600×900 and 2560×1080. `tsc` clean, build clean, smoke test clean.
+
+## Round 10.1 (2026-08-03) — one typeface, and the map's read-out moved to a left rail
+
+### ALS Hauss Next is gone
+
+Four `@font-face` blocks, the global `body` fallback, three `'ALS Chromius', 'ALS Hauss
+Next'` stacks and the four woff2 files — all removed. Chromius is the only typeface on the
+site. Verified by walking every element with text on the main screen and collecting
+`getComputedStyle().fontFamily`: two values, both Chromius.
+
+**The trap this creates, and it is a live one.** Chromius's `wght` axis is 50–232, so the
+CSS *initial* value `font-weight: normal` = 400 **clamps to 232 = Black**. While Chromius
+was only ever set per-component, every one of those rules also set a weight, so the axis
+bug (round 8) stayed fixed. Promoting Chromius to the GLOBAL family exposes every element
+that never states a weight. `global.css` therefore pins `font-weight: 120` alongside the
+family — that line is load-bearing, not decoration, and removing it renders the whole site
+Black.
+
+### «Концепция» title killed; the hint became a left rail
+
+The top-right title is gone. The standing hint left the bottom centre — where it read as a
+caption for the whole screen — and became `.map-info`, a column at `left: 32px` under the
+logo, in the site's main text style (Chromius 22/1.35 at wght 120, `#123a5c`). It is the
+same left column the main screen puts its news block in.
+
+The rail is now **two things in one slot**: the standing instruction, and the hover
+read-out (kind · name · brief · the branded residents' marks · «Нажмите, чтобы открыть
+карточку»). It deliberately does NOT list residents — that is the drawer's job, and
+duplicating it there would make opening the drawer pointless. The hover is a glance.
+
+Two non-obvious consequences:
+
+- **`.map-info` is a caption obstacle.** It replaced `.concept-title` / `.concept-hint` in
+  `mapLabels.ts`'s `OBSTACLES`, and it sits exactly where «ул. Комсомола» wants to be —
+  the caption now solves to the right of it.
+- **It needs a `min-height`.** MapLabels re-solves only on resize, so an element whose
+  height changed between hover states would reserve the wrong area and let the caption
+  drift under the text. `min-height: 224px` reserves the taller state in both. It also
+  stops the rail reflowing under the cursor as you sweep across buildings — worth having
+  on its own.
+
+### Drawer: main text style, resident marks, outbound links
+
+Body copy moved to 22/1.35, the drawer widened 380 → **420px** (at 380 the longer resident
+names wrapped to three lines). The focus camera reads `drawer.width` at runtime, so the
+framing followed on its own — no constant to mirror. `.bld-kind` dropped its 13px
+uppercase letterspacing, which was generic-web and fought everything around it, for
+Chromius at 18 muted.
+
+Branded residents (café, bar, shop, hotel) now carry a mark and an outbound link;
+plain programme entries stay a name and a floor, which is what makes the branded rows
+read as tenants rather than line items. `residentLogos.ts` holds eight **invented**
+wordmarks — drawn as 24×24 `currentColor` strokes rather than sourced, because a pitch
+that ships real trademarks for unsigned tenants is a liability and `currentColor` marks
+restyle with the palette for free. All URLs are invented and do not resolve;
+`target="_blank"` so a click cannot tear down the WebGL scene mid-pitch.
+
+**Latent bug found and fixed:** `infoFor`'s fallback stub was missing the new `brief`
+field and `tsc` did NOT catch it — `BUILDINGS_INFO[id]` types as a non-nullable
+`BuildingInfo` without `noUncheckedIndexedAccess`, so `??` never checks the right-hand
+literal against the interface. An unmapped part would have rendered the string
+"undefined". Any future required field on `BuildingInfo` has the same hole.
+
+## Round 10.2 (2026-08-03) — the real programme: two Cosmos hotels, zoning-based mapping
+
+The designer supplied the client's own zoning drawing (НИиПИ «Спецреставрация», СХЕМА
+ФУНКЦИОНАЛЬНОГО ЗОНИРОВАНИЯ, sheet 28/133) and asked for a realistic mapping.
+
+### Orientation, settled empirically
+
+The plan draws the Neva at the TOP; the render puts it at the BOTTOM — a ~180° rotation.
+Rather than eyeball it, every part's on-screen footprint was recovered by sweeping a 28px
+hover grid and grouping the read-out by name. Two independent landmarks then fix the
+correspondence: **b01 reaches furthest toward the Neva AND carries the round volume b04 on
+its far side**, exactly as Лит Е1 carries its rotunda on the plan. So **b01 = Лит Е1**,
+**b02 = Лит Е3** — which is why round 10.1 found the two cross blocks wearing each other's
+names. That open issue is closed by the remap.
+
+### The programme is real, not invented
+
+From the June 2026 announcement (ГК «КВС» × Cosmos Hotel Group, signed at SPIEF): two
+hotels in the two cross blocks, **262 rooms total — 5★ with 126 rooms and a spa, 4★ with
+136 rooms and a large conference hall** — plus a multimedia museum, a gastronomic cluster,
+public space and a dedicated pier. 15 bn ₽, completion 2030. The original complex is
+А. О. Томишко, 1884–1890; the church of St Alexander Nevsky was consecrated 1890.
+
+`b01` → 5★ (spa + panoramic restaurant, the Neva-facing block with the rotunda);
+`b02` → 4★ (MICE conference centre + the multimedia museum). The two pool-like rectangles
+on the plan sit INSIDE the cross components in the GLB, so the spa and the museum are
+residents of their hotels rather than separate parts.
+
+**Confidence is graded explicitly in the file header.** Certain from geometry: the two
+crosses, the domed church, the rotunda, the flat slab on the water (the pier) and the
+large flat deck (the parking structure). Everything else is placed by its ZONE on the plan
+— offices and cafés along the embankment, rental and catering along ул. Комсомола — not by
+reading a lit letter off a drawing that is not legible at that resolution. The functions
+are the client's; which part each lands on is a reading, and is labelled as one.
+
+### Hover rail: three things removed, one added
+
+The designer called the small `kind` line («Паркинг», «Крестообразный корпус»), the brand
+marks and «Нажмите, чтобы открыть карточку» noise. All three are gone from the rail —
+`kind` survives in the DRAWER, where there is room for it. In their place, a **summary of
+what the building holds**: «126 номеров · 2 ресторана · спа-комплекс».
+
+That needed a typed data model. `Resident` gained `type: ResidentType` and an optional
+`count`, so one `{ type: 'room', count: 126 }` entry reads as 126 rooms instead of one
+anonymous line. `summarizeResidents()` sums by type, orders by PITCH VALUE rather than by
+count, and takes three clauses.
+
+Three copy rules, each found by reading the generated output rather than by design:
+
+- **`hotel` and `service` never appear.** The hotel *is* the building, and back-of-house is
+  not a selling point. A building with only service entries (the boiler house) shows no
+  summary line at all rather than an empty one.
+- **A count of one drops the numeral** — «2 ресторана · бар», never «2 ресторана · 1 бар»,
+  which reads like a stock count.
+- **Order is by pitch value.** `spa` had to move ahead of `bar` because it is a headline
+  feature of the 5★ and was being cut by the three-clause limit; `church` leads because on
+  the one building that has it, it is the whole answer. An open-air summer stage is typed
+  `service`, not `hall`, because «зал» reads as an indoor room.
+
+Verified by sweeping the whole plan and enumerating every building's name and summary: all
+19 reachable, all summaries well-formed, zero `.mi-kind` / `.mi-more` / `.mi-logo` nodes
+left in the DOM.
+
+## Round 10.3 (2026-08-04) — one base size, bound short words, the Figma drawer
+
+### 21px base, inherited rather than repeated
+
+`global.css` now sets `font-size: 21px` / `line-height: 1.35` on `body`, and every body-copy
+rule DROPPED its own size: the news block (was 20, Figma 338:48), the map's hover rail and
+the drawer (both 22), and the map captions (were 22, Figma 477:440). Display sizes — nav 32,
+slider headline 56, drawer/rail titles 30 — stay absolute. One dial now moves the site's
+reading size; that also closes round 10.1's open issue about the news block sitting one
+pixel away from everything else.
+
+### Short words are bound everywhere, not just on the main screen
+
+`bindShortWords` existed since round 8 but was only wired into `NewsTicker` and
+`PhotoSlider` — the ENTIRE concept screen rendered raw text, which is why the binding
+looked broken there. Both `MapInfo` and `BuildingDrawer` now route every string through a
+local `t()` = escape ∘ bind, and the duplicated private `esc()` in each moved to
+`shared/escapeHtml.ts`.
+
+The word list grew from 18 prepositions to prepositions **plus conjunctions** (но, да, ни,
+то, или, ибо, как, что, чем, либо, если, чтоб, хотя, пока, зато, чтобы) — same rule and
+same direction: a conjunction leads the clause after it, so an orphan at a line end reads
+as a stumble. Note «и» and «со» were already covered (one-letter words by length, «со» by
+the original list); what was missing was the concept screen calling the function at all.
+
+Also added: **a numeral binds to what it counts** (Мильчин §6.2). «126 номеров» in a 320px
+rail would otherwise break after the digits constantly. And `summarizeResidents` joins on
+NBSP + «· » so a line can begin with «2 ресторана» but never with «· 2 ресторана».
+
+Unplanned confirmation that this is right: the drawer brief now breaks
+«Пятизвездочный отель / с номерами на месте бывших / камер.» — character-for-character the
+designer's rag in the Figma export, produced by the binding rather than by tuning.
+
+### The hover glow
+
+A radial gradient on `.map-info::before`, hung off the left edge of the screen (`left:
+-300px`, 760×580), white 0.85 at centre → 0 at the rim, `z-index: -1` so it lifts the MAP
+and never the type. **Not `filter: blur()`** — a gradient is already smooth, needs no extra
+raster pass, and cannot bleed the edge artifacts a blurred box does.
+
+One trap: it washed out the «КРЕСТЫ» wordmark. `.concept-home` and `.map-info` were both
+`z-index: 5` and the rail is the later sibling, so the glow painted over the logo.
+`.concept-home` is now `z-index: 6`.
+
+### Swap animation, and why it does not queue
+
+0.2s out → swap → 0.2s in, `SWAP_MS` in `MapInfo.ts` mirrored by `--mi-swap` in the CSS.
+
+The override rule is the interesting part. A new target while a fade-out is in flight only
+updates `pending`; it does **not** restart the timer and does not enqueue a second cycle.
+So a fast sweep collapses into ONE cycle showing the latest building, and that building
+still appears at the original deadline instead of being pushed back 200ms per pointer move
+— which is what restarting the timer would do, and is exactly the kind of accumulating
+delay this project has already rejected twice as "lag".
+
+Measured: 4 target changes issued inside 108ms settled in **222ms** (four sequential cycles
+would be ~1600ms). A 6-target sweep settled on the last-hovered building at opacity 1.
+
+### Drawer rebuilt to Figma 86:42392
+
+The designer's export was measured, not eyeballed — panel **400**, hero **297**, inset
+**32**, wordmark **123×48** at y **329**, name at y **396**, close circle **36px at
+(424, 24)**. Ink `#010c11`, link `#36a0ff`, floor tint `#a7c2ca`, panel opaque white (the
+round-10 frosted translucent panel is gone; it let the map show through behind the type).
+
+Two structural consequences:
+
+- **The close button sits OUTSIDE the panel, on the map.** So `.bld-drawer` may no longer
+  scroll — it is the positioning box with visible overflow, and a new inner `.bld-scroll`
+  takes the scrolling. `.bld-close` is at `left: calc(100% + 24px)`.
+- **The resident list is bottom-anchored** (`margin-top: auto`), which is how the Figma
+  leaves a large gap under the link. When a building's list is long there is no free space
+  to absorb and it degrades to normal flow with the panel scrolling — the right behaviour.
+
+Content changes to match: the two crosses take the client's own names **«Западный крест»**
+/ **«Восточный крест»** with their exact brief copy; the operator wordmark replaces `kind`
+(which now shows only for buildings with no logo); the building's own link «Сайт отеля ›»
+is a new top-level `BuildingInfo.link`, distinct from a resident's `brand.url`; a `hotel`
+row renders with no floor, because the hotel occupies every storey; row separators and the
+«6 резидентов» count are gone. The two UI icons are INLINED with `currentColor` rather than
+`<img src="/resources/*.svg">` — `<img>` cannot recolour, and the close must be white over
+the hero but dark without one.
+
+Assets: `hotel.png` 9.8MB → `hotel.webp` **302KB** (`cwebp -q 82 -resize 1600 0`), source
+PNG deleted. `Cosmos-hotel-group-logo 1.svg` → `cosmos-logo.svg` — a space in a URL path is
+a latent encoding bug, not a style preference.
+
+### 10.3a — the crosses list exactly what the design lists, and the gutter is gone
+
+Both crosses were carrying six residents against the design's **three**. Trimmed to three:
+«Гостиница Cosmos Selection 5*» / «Ресторан Cosmos» / «SPA-Комплекс» verbatim from the
+export, and the east cross matched at three (hotel · конференц-зал · музей) — two crosses
+listing different amounts would read as an accident rather than a rule.
+
+**`BuildingInfo.rooms` exists because of this trim.** «Номера · 126» was a resident, and
+deleting it would have taken «126 номеров» out of the hover summary — the single most
+useful thing the rail says about a cross. Room count is a building-level fact, not a tenant
+you can walk into, so it moved to its own field and `summarizeResidents(residents)` became
+`summarize(info)`, seeding the `room` total from it. The drawer lists three rows; the rail
+still reads «126 номеров · ресторан · спа-комплекс».
+
+Scrollbar suppressed on `.bld-scroll` (`scrollbar-width: none`, `-ms-overflow-style: none`,
+`::-webkit-scrollbar { display: none }`). All three are needed — macOS only shows the bar
+during a gesture, but on Windows, and on a Mac driven by a mouse wheel, it is a permanent
+grey gutter down the panel edge that breaks the flush hero and the 32px inset. Verified on
+a deliberately short viewport: content overflows, gutter measures **0px**, and `scrollTop`
+still moves 0 → 250, so scrolling is intact and only the bar is hidden.
+
+## Map round 11 (2026-08-04) — the water rebuilt as a surface, not a pattern
+
+Verdict on rounds 9.2–9.5: **all four water modes rejected** — "repetitive stripes, obvious
+scrolling, artificial movement, visible tiling… procedural rather than natural". `chop`,
+`glints` and `gloss` are deleted along with the `?water=` switch; `waterModes.ts` →
+**`water.ts`**, one look, ~380 → ~150 lines.
+
+### Why «Гравюра» could never have been tuned into working
+
+It was an **isoline extractor**, not a surface shader:
+
+```glsl
+float dist = abs(fract(f - 0.5) - 0.5);
+float line = 1.0 - smoothstep(0.0, fwidth(f) * 1.15, dist);
+```
+
+`fract` is a sawtooth; `abs(saw − 0.5)` is distance to the nearest integer; the smoothstep
+inks a curve there. The output is **exactly one line per unit of `f`, by construction** —
+this is what a contour map uses. Whatever field you feed it, you get curves.
+
+Measured at the overview camera's **2.48 px per world unit** (visible region
+`x ∈ [−291, 291]`, `z ∈ [15, 161]` — only ~146 of the river polygon's 649 units are ever
+on screen):
+
+- contour period `3.8` world units = **9.4 px** ⇒ **≈153 identical hairlines** across frame;
+- `|∂f/∂x| = 0.263` per world unit against `|∂f/∂y| ≤ 0.0738`, so the gradient tilts at most
+  **15.7°** — every line within 16° of vertical, everywhere;
+- `|∂f/∂x|` varies by **±1.6 %**, so the pitch is constant to within a rounding error;
+- warp amplitude totals `0.42+0.20+0.10 = 0.72` contour-widths = **6.8 px against a 9.4 px
+  period** ⇒ contours **cannot cross, fold or merge**. The field's geometry forbids
+  turbulence. That is the whole "ruled, not turbulent" complaint, in one inequality.
+- time enters only as `(q.x − uTime·1.6)`: a **rigid translation** west at 3.97 px/s, one
+  period every 2.375 s.
+
+Three rules worth keeping, in descending order of generality:
+
+1. **`fract`, `abs(x−0.5)` and ridge transforms are FREQUENCY MULTIPLIERS.** They convert a
+   smooth field into thin, high-contrast, regular features — the signature of a drawing.
+   They do not belong in a calm surface. (This is what `lines` and `chop`'s `ridge` both did.)
+2. **Motion reads as mechanical exactly when individual features are TRACKABLE.** Real water's
+   features have a lifetime shorter than the time they take to cross their own width, so there
+   is nothing to follow. Nothing in `lines` had a lifetime — the pattern was eternal and merely
+   displaced.
+3. **Periodicity dies from incommensurate scales, not from warping.** Warping bends lines while
+   preserving their count and mean direction. Only combining scales whose ratio is far from
+   rational pushes the composite period past the frame.
+
+**Fourth strike for "summed sines interfere into plaid."** All four terms in `lines` were
+`sin`. A sum of sinusoids is phase-coherent, so its autocorrelation never decays and structure
+at one point predicts structure arbitrarily far away — which is precisely what the eye calls
+artificial. Logged in 9.1, 9.4, 9.5 and now here. There should not be a fifth.
+
+### What shipped
+
+CesiumJS's globe-water method (`getWaterNoise.glsl`: one normal map, four samples, **prime**
+divisors 103/107/897/991, a different drift velocity and phase per sample), reduced to two
+samples. Five stages, **3 texture fetches + ~12 ALU**, and each stage kills one named artifact:
+
+| stage | kills |
+|---|---|
+| base tint `#c5e0f0` (was `#d4eaf5`) | variation below the visibility threshold |
+| 2 samples of one tiling FBM, tiles **113 / 157** world units (both prime) | **tiling** |
+| drift 0.70 / 0.62 u/s, headings **130° apart** | **scrolling** |
+| one domain-warp iteration — B sampled through A | **trackability** |
+| narrow two-tone ramp on a hue path, derived from `diffuseColor` | the grey/mouldy read |
+
+- **Anti-tiling is by construction, not by tuning.** Each tile repeats across the frame on its
+  own (5.1× and 3.7×), but the composite repeats at `lcm(113, 157) = 17 741` world units —
+  **30× the screen width**. Round numbers (120/160) would drop that to ~480 and walk the repeat
+  straight back into view.
+- **Evolution without translation.** Each layer moves under 2 px/s — below noticing — but with
+  130° between them their interference refreshes a feature in ~21 s. 130° rather than 180°
+  because exactly opposed layers make a standing wave with fixed nodes.
+- **The ramp is derived from `diffuseColor`, never literals**, because `setFocus` lerps the base
+  toward `MAP_BG`; fixed colours would stay saturated while everything faded. (`gloss` already
+  learned this in 9.4.)
+
+### Three traps, all found by measurement
+
+- **A ratio in linear space is not the ratio you see.** The ramp multipliers act on
+  `diffuseColor` in **linear** working space, but the register was agreed in what's visible,
+  i.e. sRGB. Sized for ±4 % linear, they measured **±1.7 %** on screen — sRGB encoding
+  compresses a linear ratio by roughly its 2.2 gamma. Re-sized for the output: measured
+  **±3.91 %** of code value, endpoints 208.8 → 225.8 exactly as predicted.
+- **`BASE_GRID = 32` was the wrong content, not the wrong mapping.** An FBM's coarsest feature
+  is `tile/BASE_GRID`, so at 32 *everything* in the texture is finer than the dominant blob —
+  at any tile size that sized the blobs correctly, a mass of finer detail came with it. That is
+  much of why `chop` read as mould, and no tile size could have fixed it. Now **4 / 3 octaves /
+  gain 0.5** ⇒ features at `tile/4, /8, /16` = **70 / 35 / 17 px**, and 256² is ample (the
+  finest lattice is 16 cells; 512² was resolving it at 32 texels per cell — pure interpolation).
+  64 KiB and ~4 ms instead of 256 KiB and ~18 ms.
+- **A min/max contrast stretch does almost nothing to an FBM.** The extremes are single-texel
+  outliers, so round 9.2's "stretch to full range" left the bulk still clustered near 0.5 —
+  wasting byte range and banding the ramp. Replaced with a 1st/99th **percentile** stretch.
+
+Also fixed: the round-9.2 `DataTexture` leak (parked on `mat.userData`, never freed —
+`GroundPlan.dispose` only ever released materials and geometries), and `anisotropy` set to 4
+(it was 1 everywhere, while focus mode views the plane at ~35°).
+
+### Verified
+
+- **Shear invariance holds.** On a pure-water patch, max channel delta across four cursor
+  positions is **1** on 0.05 % of pixels — the documented ±1 LSB from computing `vFlow` through
+  `modelMatrix` (see round 9.5), not a regression. A control band over the buildings moves
+  137–149, so the test is not vacuous. Note this design is *more* tolerant of that LSB than
+  `lines` was: in an isoline field a 1-LSB wobble can flip a hairline on or off near an integer
+  crossing; in a smooth field it costs one code.
+- **Alive, and provably not scrolling.** Mean |Δ| between frames 4 s apart: 0.73 / 0.82 / 0.97 /
+  1.12. Best-matching integer shift over 16 s is **(0, 0)** — translation explains **0.0 %** of
+  the change. That is the quantitative form of the complaint, and it passes.
+- `prefers-reduced-motion` still freezes the surface; focus mode shows no moiré at the grazing
+  angle; `tsc` clean, `npm run build` clean, `scripts/interact-test.mjs` clean; the only console
+  error is the pre-existing favicon 404.
+
+**The contrast dial is `DEEP`/`LIGHT` in `water.ts`.** If the verdict is "I can't see it",
+scale those deltas from 1.0 — do NOT add stages and do NOT reach back for drawn features.
+
+## Map round 11.1 (2026-08-04, same day) — wavefronts: the cloud was missing DIRECTION
+
+Verdict on the above: **"the river looks like cloud sky now"**, with a photo of real ripples
+attached. Correct, and the cause is structural for the third time in this file.
+
+**An isotropic FBM is a cloud texture.** That is what it is for. Having no preferred direction
+it can only make blobs — so removing «Гравюра»'s regular stripes had also removed every trace
+of *direction*, and fog was what remained. Round 11 fixed the periodicity and threw out the
+anisotropy with it.
+
+**Water is anisotropic. It is made of WAVEFRONTS** — crests that run long one way and change
+sharply across. The reference photo is *full of lines*; it is not the opposite of «Гравюра».
+The difference is that real crests **bend, fork and cross**.
+
+### The threshold that separates the two
+
+A carrier `sin(2π·dot(q,d)/λ)` has phase gradient `1/λ`. A phase warp `W·noise(q)` contributes
+`W·|∇noise| ≈ W/F` for noise feature size `F`. Wavefronts can only fold where the warp gradient
+**cancels** the carrier's, i.e. where
+
+    W ≳ F / λ
+
+With `F ≈ 28` world units and `λ ≈ 5.5`, that needs **W ≈ 5 cycles**. «Гравюра» used **0.72** —
+an order of magnitude below the regime in which water exists. It was not "lines instead of
+noise"; it was lines with a warp too weak to do anything. This is the same inequality as round
+11's "6.8 px of warp against a 9.4 px period", restated in the form that tells you what to do.
+
+Note the surviving ban still holds and is not violated here: no `fract`, no `abs(x−0.5)`, no
+ridge transform. A `sin` is *smooth* — a smooth alternating band IS a wave crest. The banned
+operators are specifically the ones that MULTIPLY frequency.
+
+### Shipped
+
+Two directional carriers (λ **10.0 / 6.2** world units = 25 / 15 px, headings 27° apart) whose
+phase is warped by **2.4 / 1.7 cycles** of the round-11 noise field, an activity envelope, and
+the round-11 two-tone hue ramp widened for contrast. **2 texture fetches, 2 `sin`, ~20 ALU** —
+cheaper than the cloud version it replaces.
+
+### Three traps, each caught by measurement
+
+- **Two comparable carriers make plaid wearing a warp.** First attempt: 0.55/0.45 at 68° apart
+  → read as *woven mesh*, a diamond lattice. The reference has ONE family of long arcs with
+  fine detail riding on it. Now **0.74/0.26 at 27° apart**, so the second reads as variation
+  *within* one family rather than as a second family.
+- **13.6 / 9.2 px wavelengths read as moiré, not as waves.** Lengthened to 25 / 15 px. Note
+  «Гравюра» was 9.4 px — so its scale was wrong too, independently of its regularity.
+- **Whatever moves the warp moves the crests — and this is a direct consequence of wanting
+  folds.** Once `W` is large enough to fold wavefronts, the warp *dominates the phase
+  gradient*, so crest positions are set mostly by the warp field; translating it translates
+  them. Measured with a shift-matching test (best integer shift between frames 16 s apart, vs
+  zero shift):
+
+  | configuration | translation explains |
+  |---|---|
+  | carrier phase drift 0.09 cyc/s | **26.1 %** (shift 11,12) |
+  | carrier drift cut, warp drift raised | **45.7 %** — worse; traded one rigid drift for another |
+  | both noise fields superposed into both carriers | 33.5 % |
+  | + the two warp fields drifting near-**opposite** (20° / 196°) | **19.0 %** — PASS |
+
+  A single drifting field warping a carrier just slides it. A *superposition* of two fields
+  travelling along near-opposite vectors has no coherent translation of its own, so the crests
+  re-form in place. It costs zero extra fetches — both samples already existed. Carrier phase
+  speeds are now near zero (~0.5 px/s) purely to suggest travel.
+
+Contrast widened from ±3.9 % to **±6.1 %** of code value (203 → 229): crests need contrast to
+read as crests, and the cloud version's flatness was part of why it read as haze. This is above
+the ±4 % originally agreed — flagged deliberately, since ±4 % was chosen when the field had no
+structure to carry the read.
+
+**Verified:** shear invariance holds at **max channel delta 1** on 0.06–0.17 % of a pure-water
+patch across four cursor positions (the documented ±1 LSB); alive at mean |Δ| 3.6–4.2 between
+frames 4 s apart; `prefers-reduced-motion` freezes; `tsc` and build clean.
+
+**The dials, in the order to try them:** `WAVES[].warp` (fold strength — the single most
+important constant), `WAVES[].len` (scale), `DEEP`/`LIGHT` (contrast), `CALM` (how much of the
+surface goes still). Do not add stages.
+
 ## Open issues
 
+- **[OPEN] The secondary buildings' identities are a reading of the zoning plan, not a
+  lit-letter match.** b00/b01/b02/b04/b15/b18 are certain from geometry; the other twelve
+  carry plausible functions from the plan's legend, assigned by which side of the site they
+  sit on. If the client can supply the lit schedule (Лит. А/Б/В/Д/К/Л/М/О/П/У/Е4/Е5) with
+  positions, the remaining twelve can be pinned exactly.
+- **[OPEN] Which cross is 5★ and which is 4★ is inferred.** The press gives the room counts
+  and that the 5★ has the spa; the plan puts the rotunda and one pool on Лит Е1, so Е1 was
+  read as the 5★. Swapping them is a two-field edit if the client says otherwise.
+- ~~**[OPEN] The news block is 20px, not the 22px main text style.**~~ **RESOLVED (round
+  10.3):** the site has one base size, 21px, set on `body` and inherited by all body copy.
+- **[OPEN] Only the two hotels have a drawer hero photo.** `hotel.webp` is the single
+  photograph supplied, and it is used for BOTH crosses — the same image opens for
+  «Западный крест» and «Восточный крест». The other 17 buildings open straight into the
+  reading column, which is a designed state, not a hole. Needs one photo per building (or
+  at least a second for the 4★) before this goes in front of the client.
+- **[OPEN] The hover glow is tuned by eye** — `.map-info::before`, 760×580 at `left:
+  -300px`, white 0.85 → 0. Deliberately restrained per the brief ("not too much"); it is
+  the single dial if the designer wants it stronger or tighter.
+- **[OPEN] Resident marks and links are invented** (`residentLogos.ts`, the `brand` fields
+  in `buildingsInfo.ts`). Drawn wordmarks and non-resolving URLs, placed so the drawer can
+  be judged with real furniture. `cosmosgroup.ru` is the one real destination — and the
+  Cosmos mark is a PLACEHOLDER, not the operator's actual identity, which matters now that
+  a real company is named on the page. Replace wholesale when tenants exist.
 - **[OPEN] The `.hover-scene` backdrop is the limiting factor on the nav doubling** — the
   labels sit where the light surge is brightest, so a white-on-white echo has little
   contrast to work with, and 0.45 alpha is compensation for that rather than a considered

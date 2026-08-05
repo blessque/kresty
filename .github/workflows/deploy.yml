@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# Builds the prototype and publishes dist/ to GitHub Pages.
+#
+# Requires ONE manual step, once: repo Settings → Pages → Source → "GitHub Actions".
+# Without it this workflow builds green and publishes nothing.
+on:
+  push:
+    branches: [main, map-plan-oblique]
+  workflow_dispatch: # lets you deploy any branch by hand from the Actions tab
+
+# The deploy job needs to mint an OIDC token to prove to Pages that it is this
+# workflow; `contents: read` is enough for the checkout.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. `cancel-in-progress: false` so a queued deploy
+# finishes rather than being killed halfway through publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` (not `install`) — installs exactly what package-lock.json pins,
+      # so CI cannot silently drift to a newer three.js than you tested against.
+      - run: npm ci
+
+      # `npm run build` is `tsc --noEmit && vite build`, so a type error fails
+      # the deploy instead of shipping a broken bundle.
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

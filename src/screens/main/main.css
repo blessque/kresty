@@ -235,16 +235,29 @@
   /* transform set from JS: translate(-50%,-50%) scale(s) */
 }
 
-/* Figma node 308:230: 32/32, 301.44×48. The svg viewBox is 0 0 314 50 — same
+/* Corner furniture layer — pinned to the VIEWPORT, above the stage (z:4).
+   Deliberately NOT a stage child: the stage is contain-fit scaled, so its
+   children's insets are multiplied by `s` AND pushed in by the letterbox
+   margin. These three must hug the window edge at a true 32/40 at every size.
+   `pointer-events: none` so the layer never eats nav hover; the news link
+   opts back in. */
+.corners {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Figma node 308:230: 301.44×48. The svg viewBox is 0 0 314 50 — same
    6.28 aspect, so it just rescales into the smaller box. */
-.stage .logo {
+.logo {
   position: absolute;
   left: 32px;
-  top: 32px;
+  top: 40px;
   width: 301.44px;
   height: 48px;
 }
-.stage .logo svg {
+.logo svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -253,7 +266,7 @@
 .nav-link {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
+  font-family: 'ALS Chromius', sans-serif;
   font-size: 32px;
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
   font-weight: 150;
@@ -342,7 +355,7 @@
   width: 580px;
   transform: translateY(-50%);
   text-align: left;
-  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
+  font-family: 'ALS Chromius', sans-serif;
   font-size: 56px;
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
   font-weight: 150;
@@ -399,19 +412,22 @@
   opacity: 0.4;
 }
 
-/* news block (Figma node 338:48): 32/32 from the bottom-left corner, 270 wide,
+/* news block (Figma node 338:48): 32/40 from the bottom-left corner, 270 wide,
    ALS Chromius Regular 20/1.35, rows gapped 8. The block measures 27+8+81+8+27
    = 151 — the headline row reserves 3 lines so «Все новости» never shifts. */
 .news {
   position: absolute;
   left: 32px;
-  bottom: 32px;
+  bottom: 40px;
   width: 270px;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-family: 'ALS Chromius', 'ALS Hauss Next', sans-serif;
-  font-size: 20px;
+  font-family: 'ALS Chromius', sans-serif;
+  /* size inherits the 21px base (global.css). Figma 338:48 specified 20; round
+     10.3 gave the site one base size and the news block is body copy, so it
+     follows the base rather than holding a private value one pixel away. */
   /* Chromius Regular = wght 120 on this font's axis — see fonts.css */
   font-weight: 120;
   line-height: 1.35;
@@ -436,12 +452,13 @@
   text-decoration: underline;
 }
 
-/* bottom-right ARTLEBEDEV mark (Figma node 340:574) — the offsets are the
-   designer's, odd decimals and all. */
+/* bottom-right ARTLEBEDEV mark (Figma node 340:574). Figma's odd decimals
+   (32.49 / 33.7) were replaced by the round-10 corner rule: a flat 32/40 on
+   every corner element, so the three agree with each other at the window edge. */
 .corner-mark {
   position: absolute;
-  right: 32.49px;
-  bottom: 33.7px;
+  right: 32px;
+  bottom: 40px;
   width: 169.012px;
   height: 56.324px;
 }

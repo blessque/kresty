@@ -1,31 +1,10 @@
-@font-face {
-  font-family: 'ALS Hauss Next';
-  src: url('/resources/ALSHaussNext-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'ALS Hauss Next';
-  src: url('/resources/ALSHaussNext-RegularItalic.woff2') format('woff2');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'ALS Hauss Next Condensed';
-  src: url('/resources/ALSHaussNext-CondensedRegular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'ALS Hauss Next Condensed';
-  src: url('/resources/ALSHaussNext-CondensedRegularItalic.woff2') format('woff2');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
+/**
+ * ALS Chromius is the ONLY typeface on the site (round 10). ALS Hauss Next —
+ * four woff2 faces and a global fallback — was removed outright at the
+ * designer's request; there is no second family to fall back to and none
+ * should be reintroduced.
+ */
+
 /**
  * ALS Chromius VF — CAREFUL: this font's `wght` axis is NOT the standard
  * 100–900 scale. `fvar` declares min=50 default=120 max=232, with named

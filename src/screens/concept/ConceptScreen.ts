@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import logoSvg from '../../assets/logo.svg?raw';
 import { getPerfTier } from '../../shared/performanceTier';
+import { asset } from '../../shared/assetUrl';
 import { MAP_BG } from './mapLooks';
 import { buildStudioEnv, buildGround, buildLights } from './mapStudio';
 import { buildEdgeLines } from './edgeLines';
@@ -12,6 +13,7 @@ import { MapLabels } from './mapLabels';
 import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
+import { MapInfo } from './MapInfo';
 
 /**
  * Plan-oblique («military») projection: the camera is PERMANENTLY straight
@@ -29,7 +31,7 @@ import { BuildingDrawer } from './BuildingDrawer';
  * Materials in mapLooks.ts, studio in mapStudio.ts; TUNING_LOG map rounds 4–7.
  */
 
-const MODEL_GLB = '/resources/map-w-river.glb';
+const MODEL_GLB = asset('/resources/map-w-river.glb');
 /**
  * Yaw applied to the whole model so geographic NORTH points up the screen.
  *
@@ -83,6 +85,7 @@ export class ConceptScreen {
   private ground?: GroundPlan;
   private labels!: MapLabels;
   private drawer!: BuildingDrawer;
+  private mapInfo!: MapInfo;
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
@@ -139,13 +142,18 @@ export class ConceptScreen {
       e.preventDefault();
       this.onNavigate('main');
     });
-    add('div', 'concept-title', 'Концепция');
-    add('div', 'concept-hint', 'Наведите на здание, чтобы узнать о резидентах');
+    // round 10: the «Концепция» corner title is gone at the designer's request,
+    // and the standing hint moved into the left rail under the logo, where it
+    // doubles as the hover read-out.
+    this.mapInfo = new MapInfo(this.el);
 
     this.labels = new MapLabels(this.el);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
-    this.picker.onHoverChange = (id) => this.el.classList.toggle('picking', id !== null);
+    this.picker.onHoverChange = (id) => {
+      this.el.classList.toggle('picking', id !== null);
+      this.mapInfo.setHovered(id);
+    };
 
     this.el.addEventListener('pointermove', (e) => {
       this.picker.setPointer(e.clientX, e.clientY);
@@ -318,6 +326,9 @@ export class ConceptScreen {
     this.picker.select(id);
     if (id) this.drawer.open(id);
     else this.drawer.close();
+    // the drawer takes over the read-out while focused, and it occupies the
+    // same left column — the rail would sit underneath it
+    this.mapInfo.setMuted(id !== null);
     // the drawer animates open, so re-read its width next frame rather than
     // framing against a panel that is still sliding in
     requestAnimationFrame(() => {

@@ -2,20 +2,25 @@ import * as THREE from 'three';
 
 /**
  * A seamlessly tiling value-noise FBM, baked once at load, used as the river's
- * ripple field (groundPlan.ts).
+ * ripple field (water.ts).
  *
  * WHY A BAKED TEXTURE RATHER THAN NOISE IN THE SHADER
  * ---------------------------------------------------
  * Two reasons, and both matter here.
  *
- * Performance: sampling this costs two texture fetches per water fragment —
- * cache-friendly, and far cheaper than the ~12 hash evaluations an equivalent
- * in-shader FBM would need. It is built once, in 64 KB.
+ * Performance: sampling this costs two or three texture fetches per water
+ * fragment — cache-friendly, and roughly 2–3x cheaper than the ~200 ALU an
+ * equivalent in-shader FBM would need, which is the ratio that matters on the
+ * Intel integrated parts in the support matrix. It is built once, in 64 KiB
+ * (plus mips, ~87 KB).
  *
  * Look: summed sine waves cannot produce water. They interfere into a regular
  * plaid, which is exactly what round 9.1's three-sine drift looked like once you
- * raised its contrast enough to see it. Value noise has no preferred direction
- * and no repeating beat, so it reads as chop.
+ * raised its contrast enough to see it — and then again in 9.4's `gloss`, and
+ * again in 9.5's «Гравюра». Three strikes. A sum of sinusoids is phase-coherent,
+ * so its autocorrelation never decays and structure at one point predicts
+ * structure arbitrarily far away; that is what the eye calls "artificial".
+ * Value noise decorrelates, so it reads as a surface.
  *
  * TILING is the whole trick: each octave's lattice indices are taken modulo the
  * octave's grid size, so the right edge interpolates back into the left and the
@@ -30,20 +35,35 @@ import * as THREE from 'three';
  *
  * This is the dial that decides what the water looks like, because an FBM's
  * dominant feature size is tile/BASE_GRID and the coarsest octave carries the
- * most amplitude. At 4 the dominant feature came out ~31 px and the river read
- * as soft curtains rather than chop; at 12 it was still ~21 px and read as
- * camouflage. At 32, against a 512-texel tile mapped to ~517 screen px, the
- * dominant feature lands near 16 px with octaves at 8 / 4 / 2 px under it —
- * which is the range the eye reads as ripples.
+ * most amplitude.
+ *
+ * ROUND 11 dropped this from 32 to 4, and the reasoning behind the old value
+ * was the trap. At 32 the COARSEST feature is tile/32 — so at any tile size
+ * that makes the blobs the right size on screen, everything else in the texture
+ * is finer than that. Under the round-9.2 `chop` mode the result read as mould
+ * or camouflage, and no tile size could have fixed it: the content was wrong,
+ * not the mapping.
+ *
+ * At 4 with 3 octaves the features are tile/4, tile/8, tile/16. Against
+ * water.ts's 113-world-unit tile at the overview camera's 2.48 px per world
+ * unit, that is 70 / 35 / 17 screen px — the coarsest lands in the 60–90 px
+ * band the designer chose, and the finest still carries detail into focus mode,
+ * where the camera zooms and the surface magnifies ~3x.
  */
-const BASE_GRID = 32;
-/** each octave doubles the grid; GAIN is deliberately above 0.5 so the finer
- *  octaves keep enough energy to give the surface texture rather than blur */
-const OCTAVES = 4;
-const GAIN = 0.6;
+const BASE_GRID = 4;
+/** each octave doubles the grid. GAIN 0.5 (down from 0.6) because the register
+ *  is calm: the fine octaves should support the coarse one, not compete. */
+const OCTAVES = 3;
+const GAIN = 0.5;
 const SEED = 0x5f3a91;
 
-export function buildRippleTexture(size = 512): THREE.DataTexture {
+/**
+ * 256 is not a downgrade from the old 512 — it is the right size for the
+ * content above. The finest lattice is 16x16 within the tile, so 512 texels
+ * were resolving a 16-cell grid at 32 texels per cell: pure interpolation, no
+ * information. 64 KiB and a ~4 ms bake instead of 256 KiB and ~18 ms.
+ */
+export function buildRippleTexture(size = 256): THREE.DataTexture {
   const rnd = lcg(SEED);
 
   // one random lattice per octave, each already sized to its own grid
@@ -56,8 +76,6 @@ export function buildRippleTexture(size = 512): THREE.DataTexture {
   }
 
   const field = new Float32Array(size * size);
-  let lo = Infinity;
-  let hi = -Infinity;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -71,20 +89,26 @@ export function buildRippleTexture(size = 512): THREE.DataTexture {
         norm += amp;
         amp *= GAIN;
       }
-      const n = sum / norm;
-      field[y * size + x] = n;
-      if (n < lo) lo = n;
-      if (n > hi) hi = n;
+      field[y * size + x] = sum / norm;
     }
   }
 
-  // stretch to the full 0..1 range: an FBM's raw output clusters hard around
-  // 0.5, and without this the shader's crest window would have almost nothing
-  // above it and the ripples would flatten out again
+  // Stretch so the byte range is actually used. An FBM's raw output clusters
+  // hard around 0.5, and the shader's ramp window would otherwise sample a
+  // narrow slice of it and band.
+  //
+  // PERCENTILE, not min/max — this was a real bug in the round-9.2 version.
+  // The extremes of a 4-octave FBM are single-texel outliers, so stretching by
+  // them barely moved the bulk of the distribution: the texture still clustered
+  // around 0.5 despite "stretching to full range". Cutting at the 1st/99th
+  // percentile stretches what is actually there. The cost is clipping ~2% of
+  // texels to the ends, which for a noise field is free.
+  const [lo, hi] = percentileRange(field, 0.01);
   const span = hi - lo || 1;
   const data = new Uint8Array(size * size);
   for (let i = 0; i < field.length; i++) {
-    data[i] = Math.round(((field[i] - lo) / span) * 255);
+    const v = ((field[i] - lo) / span) * 255;
+    data[i] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
   }
 
   const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
@@ -97,6 +121,11 @@ export function buildRippleTexture(size = 512): THREE.DataTexture {
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
+  // Focus mode swings the camera to ~35° elevation, so the water runs to a
+  // grazing angle and trilinear picks its mip from the worst axis — which
+  // over-blurs along the other one. three clamps this to the hardware maximum
+  // on upload, so a flat 4 is safe everywhere.
+  tex.anisotropy = 4;
   // raw scalar field, not colour — must not be tagged sRGB or three will
   // gamma-decode it and skew the crest threshold
   tex.colorSpace = THREE.NoColorSpace;
@@ -113,6 +142,44 @@ function lcg(seed: number): () => number {
     s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
     return s / 4294967296;
   };
+}
+
+/**
+ * The `p`-th and `(1-p)`-th percentiles of `field`, via a 256-bin histogram.
+ * Values are known to lie in [0, 1] (the lattice holds [0, 1) and the octave
+ * sum is normalised), so fixed bins are exact enough — the result only feeds a
+ * contrast stretch.
+ */
+function percentileRange(field: Float32Array, p: number): [number, number] {
+  const BINS = 256;
+  const hist = new Uint32Array(BINS);
+  for (let i = 0; i < field.length; i++) {
+    const b = Math.floor(field[i] * BINS);
+    hist[b < 0 ? 0 : b >= BINS ? BINS - 1 : b]++;
+  }
+  const cut = field.length * p;
+
+  let acc = 0;
+  let loBin = 0;
+  for (let i = 0; i < BINS; i++) {
+    acc += hist[i];
+    if (acc > cut) {
+      loBin = i;
+      break;
+    }
+  }
+
+  acc = 0;
+  let hiBin = BINS - 1;
+  for (let i = BINS - 1; i >= 0; i--) {
+    acc += hist[i];
+    if (acc > cut) {
+      hiBin = i;
+      break;
+    }
+  }
+
+  return [loBin / BINS, (hiBin + 1) / BINS];
 }
 
 const fade = (t: number) => t * t * (3 - 2 * t);

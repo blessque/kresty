@@ -6,6 +6,8 @@
  * The rotation values orient the *glyphs* along the rays; the actual beam
  * angles are measured from rendered DOM rects at runtime (Nav.ts).
  */
+import { asset } from '../../shared/assetUrl';
+
 export const STAGE_W = 1440;
 export const STAGE_H = 800;
 
@@ -61,7 +63,7 @@ export const SHOWREEL_IMAGES = [
   '/resources/atrium-roof.webp',
   '/resources/forum.webp',
   '/resources/pool.webp',
-].map((p) => encodeURI(p));
+].map((p) => asset(encodeURI(p)));
 
 /**
  * «Слайдер» slides — one full-bleed photo per slide. Round 8: the client's
@@ -111,7 +113,7 @@ export const SLIDER_SLIDES: SliderSlide[] = [
     photo: '/resources/pool.webp',
     headline: 'Свобода быть собой и заботиться о душе и теле',
   },
-].map((s) => ({ ...s, photo: encodeURI(s.photo) }));
+].map((s) => ({ ...s, photo: asset(encodeURI(s.photo)) }));
 
 export function stageScale(): number {
   return Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H);

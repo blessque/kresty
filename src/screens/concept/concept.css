@@ -26,7 +26,11 @@
   left: 32px;
   top: 40px;
   width: 220px;
-  z-index: 5;
+  /* ABOVE the rail (z:5). The rail's hover glow reaches up into this corner,
+     and being a later sibling at the same z-index it would paint over the
+     wordmark and wash it out. The glow is there to lift the MAP behind the
+     hover text, never the site's own logo. */
+  z-index: 6;
   cursor: pointer;
 }
 .concept-home svg {
@@ -40,27 +44,120 @@
   fill: #123a5c;
 }
 
-.concept-title {
+/* ------------------------------------------------------- left info rail
+
+   Round 10. The «Концепция» corner title is gone, and the standing hint moved
+   out of the bottom centre into this column, directly under the logo — the
+   same left rail the main screen puts its news block in. It is also the hover
+   read-out, so it had to sit somewhere the eye already returns to rather than
+   float under the plan as a caption.
+
+   Body copy INHERITS the site's base size (21px, global.css) — it deliberately
+   states no font-size of its own. */
+.map-info {
   position: absolute;
-  right: 32px;
-  top: 44px;
+  left: 32px;
+  /* clears the 220px-wide logo, whose svg is ~35px tall at that width */
+  top: 104px;
+  width: 320px;
+  max-width: 42vw;
+  /* Reserves the taller (hovered) state's height in BOTH states. Two reasons,
+     and the second is the load-bearing one:
+       - the rail must not reflow under the cursor as you sweep across
+         buildings, which a content-sized box would do on every hover;
+       - MapLabels treats this element as an obstacle and re-solves only on
+         resize, so a box that changed height between solves would reserve the
+         wrong area and let «ул. Комсомола» drift under the text. */
+  min-height: 224px;
   z-index: 5;
-  font-family: 'ALS Chromius', sans-serif;
-  font-size: 24px;
-  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
-  font-weight: 150;
+  color: #123a5c;
+  /* inert: the rail sits over the map and must never eat a building click */
+  pointer-events: none;
+  transition: opacity 0.32s cubic-bezier(0.3, 0, 0.12, 1);
 }
 
-.concept-hint {
+/* The soft lift behind the rail's text.
+
+   A radial gradient, NOT `filter: blur()` on a shape — a gradient is already
+   smooth, costs no extra raster pass, and cannot bleed edge artifacts the way a
+   blurred box does. It hangs off the left edge of the screen so the falloff is
+   asymmetric: dense under the text, gone by the middle of the plan.
+
+   z-index -1 puts it behind the rail's own text while staying inside
+   `.map-info`'s stacking context — so it lifts the map, never the type. It is
+   present only on hover: the standing hint sits on the pale field near the logo
+   and needs no help. */
+.map-info::before {
+  content: '';
   position: absolute;
-  left: 50%;
-  bottom: 40px;
-  transform: translateX(-50%);
-  z-index: 5;
-  font-size: 14px;
-  opacity: 0.5;
-  text-align: center;
+  left: -300px;
+  top: 50%;
+  width: 760px;
+  height: 580px;
+  transform: translateY(-50%);
+  z-index: -1;
   pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.62) 40%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  opacity: 0;
+  transition: opacity var(--mi-swap) ease;
+}
+.map-info.building::before {
+  opacity: 1;
+}
+
+/* ── the hover swap ───────────────────────────────────────────────────────
+   0.2s out, 0.2s in. Mirrored in MapInfo.ts's SWAP_MS, which fires the content
+   swap at the bottom of the fade; the two must agree or the text changes while
+   still visible. Rapid target changes do NOT queue — see MapInfo.setHovered. */
+.map-info {
+  --mi-swap: 0.2s;
+}
+.map-info .mi-name,
+.map-info .mi-brief,
+.map-info .mi-summary,
+.map-info .mi-hint {
+  transition: opacity var(--mi-swap) ease;
+}
+.map-info.swapping .mi-name,
+.map-info.swapping .mi-brief,
+.map-info.swapping .mi-summary,
+.map-info.swapping .mi-hint,
+.map-info.swapping::before {
+  opacity: 0;
+}
+
+/* a building is focused — the drawer occupies this column and does this job */
+.map-info.muted {
+  opacity: 0;
+}
+
+.map-info .mi-hint {
+  opacity: 0.55;
+}
+
+.map-info .mi-name {
+  margin: 0 0 8px;
+  font-size: 30px;
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  font-weight: 150;
+  line-height: 1.12;
+}
+
+.map-info .mi-brief {
+  opacity: 0.75;
+}
+
+/* what the building holds — «126 номеров · 2 ресторана · спа-комплекс».
+   Carries the hue the rest of the rail doesn't, so the eye lands on it last
+   and it reads as the answer rather than as more description. */
+.map-info .mi-summary {
+  margin-top: 14px;
+  color: #2f86c4;
 }
 
 /* a building is under the cursor */
@@ -68,30 +165,30 @@
   cursor: pointer;
 }
 
-/* the lean is inert while a building is focused (the shear unwinds so the
-   isometric camera reads cleanly), so the hint would be lying */
-#screen-concept.focused .concept-hint {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
 /* ---------------------------------------------------- building drawer */
 
+/* ── building drawer, to the client's Figma (node 86:42392) ───────────────
+   Measured off the designer's export rather than eyeballed: panel 400px, hero
+   297px, 32px inset, ink #010c11, link #36a0ff, floor tint #a7c2ca, wordmark
+   123px. The panel is OPAQUE white — the round-10 frosted translucent version
+   is gone; it let the map show through behind the type.
+
+   `.bld-drawer` no longer scrolls: it is the positioning box, and its overflow
+   must stay visible so `.bld-close` can sit OUTSIDE it, on the map. The inner
+   `.bld-scroll` takes the scrolling. The focus camera reads `drawer.width` at
+   runtime, so the framing follows the 400 on its own — do not mirror it in
+   mapCamera.ts. */
 .bld-drawer {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 380px;
+  width: 400px;
   max-width: 86vw;
   z-index: 8;
-  padding: 40px 32px 32px;
-  overflow-y: auto;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-right: 1px solid rgba(18, 58, 92, 0.12);
-  /* the airy curve used across the project (rounds 6–7) */
+  background: #fff;
+  color: #010c11;
+  /* the airy curve used across the project (rounds 6-7) */
   transition: transform 0.55s cubic-bezier(0.3, 0, 0.12, 1),
     opacity 0.4s cubic-bezier(0.3, 0, 0.12, 1);
   transform: translateX(-100%);
@@ -104,65 +201,177 @@
   pointer-events: auto;
 }
 
-.bld-close {
-  position: absolute;
-  right: 20px;
-  top: 20px;
-  width: 32px;
-  height: 32px;
-  font-size: 26px;
-  line-height: 1;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
+.bld-scroll {
+  height: 100%;
+  overflow-y: auto;
+  /* The platform scrollbar is suppressed, not the scrolling. On macOS it only
+     shows during a scroll gesture, but on Windows and on a mouse-wheel Mac it
+     is a permanent grey gutter down the panel edge, which breaks the flush
+     hero and the 32px inset. All three engines need their own opt-out. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* the reading column is bottom-anchored in the Figma: brief and link sit
+     under the hero, the resident list sits at the foot of the panel with the
+     gap between them absorbing whatever is left over */
+  display: flex;
+  flex-direction: column;
 }
-.bld-close:hover {
-  opacity: 1;
+.bld-scroll::-webkit-scrollbar {
+  display: none;
 }
 
+.bld-hero {
+  flex: none;
+  height: 297px;
+  overflow: hidden;
+  background: #dfe7ee;
+}
+.bld-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bld-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 32px 40px;
+}
+
+/* the operator wordmark; stands in for `.bld-kind` when a building has one */
+.bld-logo {
+  display: block;
+  width: 123px;
+  height: auto;
+  margin-bottom: 19px;
+}
+
+/* only for buildings with no operator mark — otherwise the Figma shows nothing
+   between the hero and the name */
 .bld-kind {
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.55;
+  font-size: 18px;
+  opacity: 0.45;
+  margin-bottom: 6px;
 }
 
 .bld-name {
-  margin: 8px 0 4px;
-  font-family: 'ALS Chromius', sans-serif;
-  font-size: 34px;
-  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
+  margin: 0 0 18px;
+  font-size: 30px;
+  /* Chromius Medium = wght 150 on this font's axis - see fonts.css */
   font-weight: 150;
-  line-height: 1.1;
+  line-height: 1.12;
 }
 
-.bld-count {
-  font-size: 14px;
-  opacity: 0.55;
-  margin-bottom: 24px;
+/* the same sentence the hover rail shows, so opening the drawer continues the
+   thought rather than restarting it */
+.bld-brief {
+  margin-bottom: 22px;
+  line-height: 1.42;
 }
 
+/* «Сайт отеля ›» - the building's own link, directly under the brief */
+.bld-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: #36a0ff;
+  font-weight: 150;
+}
+.bld-site:hover {
+  text-decoration: underline;
+}
+
+.bld-chevron {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.72em;
+  flex: none;
+}
+.bld-chevron svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* `margin-top: auto` is what pins the list to the foot of the panel. When the
+   content is taller than the viewport there is no free space to absorb, so it
+   degrades to a normal flow item and `.bld-scroll` scrolls - which is the
+   right behaviour for the buildings with long resident lists. */
 .bld-list {
   list-style: none;
+  margin-top: auto;
+  padding-top: 40px;
 }
 
+/* No rules between rows: the Figma separates them with space alone. */
 .bld-row {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  padding: 13px 0;
-  font-size: 15px;
-  border-top: 1px solid rgba(18, 58, 92, 0.12);
+  align-items: baseline;
+  gap: 14px;
+  padding: 11px 0;
 }
 
 .bld-floor {
   flex: none;
-  opacity: 0.5;
-  font-size: 13px;
+  color: #a7c2ca;
 }
 
 .bld-empty {
   opacity: 0.5;
   font-style: italic;
+}
+
+/* branded residents keep their own outbound link under the label */
+.bld-row--brand {
+  align-items: flex-start;
+}
+
+.bld-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bld-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 18px;
+  color: #36a0ff;
+  width: fit-content;
+}
+.bld-link:hover {
+  text-decoration: underline;
+}
+
+/* OUTSIDE the panel, floating on the map - that is where the Figma puts it,
+   which is why `.bld-drawer` may not clip its overflow. */
+.bld-close {
+  position: absolute;
+  left: calc(100% + 24px);
+  top: 24px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(18, 58, 92, 0.28);
+  color: #fff;
+  transition: background 0.2s ease;
+}
+.bld-close:hover {
+  background: rgba(18, 58, 92, 0.45);
+}
+.bld-close svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 /* ---------------------------------------------------------------- captions */
@@ -185,14 +394,14 @@
   left: 0;
   top: 0;
   white-space: nowrap;
-  /* Figma 477:440 — ALS Chromius Regular 22/1.4.
+  /* Figma 477:440 specified ALS Chromius Regular 22/1.4; round 10.3 moved the
+     size to the site's 21px base so the captions match the rest of the page.
      CAREFUL: Chromius's `wght` axis is min 50 / default 120 / max 232, so
      `font-weight: 400` would clamp to 232 = Black. Regular is 120. And never
      add `font-variation-settings` here — it overrides `font-weight` and
      reintroduces exactly the bug round 8 fixed. See styles/fonts.css. */
   font-family: 'ALS Chromius', sans-serif;
   font-weight: 120;
-  font-size: 22px;
   line-height: 1.4;
   /* transform-origin stays at the element centre; MapLabels writes
      translate(-50%,-50%) first so the anchor is the caption's middle */

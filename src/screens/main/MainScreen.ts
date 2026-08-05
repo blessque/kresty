@@ -9,6 +9,7 @@ import {
   NAV_LINKS,
   stageScale,
 } from './layout';
+import { asset } from '../../shared/assetUrl';
 import { VARIANTS, variantIndexFromUrl, SWITCHER_COUNT } from './variants';
 import { NewsTicker } from './NewsTicker';
 import { Showreel } from './Showreel';
@@ -125,7 +126,7 @@ export class MainScreen {
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');
-      img.src = encodeURI(src);
+      img.src = asset(encodeURI(src));
       img.alt = '';
       this.hoverScene.appendChild(img);
       this.hoverImgs.push(img);
@@ -140,11 +141,22 @@ export class MainScreen {
     this.stage.className = 'stage';
     this.el.appendChild(this.stage);
 
+    // Corner furniture (logo, news, studio mark) is pinned to the VIEWPORT, not
+    // to the stage. The stage is a fixed 1440×800 box under a contain-fit
+    // `scale(s)`, so a child at `left: 32px` renders at
+    // `(innerWidth − 1440·s)/2 + 32·s` from the window edge — both terms grow
+    // with the window, which is why the corners crept inward on a wide monitor.
+    // Only geometry that must stay locked to the light centre (the nav links,
+    // the slider headline) belongs in the stage.
+    const corners = document.createElement('div');
+    corners.className = 'corners';
+    this.el.appendChild(corners);
+
     const logo = document.createElement('div');
     logo.className = 'logo';
     logo.innerHTML = logoSvg;
     logo.setAttribute('aria-label', 'Кресты');
-    this.stage.appendChild(logo);
+    corners.appendChild(logo);
 
     NAV_LINKS.forEach((spec, i) => {
       const a = document.createElement('a');
@@ -174,7 +186,7 @@ export class MainScreen {
 
     const news = document.createElement('div');
     news.className = 'news';
-    this.stage.appendChild(news);
+    corners.appendChild(news);
     this.ticker = new NewsTicker(news);
 
     // bottom-right studio mark (Figma node 340:574) — the ARTLEBEDEV stroke
@@ -184,7 +196,7 @@ export class MainScreen {
     mark.className = 'corner-mark';
     mark.innerHTML = alsLogoSvg;
     mark.setAttribute('aria-label', 'Артлебедев, 2026');
-    this.stage.appendChild(mark);
+    corners.appendChild(mark);
 
     // «Слайдер» idle show (armed only on its tab; headline goes in the stage).
     // NOTE built after the nav links, whose handlers call

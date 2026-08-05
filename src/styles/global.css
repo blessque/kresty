@@ -10,7 +10,18 @@ body {
   height: 100%;
   overflow: hidden;
   background: #56b7e6;
-  font-family: 'ALS Hauss Next', system-ui, sans-serif;
+  font-family: 'ALS Chromius', system-ui, sans-serif;
+  /* NOT decoration — load-bearing. Chromius's `wght` axis is 50–232, so the CSS
+     initial value (`normal` = 400) CLAMPS TO 232 = Black. Making Chromius the
+     global family without pinning the weight would render every element that
+     never states one in Black. Regular is 120. See fonts.css. */
+  font-weight: 120;
+  /* the site's base text size (round 10.3). Body copy INHERITS this — the news
+     block, the map's hover rail and the drawer all declare no size of their
+     own, so this is the single dial. Display sizes (nav, slider headline,
+     drawer/rail titles) stay absolute. */
+  font-size: 21px;
+  line-height: 1.35;
   -webkit-font-smoothing: antialiased;
   color: #fff;
   overscroll-behavior: none;

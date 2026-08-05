@@ -3,12 +3,13 @@ const NBSP = ' ';
 /**
  * Russian short function words that must not be left at the end of a line
  * (Мильчин; Артлебедев's «Ководство» §62). One-letter words are handled by
- * length, so this list is only the 2–3 letter prepositions.
+ * length, so this list is only the 2–4 letter ones.
  *
  * Deliberately excludes particles («же», «ли», «бы») — those must not START a
  * line, which is the opposite rule and needs a different binding direction.
  */
 const SHORT_PREPOSITIONS = new Set([
+  // prepositions
   'во',
   'до',
   'за',
@@ -27,6 +28,29 @@ const SHORT_PREPOSITIONS = new Set([
   'под',
   'при',
   'про',
+  'близ',
+  'вне',
+  'меж',
+  'перед',
+  'через',
+  // conjunctions — same rule, same direction: they lead the clause that
+  // follows, so an orphaned one at a line end reads as a stumble
+  'но',
+  'да',
+  'ни',
+  'то',
+  'или',
+  'ибо',
+  'как',
+  'что',
+  'чем',
+  'либо',
+  'если',
+  'чтоб',
+  'хотя',
+  'пока',
+  'зато',
+  'чтобы',
 ]);
 
 /** strip anything that is not a letter/digit so «(для» or «по,» still match */
@@ -39,6 +63,10 @@ function isBindable(word: string): boolean {
   if (!b) return false;
   // every one-character word (и, о, в, с, а, к, у, я — and the day in a date)
   if (b.length === 1) return true;
+  // A numeral must not be orphaned from what it counts (Мильчин §6.2): «126
+  // номеров», «2 ресторана», «240 машино-мест». The map's hover summary is
+  // exactly this shape in a 320px column, so it would break there constantly.
+  if (/^\d+$/.test(b)) return true;
   return SHORT_PREPOSITIONS.has(b);
 }
 

@@ -1,12 +1,6 @@
 import * as THREE from 'three';
 import { MAP_BG } from './mapLooks';
-import {
-  applyWaterMode,
-  isWaterMode,
-  DEFAULT_WATER,
-  type WaterHandle,
-  type WaterMode,
-} from './waterModes';
+import { applyWater, type WaterHandle } from './water';
 
 /**
  * The flat site plan under the buildings — the Neva, the two roads and the
@@ -63,8 +57,11 @@ export interface FlatSurface {
  * so without an explicit order they z-fight. Higher = drawn on top.
  */
 const TONES: Record<string, { color: number; depth: number }> = {
-  /** the Neva — the only surface with real hue, so the water reads as water */
-  Color_H08: { color: 0xd4eaf5, depth: 0 },
+  /** The Neva — the only surface with real hue, so the water reads as water.
+   *  Round 11 deepened this from #d4eaf5: the water carries a ±4% tonal
+   *  variation now, and against the old near-white that swing was below the
+   *  threshold of visibility. The effect has to have something to move within. */
+  Color_H08: { color: 0xc5e0f0, depth: 0 },
   /** neighbouring city blocks — solidly present grey, they frame the site */
   Color_M02: { color: 0xccd7dd, depth: 1 },
   /** Арсенальная наб. + ул. Комсомола — lighter than the ground plate, so the
@@ -73,7 +70,7 @@ const TONES: Record<string, { color: number; depth: number }> = {
 };
 const FALLBACK = { color: 0xccd7dd, depth: 1 };
 
-/** the one surface that gets the chop — see RIPPLE_LAYERS below */
+/** the one surface that gets the ripple shader — see water.ts */
 export const WATER_MATERIAL = 'Color_H08';
 
 /**
@@ -107,7 +104,7 @@ export class GroundPlan {
   private water?: WaterHandle;
   private still = false;
 
-  constructor(surfaces: FlatSurface[], mode: WaterMode = readWaterMode()) {
+  constructor(surfaces: FlatSurface[]) {
     this.still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     for (const s of surfaces) {
@@ -137,10 +134,7 @@ export class GroundPlan {
         polygonOffsetUnits: PLAN_PUSH - 4 * tone.depth,
       });
 
-      if (s.materialName === WATER_MATERIAL) {
-        this.water = applyWaterMode(mode, mat, s.geometry);
-        if (this.water.object) this.group.add(this.water.object);
-      }
+      if (s.materialName === WATER_MATERIAL) this.water = applyWater(mat);
 
       const mesh = new THREE.Mesh(s.geometry, mat);
       // never pickable and never edge-lined: the plan is context, the buildings
@@ -178,10 +172,4 @@ export class GroundPlan {
     });
     this.group.removeFromParent();
   }
-}
-
-/** dev override: ?water=chop|lines|glints|gloss */
-function readWaterMode(): WaterMode {
-  const q = new URLSearchParams(location.search).get('water');
-  return isWaterMode(q) ? q : DEFAULT_WATER;
 }
