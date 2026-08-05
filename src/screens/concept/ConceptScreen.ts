@@ -1,29 +1,75 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import logoSvg from '../../assets/logo.svg?raw';
 import { getPerfTier } from '../../shared/performanceTier';
+import { asset } from '../../shared/assetUrl';
+import { MAP_BG } from './mapLooks';
+import { buildStudioEnv, buildGround, buildLights } from './mapStudio';
+import { buildEdgeLines } from './edgeLines';
+import { splitConnectedParts } from './buildingSplit';
+import { GroundPlan, FLAT_RATIO, type FlatSurface } from './groundPlan';
+import { MapLabels } from './mapLabels';
+import { BuildingPicker } from './buildingPicker';
+import { MapCamera } from './mapCamera';
+import { BuildingDrawer } from './BuildingDrawer';
+import { MapInfo } from './MapInfo';
 
 /**
- * Reverse (icon) perspective, done at the VERTEX level: with an orthographic
- * camera looking straight down, every vertex's view-space xy is scaled by
- * how much deeper it sits than the reference plane:
+ * Plan-oblique («military») projection: the camera is PERMANENTLY straight
+ * top-down and never rotates. Cursor/touch input drives a pure shear instead:
  *
- *   factor = 1 + K · (depth − refDepth) / refScale
+ *   x' = x + sx·y      z' = z + sz·y      (y untouched)
  *
- * Deeper (lower) vertices spread outward → building walls splay, all façades
- * become visible at once — the icon-painting read. Works continuously across
- * a single GLB mesh (no per-object scaling).
+ * Every horizontal section — every roof, at any height, of any shape — keeps
+ * its exact undistorted plan drawing at all times; walls extrude as
+ * parallelograms on the opposite side (references/perspective-guide.png).
+ * Depth stays = height, so the z-buffer resolves the oblique view exactly.
+ *
+ * Buildings are recovered from the single-mesh GLB by connected-component
+ * splitting (buildingSplit.ts) so each can be hovered and clicked.
+ * Materials in mapLooks.ts, studio in mapStudio.ts; TUNING_LOG map rounds 4–7.
  */
-// 0 = pure orthographic, no divergence at all ("too fisheye" at 0.85 —
-// user 2026-07-15). Raise gently (0.15–0.3) if reverse perspective returns.
-const REVERSE_K = 0;
-const REVERSE_SCALE = 110;
-/** max tilt when the cursor is at the viewport edge (rad) */
-const MAX_TILT = 0.5;
-/** cursor deadzone around the center — inside it the view is exactly top-down */
-const DEADZONE = 0.08;
+
+const MODEL_GLB = asset('/resources/map-w-river.glb');
+/**
+ * Yaw applied to the whole model so geographic NORTH points up the screen.
+ *
+ * The GLB is authored on the site's own grid, not on the compass: the Neva
+ * slab lies entirely on the local −X side and both roads (Арсенальная наб.,
+ * ул. Комсомола) run along local ±Y. Against the real map those two run at a
+ * bearing of ~81°/261° with the water south of the complex — so the model
+ * arrives with south pointing up and needs roughly a half turn plus the
+ * street grid's tilt. Baked into the geometry at load, so every downstream
+ * bbox, centroid and axisAngle is already in the final world frame.
+ *
+ * 189° = a half turn (to put the water south) + 9° for the street grid. Both
+ * numbers were checked against the Yandex plan two independent ways — the
+ * shoreline bearing, and the axis joining the Западный and Восточный cross
+ * blocks — which agreed to under a degree.
+ *
+ * Dev override: ?yaw=<degrees>
+ */
+const MODEL_YAW_DEG = 189;
+/** max shear (wall reveal per unit height) at the screen edge; ?ob=<k> */
+const MAX_SHEAR = 0.55;
+/** cursor deadzone around the center — inside it the view is a flat plan */
+const DEADZONE = 0;
+/** steepness of the shear onset: higher = full lean on a smaller cursor move,
+ *  still hard-clamped at MAX_SHEAR */
+const RESPONSE_GAIN = 5;
+/** cursor smoothing time constant (s) — small = snappy follow */
+const SMOOTH_TAU = 0.12;
+/** breathing room around the worst-case (fully sheared) extent; ?fit=<k> */
+const FIT_MARGIN = 0.95;
 const CAMERA_DIST = 400;
-const MODEL_SPAN = 300; // model normalized to this max dimension
+const MODEL_SPAN = 300; // model normalized to this max horizontal dimension
+const GROUND_SIZE = MODEL_SPAN * 5;
+
+/** dihedral angle above which the exporter's smoothed normals are re-hardened.
+ *  map.glb ships primitive 1 at 73.9% smooth-shaded — normals averaged across
+ *  architectural corners — which is the main reason the geometry read mushy. */
+const CREASE_DEG = 35;
 
 export class ConceptScreen {
   el: HTMLElement;
@@ -31,8 +77,19 @@ export class ConceptScreen {
 
   private renderer!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera!: THREE.OrthographicCamera;
-  private target = new THREE.Vector3(0, 0, 0);
+  private mapCam = new MapCamera();
+  private shearGroup = new THREE.Group();
+
+  private model?: THREE.Object3D;
+  private picker = new BuildingPicker();
+  private ground?: GroundPlan;
+  private labels!: MapLabels;
+  private drawer!: BuildingDrawer;
+  private mapInfo!: MapInfo;
+
+  private maxShear = MAX_SHEAR;
+  private fitMargin = FIT_MARGIN;
+  private yawDeg = MODEL_YAW_DEG;
   private raf = 0;
   private running = false;
 
@@ -43,12 +100,15 @@ export class ConceptScreen {
   private dragging = false;
   private lastDrag = { x: 0, y: 0 };
 
-  private uRevDist = { value: CAMERA_DIST };
-  private uRevK = { value: REVERSE_K };
-  private uRevScale = { value: REVERSE_SCALE };
-
   constructor(container: HTMLElement) {
     this.el = container;
+    const q = new URLSearchParams(location.search);
+    const ob = parseFloat(q.get('ob') ?? '');
+    if (Number.isFinite(ob)) this.maxShear = ob;
+    const fit = parseFloat(q.get('fit') ?? '');
+    if (Number.isFinite(fit)) this.fitMargin = fit;
+    const yaw = parseFloat(q.get('yaw') ?? '');
+    if (Number.isFinite(yaw)) this.yawDeg = yaw;
     this.buildDom();
     this.buildScene();
   }
@@ -56,34 +116,51 @@ export class ConceptScreen {
   private buildDom() {
     this.el.innerHTML = '';
 
-    const tier = getPerfTier();
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    this.renderer.setPixelRatio(tier.mapPixelRatio);
-    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.setPixelRatio(getPerfTier().mapPixelRatio);
+    this.renderer.setClearColor(MAP_BG, 1);
+    // NOT NoToneMapping: the environment probe alone lands around 3.8 linear
+    // (base 3.5 × envMapIntensity), so without a shoulder every lit face clips
+    // flat to white and the key light can add brightness but no gradation —
+    // which is what made the roofs read flat. Neutral (Khronos PBR Neutral)
+    // rolls the 1–4 range off while preserving hue.
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.el.appendChild(this.renderer.domElement);
 
-    const home = document.createElement('a');
-    home.className = 'concept-home';
+    const add = (tag: string, cls: string, html: string) => {
+      const n = document.createElement(tag);
+      n.className = cls;
+      n.innerHTML = html;
+      this.el.appendChild(n);
+      return n;
+    };
+
+    const home = add('a', 'concept-home', logoSvg) as HTMLAnchorElement;
     home.href = '#';
-    home.innerHTML = logoSvg;
     home.setAttribute('aria-label', 'На главную');
     home.addEventListener('click', (e) => {
       e.preventDefault();
       this.onNavigate('main');
     });
-    this.el.appendChild(home);
+    // round 10: the «Концепция» corner title is gone at the designer's request,
+    // and the standing hint moved into the left rail under the logo, where it
+    // doubles as the hover read-out.
+    this.mapInfo = new MapInfo(this.el);
 
-    const title = document.createElement('div');
-    title.className = 'concept-title';
-    title.textContent = 'Концепция';
-    this.el.appendChild(title);
-
-    const hint = document.createElement('div');
-    hint.className = 'concept-hint';
-    hint.textContent = 'Отведите курсор от центра, чтобы наклонить план';
-    this.el.appendChild(hint);
+    this.labels = new MapLabels(this.el);
+    this.drawer = new BuildingDrawer(this.el);
+    this.drawer.onClose = () => this.setSelected(null);
+    this.picker.onHoverChange = (id) => {
+      this.el.classList.toggle('picking', id !== null);
+      this.mapInfo.setHovered(id);
+    };
 
     this.el.addEventListener('pointermove', (e) => {
+      this.picker.setPointer(e.clientX, e.clientY);
+      // the drawer must not steer the plan: the lean maps raw cursor position
+      // to shear across the whole screen and DEADZONE is 0, so without this
+      // the plan keeps tilting while you read the panel
+      if (this.drawer.hovered) return;
       if (e.pointerType === 'touch') {
         if (!this.dragging) return;
         this.inputX += (e.clientX - this.lastDrag.x) / 240;
@@ -103,87 +180,173 @@ export class ConceptScreen {
       }
     });
     addEventListener('pointerup', () => (this.dragging = false));
-  }
-
-  /** inject the reverse-perspective displacement into a material's vertex stage */
-  private patchMaterial(mat: THREE.Material) {
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uRevK = this.uRevK;
-      shader.uniforms.uRevDist = this.uRevDist;
-      shader.uniforms.uRevScale = this.uRevScale;
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          '#include <common>\nuniform float uRevK;\nuniform float uRevDist;\nuniform float uRevScale;'
-        )
-        .replace(
-          '#include <project_vertex>',
-          [
-            'vec4 mvPosition = vec4( transformed, 1.0 );',
-            '#ifdef USE_INSTANCING',
-            '  mvPosition = instanceMatrix * mvPosition;',
-            '#endif',
-            'mvPosition = modelViewMatrix * mvPosition;',
-            'float rpDepth = -mvPosition.z;',
-            'mvPosition.xy *= 1.0 + uRevK * (rpDepth - uRevDist) / uRevScale;',
-            'gl_Position = projectionMatrix * mvPosition;',
-          ].join('\n')
-        );
-    };
-    mat.needsUpdate = true;
+    // click a building to open its drawer; click empty space to dismiss
+    this.el.addEventListener('click', () => {
+      if (this.drawer.hovered) return;
+      this.setSelected(this.picker.hoverId);
+    });
   }
 
   private buildScene() {
-    // lights for whatever materials the GLB carries
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8fc4e2, 1.4));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(180, 320, 120);
-    this.scene.add(sun);
+    this.scene.background = new THREE.Color(MAP_BG);
+    this.shearGroup.matrixAutoUpdate = false;
+    this.scene.add(this.shearGroup);
 
-    const loader = new GLTFLoader();
-    loader.load(
-      encodeURI('/resources/scene.glb'),
-      (gltf) => {
-        const root = gltf.scene;
+    // The environment IS most of the specular: a top-down camera makes surfaces
+    // mirror the probe, so its bright sources are what produce highlights.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = buildStudioEnv();
+    this.scene.environment = pmrem.fromEquirectangular(env).texture;
+    env.dispose();
+    pmrem.dispose();
 
-        // normalize: center on origin, base at y=0, span = MODEL_SPAN
-        const box = new THREE.Box3().setFromObject(root);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const scale = MODEL_SPAN / Math.max(size.x, size.z);
-        root.scale.setScalar(scale);
-        root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+    for (const l of buildLights()) this.scene.add(l);
+    this.scene.add(buildGround(GROUND_SIZE));
 
-        root.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.isMesh) {
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            mats.forEach((m) => this.patchMaterial(m));
-          }
-        });
-
-        this.scene.add(root);
-        this.primeFrame();
-      },
+    new GLTFLoader().load(
+      encodeURI(MODEL_GLB),
+      (gltf) => this.onModelLoaded(gltf.scene),
       undefined,
       (err) => console.error('[kresty] GLB load failed', err)
     );
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 1500);
-    this.camera.up.set(0, 0, -1); // north up on screen when looking straight down
+    this.mapCam.setDials(this.maxShear, this.fitMargin);
     this.resize();
   }
 
+  private onModelLoaded(root: THREE.Object3D) {
+    // The node transform must be BAKED, not discarded. map-w-river.glb is a
+    // Blender Z-up export whose entire orientation lives in the node quaternion
+    // ([0.5,−0.5,0.5,0.5], i.e. local +Z → world −Y) while everything below
+    // this point works in one flat local space — without this the model loads
+    // on its side. (The previous map.glb happened to ship Y-up geometry, which
+    // is the only reason nothing needed it before.)
+    //
+    // The north yaw rides in the SAME matrix on purpose: baking it means every
+    // bbox, centroid and BuildingPart.axisAngle downstream is already in the
+    // final world frame, so no consumer needs yaw bookkeeping. MapCamera's
+    // focus azimuth in particular reads axisAngle as a world angle.
+    root.updateMatrixWorld(true);
+    const yaw = new THREE.Matrix4().makeRotationY((this.yawDeg * Math.PI) / 180);
+    const bake = new THREE.Matrix4();
+
+    const volumes: THREE.BufferGeometry[] = [];
+    const flats: FlatSurface[] = [];
+    const dead: THREE.Mesh[] = [];
+    const size = new THREE.Vector3();
+
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      dead.push(mesh);
+      const geo = mesh.geometry
+        .clone()
+        .applyMatrix4(bake.multiplyMatrices(yaw, mesh.matrixWorld));
+      geo.computeBoundingBox();
+      geo.boundingBox!.getSize(size);
+      // Flatness is decided geometrically but TONED by material name: the GLB
+      // ships one material per surface class, and nothing about a polygon's
+      // shape says whether it is a river or a road.
+      if (size.y < FLAT_RATIO * Math.max(size.x, size.z)) {
+        flats.push({ materialName: materialName(mesh), geometry: geo });
+      } else {
+        // re-harden the exporter's averaged normals so architectural corners
+        // shade as corners again; genuinely curved surfaces stay smooth
+        volumes.push(toCreasedNormals(geo, (CREASE_DEG * Math.PI) / 180));
+        geo.dispose();
+      }
+    });
+    for (const m of dead) {
+      m.geometry.dispose();
+      const old = m.material;
+      Array.isArray(old) ? old.forEach((x) => x.dispose()) : old.dispose();
+      m.removeFromParent();
+    }
+
+    // Buildings and plan go in SEPARATE groups: edge lines are built by
+    // traversal, and the plan must not get them — a white contour is invisible
+    // on the near-white roads and far too loud on the water.
+    const buildings = new THREE.Group();
+    const parts = splitConnectedParts(volumes);
+    for (const g of volumes) g.dispose();
+    for (const part of parts) {
+      const mesh = new THREE.Mesh(part.geometry);
+      this.picker.add(mesh, part);
+      buildings.add(mesh);
+    }
+    buildEdgeLines(buildings, this.picker.edge);
+    root.add(buildings);
+
+    this.ground = new GroundPlan(flats);
+    root.add(this.ground.group);
+    console.info(
+      `[kresty] map: ${parts.length} buildings, ${flats.length} flat surfaces`
+    );
+
+    // Normalize on the BUILDINGS alone. The plan spans ~3× their footprint (the
+    // Neva slab reaches far off-site), so measuring the whole root would
+    // silently shrink the volumes to a third of the size MAX_SHEAR and
+    // FIT_MARGIN were tuned against. The plan is meant to bleed off every edge.
+    const box = new THREE.Box3().setFromObject(buildings);
+    const bsize = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const scale = MODEL_SPAN / Math.max(bsize.x, bsize.z);
+
+    // The base must land on the SHEAR-INVARIANT plane y = 0 — that plane is the
+    // entire mechanism keeping the plan undistorted (see groundPlan.ts). Take
+    // it from the flat surfaces themselves, not from the buildings' minimum, so
+    // an export whose foundations dip below grade cannot drag the plan off it.
+    const groundY = flats.length
+      ? new THREE.Box3().setFromObject(this.ground.group).min.y
+      : box.min.y;
+
+    root.scale.setScalar(scale);
+    root.position.set(-center.x * scale, -groundY * scale, -center.z * scale);
+    this.picker.setModelScale(scale);
+
+    this.mapCam.setModelExtents(
+      (bsize.x * scale) / 2,
+      (bsize.z * scale) / 2,
+      (box.max.y - groundY) * scale
+    );
+    root.updateMatrix();
+    this.mapCam.setModelMatrix(root.matrix);
+    // after root.updateMatrix(): the captions project world-space anchors, so
+    // they need the normalize transform that is only final at this point
+    this.labels.build(flats, root.matrix, Math.max(bsize.x, bsize.z));
+
+    this.model = root;
+    this.shearGroup.add(root);
+    this.resize(); // frustum now fits the real bounds
+    this.primeFrame();
+  }
+
+  /** single entry point for selection: drawer, dimming and the camera swing */
+  private setSelected(id: string | null) {
+    this.picker.select(id);
+    if (id) this.drawer.open(id);
+    else this.drawer.close();
+    // the drawer takes over the read-out while focused, and it occupies the
+    // same left column — the rail would sit underneath it
+    this.mapInfo.setMuted(id !== null);
+    // the drawer animates open, so re-read its width next frame rather than
+    // framing against a panel that is still sliding in
+    requestAnimationFrame(() => {
+      this.mapCam.setViewport(innerWidth, innerHeight, id ? this.drawer.width : 0);
+      this.mapCam.focusOn(this.picker.part(id) ?? null);
+    });
+    this.el.classList.toggle('focused', id !== null);
+  }
+
+  // ------------------------------------------------------------------ frame
+
   resize = () => {
     this.renderer.setSize(innerWidth, innerHeight);
-    const aspect = innerWidth / innerHeight;
-    const halfH = MODEL_SPAN * 0.62;
-    const halfW = halfH * aspect;
-    this.camera.left = -halfW;
-    this.camera.right = halfW;
-    this.camera.top = halfH;
-    this.camera.bottom = -halfH;
-    this.camera.updateProjectionMatrix();
+    this.picker.setResolution(innerWidth, innerHeight);
+    // the drawer's real width, so the focus framing tracks the CSS (incl. its
+    // max-width: 86vw clamp on narrow viewports)
+    this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
+    this.mapCam.snap();
   };
 
   start() {
@@ -196,7 +359,16 @@ export class ConceptScreen {
       if (!this.running) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      this.update(dt);
+      const k = 1 - Math.exp(-dt / SMOOTH_TAU);
+      this.smX += (this.inputX - this.smX) * k;
+      this.smY += (this.inputY - this.smY) * k;
+      this.mapCam.update(dt);
+      this.ground?.setFocus(this.mapCam.focus);
+      this.ground?.update(now / 1000);
+      this.updateShear();
+      this.picker.update(this.scene, this.mapCam.camera);
+      this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
+      this.renderer.render(this.scene, this.mapCam.camera);
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -206,39 +378,49 @@ export class ConceptScreen {
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.el.classList.add('hidden');
+    this.picker.select(null);
+    this.drawer.close();
     removeEventListener('resize', this.resize);
   }
 
   /** render a single frame even when paused (transition priming) */
   primeFrame() {
-    this.updateCamera();
-    this.renderer.render(this.scene, this.camera);
+    this.mapCam.snap();
+    this.ground?.setFocus(this.mapCam.focus);
+    this.updateShear();
+    this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
+    this.renderer.render(this.scene, this.mapCam.camera);
   }
 
-  private update(dt: number) {
-    const k = 1 - Math.exp(-dt / 0.25);
-    this.smX += (this.inputX - this.smX) * k;
-    this.smY += (this.inputY - this.smY) * k;
-    this.updateCamera();
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  private updateCamera() {
-    // deadzone: perfectly top-down until the cursor leaves the center
+  private updateShear() {
+    // deadzone: flat plan until the cursor leaves the center
     const mag = Math.hypot(this.smX, this.smY);
-    const eased = Math.max(0, mag - DEADZONE) / (1 - DEADZONE);
-    const polar = Math.min(1, eased) * MAX_TILT;
-    // tilt TOWARD the cursor side (screen x → world x, screen y → world z)
-    const dirX = mag > 1e-4 ? this.smX / mag : 0;
-    const dirZ = mag > 1e-4 ? this.smY / mag : 0;
+    const raw = Math.min(1, Math.max(0, mag - DEADZONE) / (1 - DEADZONE));
+    // saturating response: bites hard on a small cursor move, then flattens —
+    // normalized so the screen edge still lands on exactly 1.0
+    const resp =
+      (1 - Math.exp(-RESPONSE_GAIN * raw)) / (1 - Math.exp(-RESPONSE_GAIN));
+    // Unwind as the camera rotates: shear and camera rotation compound into a
+    // skewed mess if both are applied at once, so the plan flattens on the way
+    // to the isometric pose (and the lean is inert while focused).
+    const amt = resp * this.maxShear * (1 - this.mapCam.focus);
+    // roofs lean TOWARD the cursor → walls reveal on the far side
+    // (screen x → world x, screen y → world z)
+    const sx = mag > 1e-4 ? (this.smX / mag) * amt : 0;
+    const sz = mag > 1e-4 ? (this.smY / mag) * amt : 0;
 
-    const t = this.target;
-    this.camera.position.set(
-      t.x + CAMERA_DIST * Math.sin(polar) * dirX,
-      t.y + CAMERA_DIST * Math.cos(polar),
-      t.z + CAMERA_DIST * Math.sin(polar) * dirZ
+    this.shearGroup.matrix.set(
+      1, sx, 0, 0,
+      0, 1, 0, 0,
+      0, sz, 1, 0,
+      0, 0, 0, 1
     );
-    this.camera.lookAt(t);
-    this.uRevDist.value = this.camera.position.distanceTo(t);
+    this.shearGroup.matrixWorldNeedsUpdate = true;
   }
+}
+
+/** the GLTF material name — the only per-surface identity this export carries */
+function materialName(mesh: THREE.Mesh): string {
+  const m = mesh.material;
+  return (Array.isArray(m) ? m[0]?.name : m?.name) ?? '';
 }

@@ -9,6 +9,8 @@ uniform float u_time;        // seconds
 uniform float u_scale;       // internal px per reference(1440-frame) px
 uniform vec4 u_beamAngles;   // radians, screen space (y down)
 uniform vec4 u_linkAngles;   // directions of the nav links (hover zone light)
+uniform vec4 u_linkDist;     // link center distances from convergence, reference px
+uniform vec4 u_linkHalfAng;  // apparent angular half-width of each label, rad
 uniform vec4 u_beamHover;    // 0..1 per nav beam
 uniform float u_bgMix;       // 0 flat blue, 1 photo showreel underneath
 uniform float u_layers;      // parallax dust layers (perf tier)
@@ -35,11 +37,26 @@ uniform float u_hazeBase;
 uniform float u_channelDark;
 uniform float u_parallax;
 uniform float u_breathe;
-uniform float u_refraction;    // prismatic bands inside beams
+uniform float u_refraction;    // fiber-bundle visibility inside beams
 uniform float u_shimmer;       // per-beam slow brightness life
+uniform float u_fiberDrift;    // angular migration speed of the fiber bundles
+uniform float u_angleWarp;     // camera-tilt geometry: toward rods vs away fans
+uniform float u_ghosting;      // lens-flare ghost chain on the camera axis
+uniform float u_shadow;        // hovered links carve dark shadow paths
+uniform float u_modeMix;       // 0 holographic white/rainbow, 1 dusty warm amber
 uniform float u_sceneDim;      // hover gallery-dark: boost + warm
 uniform float u_hoverMode;     // 0 brighten+turb | 1 widen | 2 flood | 3 arm | 4 stream
 uniform float u_compositeMode; // 0 additive | 1 eclipse
+
+// ---- «Прорезь» slit path ----------------------------------------------
+uniform sampler2D u_signMask;  // rasterized emblem (sign.svg): white = slit open
+uniform float u_hasMask;       // 1 if the mask texture is uploaded, else 0
+uniform float u_signSize;      // emblem span in reference px (mask footprint)
+uniform float u_godrays;       // radial light-scatter strength through the slits
+uniform float u_bloom;         // emissive halo around the emblem
+uniform float u_slitMix;       // 0 procedural field, 1 logo-slit light
+uniform float u_dissolve;      // 0 crisp logo, 1 dissolved into zoom-blur trails
+uniform float u_signRot;       // slow continuous rotation of the light pattern, rad
 
 out vec4 fragColor;
 
@@ -79,6 +96,162 @@ float lobe(float th, float a, float k) {
   return c > 0.0 ? pow(c, k) : 0.0;
 }
 
+// Fiber bundle inside a beam: NON-periodic comb of hashed sub-rays that drift
+// angularly, are born and die on individual cycles ("disco lights"), with
+// unequal widths/brightness. Replaces the old sin() prismatic bands, whose
+// strict periodicity produced the "ladder" artifact — real light never splits
+// into equal lines. `disp` spreads RGB across each fiber's cross-section
+// (prism dispersion); returns per-channel fiber luminance.
+vec3 fiberComb(float dTh, float r, float t, float seed, float disp) {
+  // slight shear so fibers are not laser-straight along their length
+  float shear = (vnoise(vec2(dTh * 26.0 + seed, r * 0.0035 + t * 0.04)) - 0.5) * 0.6;
+  vec3 acc = vec3(0.0);
+  // staggered generations (golden-ratio offsets) so births/deaths overlap;
+  // each generation runs its OWN comb frequency — equal spacing would both
+  // read as fake and alias into concentric moiré rings near the center
+  for (int g = 0; g < 3; g++) {
+    float fg = float(g);
+    float freq = 47.0 + fg * 18.0;
+    // fade a generation out where its fibers shrink below ~2 device px,
+    // otherwise the converging lines alias into arc-shaped moiré
+    float cellPx = r * u_scale / freq;
+    float vis = smoothstep(2.2, 5.5, cellPx);
+    if (vis < 0.003) continue;
+    float x = dTh * freq + shear + fg * 4.3262;
+    x += t * u_fiberDrift * (0.55 + 0.37 * fg);
+    float id = floor(x);
+    float fx = fract(x);
+    float h1 = hash21(vec2(id, seed + fg * 31.7));
+    float h2 = hash21(vec2(id, seed + fg * 31.7 + 5.3));
+    float h3 = hash21(vec2(id, seed + fg * 31.7 + 9.1));
+    // lifecycle: each fiber fades in, lives ~4-9 s, dies, gets replaced
+    float life = 0.5 + 0.5 * sin(t * (0.7 + h1 * 0.9) + h1 * 6.2831);
+    life = smoothstep(0.12, 0.62, life) * step(0.2, h2);
+    // unequal widths, jittered positions, a few bright "soloists";
+    // a fiber never goes subpixel — that aliased into concentric moiré
+    float w = max(0.07 + 0.17 * h2, 1.6 / cellPx);
+    float c = 0.22 + 0.56 * h3;
+    float d = (fx - c) / w;
+    float bright = 0.3 + 2.2 * pow(h1, 6.0);
+    float dd = disp * 0.6;
+    acc += vec3(
+      exp(-(d - dd) * (d - dd)),
+      exp(-d * d),
+      exp(-(d + dd) * (d + dd))
+    ) * bright * life * vis;
+  }
+  return acc * 0.55;
+}
+
+// emblem mask, crisp channel; 0 outside the footprint (CLAMP would smear)
+float signMask(vec2 uv) {
+  vec2 c = clamp(uv, 0.0, 1.0);
+  if (c != uv) return 0.0;
+  return texture(u_signMask, uv).r;
+}
+
+// round-blurred emblem channel — bloom taps sample this: sparse jittered taps
+// of the hard-edged crisp channel have huge per-pixel variance (stipple noise)
+float signMaskSoft(vec2 uv) {
+  vec2 c = clamp(uv, 0.0, 1.0);
+  if (c != uv) return 0.0;
+  return texture(u_signMask, uv).g;
+}
+
+// RADIALLY-smeared emblem channel — the god-ray march samples this: the march
+// integrates along the ray, so only that direction needs smoothing; a round
+// blur here would also melt the razor-sharp tangential trail edges (the look)
+float signMaskRay(vec2 uv) {
+  vec2 c = clamp(uv, 0.0, 1.0);
+  if (c != uv) return 0.0;
+  return texture(u_signMask, uv).b;
+}
+
+// «Прорезь»/«Сияние»: the logo as light through a cross-shaped slit. At
+// dissolve 0: crisp readable emblem core + bloom halo + radial god-rays
+// bursting out through the slits toward the viewer (Z-throw). At dissolve 1
+// the crisp paths vanish and the strokes elongate into soft zoom-blur light
+// trails with a blown bright center (the wish-image register). Cursor shifts
+// the light behind the cloth (parallax + lean), rainbow fringing on ray edges.
+// hoverDir/hoverAmt gently pull + brighten the light toward a hovered link.
+// jit = per-pixel dither seed: the god-ray march and the bloom spiral MUST be
+// jittered per pixel — their fixed offsets otherwise deposit visible ghost
+// copies of the mask edges (the "ladder" artifact).
+vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit) {
+  float S = max(u_signSize, 1.0);
+  // slow rotation: the mask is sampled in rotated space — rotate p AND the
+  // parallax vector (below), never q/lean, so the pattern turns rigidly while
+  // the cursor still displaces the light along the true screen direction
+  float cR = cos(u_signRot);
+  float sR = sin(u_signRot);
+  mat2 R = mat2(cR, sR, -sR, cR);
+  vec2 uv0 = 0.5 + (R * p) / S;
+
+  // the light "behind the cloth" shifts with the cursor (seam-free vector
+  // form — no atan2) and leans toward a hovered link
+  vec2 par = (q * 0.06 + hoverDir * 26.0) * u_parallax;
+  vec2 lightUv = 0.5 - (R * par) / S;
+
+  // crisp emblem core — fades out entirely as the logo dissolves into light
+  float core = signMask(uv0) * (1.0 - u_dissolve);
+
+  // bloom halo: spiral taps of the mask -> a glow that keeps the shape;
+  // per-pixel spiral rotation turns 12 discrete taps into smooth noise
+  float bloomR = 0.085 * (1.0 + 1.2 * u_dissolve); // dissolved = wider, softer
+  float bloom = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    float rad = (fi + 0.5) / 12.0 * bloomR;
+    float ang = fi * 2.399963 + jit * 6.2831;
+    bloom += signMaskSoft(uv0 + vec2(cos(ang), sin(ang)) * rad) * (1.0 - rad / (bloomR * 1.06));
+  }
+  bloom /= 6.0;
+
+  // god-rays: march from the fragment back toward the light center,
+  // accumulating the mask — light streaming out through the slits.
+  // per-channel chromatic scale about the center = prism fringing.
+  int N = int(clamp(u_layers * 8.0 + u_octaves * 4.0, 12.0, 32.0));
+  float caS = u_ca * 3.5;
+  vec2 duv = (uv0 - lightUv) / float(N);
+  vec3 acc = vec3(0.0);
+  float illum = 1.0;
+  float decay = mix(0.93, 0.968, u_dissolve); // dissolved trails reach further
+  vec2 s = uv0 - duv * jit; // dithered march start: banding -> hidden noise
+  for (int i = 0; i < 32; i++) {
+    if (i >= N) break;
+    s -= duv;
+    vec2 rel = s - lightUv;
+    acc += vec3(
+      signMaskRay(lightUv + rel * (1.0 + caS)),
+      signMaskRay(s),
+      signMaskRay(lightUv + rel * (1.0 - caS))
+    ) * illum;
+    illum *= decay;
+  }
+  // crisp register: fade the rays near the very center so the emblem's own
+  // strokes read there. Dissolved register WANTS the blown featureless core.
+  float rayGate = mix(smoothstep(0.02, 0.17, length(uv0 - vec2(0.5))), 1.0, u_dissolve);
+  vec3 rays = acc / float(N) * rayGate;
+  // dissolved trails melt toward the screen edges instead of staying constant
+  rays *= mix(1.0, exp(-r / (u_falloffL * 1.15)), u_dissolve);
+
+  // rays toward the cursor sharpen/brighten (scheme.jpg), far side calms —
+  // vector dot, continuous everywhere
+  float pd = clamp(length(q) / 380.0, 0.0, 1.0);
+  float lean = 1.0 + 0.7 * clamp(dot(normalize(p + 1e-4), normalize(q + 1e-4)), -1.0, 1.0) * pd;
+
+  // living light: gentle breathing, no rave flicker
+  float life = 1.0 + u_breathe * 0.12 * sin(u_time * 0.6)
+    + u_shimmer * 0.12 * (vnoise(vec2(u_time * 0.5, 7.3)) - 0.5);
+  life *= 1.0 + 0.4 * hoverAmt;
+
+  // crisp emblem core (readable logo) carries the shape; bloom + rays are light
+  vec3 col = vec3(core) * u_coreIntensity * 1.8
+    + vec3(bloom) * u_bloom * 1.9
+    + rays * u_godrays * 2.2 * lean;
+  return col * life;
+}
+
 void main() {
   // top-left-origin pixel space (matches DOM measurements + WGSL)
   vec2 fragPx = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
@@ -109,20 +282,31 @@ void main() {
     if (float(i) >= u_layers) break;
     float fi = float(i);
     float depth = 0.55 + fi * 0.45;
-    vec2 dc = p + q * (0.05 * u_parallax * depth) * 60.0 / (r * 0.02 + 6.0) + swirl;
+    // pure per-layer translation: the old 1/r amplification radially squeezed
+    // the noise domain whenever the pointer left center, compressing the
+    // wisps into concentric "onion shell" arcs
+    vec2 dc = p + q * (0.05 * u_parallax * depth) * 5.0 + swirl;
     float rr = length(dc) + 1e-3;
     float aa = atan(dc.y, dc.x) - u_rotSpeed * u_time * (1.2 + 0.6 * fi);
     // radial coord varies slowly, angular quickly -> radially elongated wisps.
-    // jitter the radial lattice by an angular noise term, otherwise the
-    // value-noise grid rows align into concentric "sonar ring" artifacts
-    float rJit = vnoise(vec2(aa * 1.7 + fi * 9.0, 3.7)) * 0.55;
+    // jitter the radial lattice by TWO angular noise terms: the slow one bends
+    // would-be rings, the fast strong one breaks their local coherence — one
+    // smooth term alone only bent the "sonar rings", every fbm octave still
+    // lined its rows up into visible concentric arcs
+    float rJit = vnoise(vec2(aa * 1.7 + fi * 9.0, 3.7)) * 0.55
+      + vnoise(vec2(aa * 6.1 + fi * 9.0, 13.7)) * 1.15;
+    // the angular frequency must NOT grow with rr: `aa*(3+rr*0.018)` made the
+    // y-lattice get crossed periodically along the radius (period ≈
+    // 1/(|aa|·0.018) px) — spiral arc bands no radial jitter could hide
     vec2 nUv = vec2(
       rr * 0.008 * u_dustScale - u_time * (0.025 + 0.012 * fi) + rJit,
-      aa * (3.0 + rr * 0.018) * u_dustScale + fi * 17.0
+      aa * 6.0 * u_dustScale + fi * 17.0
     );
     dust += (fbm(nUv) - 0.34) / (1.0 + fi);
   }
   dust = max(dust, 0.0) * u_dustAmount;
+  // dusty register: the air is the protagonist
+  dust *= 1.0 + 1.7 * u_modeMix;
 
   // ---- motes: hashed sparse specks in beam-aligned (r, arc) cells -----
   float thD = th - u_rotSpeed * u_time * 0.6;
@@ -157,25 +341,34 @@ void main() {
     vec2 deltaPx = (f - mposFrac) * cellS;
     float dr = dot(deltaPx, rd);
     float dtv = dot(deltaPx, vec2(-rd.y, rd.x));
-    // sigmas scale with the cell so tails never clip at cell borders;
-    // wind stretches the streaks along their flight path
-    float sigmaR = cellS * 0.22 * (1.0 + 1.2 * streamBoost + 1.4 * wind);
-    float sigmaT = cellS * 0.055;
+    // per-mote size variance (identical stamped "rice seeds" read as fake);
+    // wind stretches the streak but the cap keeps tails inside the cell
+    float sigmaR = cellS * (0.15 + 0.10 * hash21(cid + 9.4))
+      * (1.0 + 1.2 * streamBoost + 1.4 * wind);
+    sigmaR = min(sigmaR, cellS * 0.28);
+    float sigmaT = cellS * (0.038 + 0.035 * hash21(cid + 13.2));
     float m = exp(-(dr * dr / (sigmaR * sigmaR) + dtv * dtv / (sigmaT * sigmaT)));
+    // border envelope: whatever the stretch, a streak is exactly zero at the
+    // cell edge — the hard rectangular cuts came from clipped tails
+    m *= smoothstep(0.5, 0.4, max(abs(f.x - 0.5), abs(f.y - 0.5)));
     // fade out as the mote slides past its cell so it never pops
     vec2 edge = abs(mposFrac - 0.5);
-    float alive = (1.0 - smoothstep(0.42, 0.62, max(edge.x, edge.y)));
-    motes = m * step(0.6, h) * alive * (0.6 + 0.4 * sin(u_time * (1.0 + h * 3.0) + h * 40.0))
+    float alive = (1.0 - smoothstep(0.38, 0.58, max(edge.x, edge.y)));
+    motes = m * smoothstep(0.55, 0.72, h) * alive
+      * (0.6 + 0.4 * sin(u_time * (1.0 + h * 3.0) + h * 40.0))
       * (1.0 + 1.8 * wind);
   }
-  motes *= u_moteAmount;
+  motes *= u_moteAmount * (1.0 + 1.5 * u_modeMix);
 
-  // ---- primary nav beams (with chromatic fringing) --------------------
+  // ---- primary nav beams (camera-tilt optics + fiber bundles) ---------
   float radial = exp(-r / u_falloffL);
   vec3 beams = vec3(0.0);
   float beamMaskW = 0.0; // wide mask, gates dust/motes into the light
   float hoverTurbGate = 0.0;
   float flood = 0.0; // eclipse hover: channel floods with light
+  // rainbow dispersion belongs to the blue-sky register only
+  float caM = u_ca * (1.0 - u_modeMix);
+  float disp = clamp(u_ca * 55.0, 0.0, 1.0) * (1.0 - u_modeMix);
 
   for (int i = 0; i < 4; i++) {
     float a = u_beamAngles[i];
@@ -183,49 +376,56 @@ void main() {
     float dAng = atan(sin(pa - a), cos(pa - a));
     a += clamp(dAng, -1.0, 1.0) * 0.1 * pd * u_parallax;
     float hov = u_beamHover[i];
-    float k = u_primaryK;
+
+    // camera tilt: beams facing the cursor contract into thin hard rods,
+    // the far side opens into wide soft fans (scheme.jpg physics)
+    float toward = max(cos(pa - a), 0.0);
+    float away = max(-cos(pa - a), 0.0);
+    float warp = u_angleWarp * pd;
+    float k = u_primaryK * (1.0 + 1.1 * warp * toward);
+    k /= 1.0 + 0.55 * warp * away;
+    // dusty beams contract into defined cones cutting the darkness
+    k *= 1.0 + 0.45 * u_modeMix;
     if (hm == 1) k = mix(k, k * 0.22, hov); // widen: the wedge opens
     k *= 1.0 + u_breathe * 0.22 * sin(u_time * 0.45 + float(i) * 1.7);
 
-    float lr = lobe(th, a - u_ca, k);
+    float lr = lobe(th, a - caM, k);
     float lg = lobe(th, a, k);
-    float lb = lobe(th, a + u_ca, k);
+    float lb = lobe(th, a + caM, k);
 
     float boost = 1.0;
     if (hm == 0 || hm == 4) boost += 0.75 * hov;
     if (hm == 1) boost += 0.35 * hov;
     if (hm == 3) boost += 0.25 * hov;
 
-    // beams facing the cursor burn brighter, the far side calms down
-    float toward = max(cos(pa - a), 0.0);
-    boost *= 1.0 + 1.0 * toward * toward * pd * u_parallax;
-    boost *= 1.0 - 0.3 * max(-cos(pa - a), 0.0) * pd;
+    // toward-beams burn brighter and harder, the far side calms down
+    boost *= 1.0 + (0.55 + 0.75 * u_angleWarp) * toward * toward * pd * u_parallax;
+    boost *= 1.0 - min(0.25 + 0.28 * u_angleWarp, 0.62) * away * pd;
 
     // shimmer: slow independent life per beam
     float flick = 1.0 + u_shimmer * (vnoise(vec2(u_time * 0.55 + float(i) * 13.7, 4.2)) - 0.5) * 1.5;
 
-    // prismatic refraction: RGB-phased bands flowing outward inside the beam
-    float dTh = th - a;
-    float bandPhase = dTh * 140.0 + r * 0.012 - u_time * 0.9;
-    vec3 bands = mix(
-      vec3(1.0),
-      vec3(
-        0.62 + 0.55 * sin(bandPhase),
-        0.62 + 0.55 * sin(bandPhase + 2.094),
-        0.62 + 0.55 * sin(bandPhase + 4.188)
-      ),
-      u_refraction
-    );
+    // fiber bundles: drifting, dying, unequal sub-rays (see fiberComb)
+    float dTh = atan(sin(th - a), cos(th - a));
+    vec3 bands = vec3(1.0);
+    if (u_refraction > 0.003 && lr + lg + lb > 0.004) {
+      vec3 fib = fiberComb(dTh, r, u_time, float(i) * 17.0, disp);
+      bands = mix(vec3(1.0), vec3(0.5) + fib * 1.25, u_refraction);
+    }
 
-    // broad soft halo so the beam glows instead of cutting
-    float halo = lobe(th, a, max(k * 0.10, 2.5)) * 0.3;
+    // broad soft halo; the away side melts further into its halo
+    float halo = lobe(th, a, max(k * 0.10, 2.5)) * (0.3 + 0.5 * warp * away);
 
-    beams += (vec3(lr, lg, lb) * bands + vec3(halo)) * boost * flick;
+    // tilt also stretches the toward-rod, shortens the far fans
+    float lenWarp = 1.0 + 0.35 * warp * toward - 0.18 * warp * away;
+    float radialB = exp(-r / (u_falloffL * lenWarp));
+
+    beams += (vec3(lr, lg, lb) * bands + vec3(halo)) * boost * flick * radialB;
     beamMaskW += lobe(th, a, u_primaryK * 0.3);
     hoverTurbGate += hov * lg;
     if (hm == 2) flood += hov * lobe(th, a, u_primaryK * 0.5);
   }
-  beams *= radial * u_primaryIntensity;
+  beams *= u_primaryIntensity;
   beamMaskW = min(beamMaskW, 1.0);
 
   // hover turbulence: extra agitation gated to the hovered beam only
@@ -262,9 +462,9 @@ void main() {
     float armBoost = 1.0 + 1.2 * toward * toward * pd * u_parallax;
     float fall = exp(-r / armLen);
     crossGlyph += vec3(
-      lobe(th, a - u_ca * 2.0, 600.0),
+      lobe(th, a - caM * 2.0, 600.0),
       lobe(th, a, 600.0),
-      lobe(th, a + u_ca * 2.0, 600.0)
+      lobe(th, a + caM * 2.0, 600.0)
     ) * fall * armBoost;
     // fainter diagonal arms, slowly swinging
     float ad = a + 0.7853982 + sin(u_time * 0.1) * 0.22;
@@ -276,8 +476,8 @@ void main() {
   float hazeN = 0.8 + 0.4 * fbm(p * 0.004 + u_time * 0.02);
   float haze = u_hazeBase * exp(-r / (u_falloffL * 1.6)) * hazeN;
 
-  // ---- composite --------------------------------------------------------
-  vec3 col;
+  // ---- composite (procedural field) -------------------------------------
+  vec3 field;
   if (cm == 1) {
     // eclipse: bright haze, beams carved as dark channels; hover floods with light
     float channel = 0.0;
@@ -285,15 +485,18 @@ void main() {
       channel += lobe(th, u_beamAngles[i], u_primaryK * 0.4);
     }
     channel = min(channel, 1.0);
-    col = vec3(haze * (1.0 - u_channelDark * channel) * (0.9 + 0.25 * dust));
-    col += vec3(flood) * radial * 1.25;
-    col += crossGlyph * 0.6 + vec3(core * 0.7);
+    field = vec3(haze * (1.0 - u_channelDark * channel) * (0.9 + 0.25 * dust));
+    field += vec3(flood) * radial * 1.25;
+    field += crossGlyph * 0.6 + vec3(core * 0.7);
   } else {
-    col = beams * (0.72 + 0.5 * dust * turb);
-    col += vec3(sec * (0.85 + 0.35 * dust));
-    col += crossGlyph + vec3(core);
-    col += vec3(haze * 0.35);
-    col += vec3(motes * min(beamMaskW + sec * 2.2, 1.0) * exp(-r / (u_falloffL * 1.1)));
+    // dusty mode confines the air strictly inside the cones: the beams
+    // highlight dust, everything outside stays black (dust perfect ref)
+    float inBeam = mix(1.0, min(beamMaskW * 1.6, 1.0), u_modeMix * 0.9);
+    field = beams * (0.72 + 0.5 * dust * turb);
+    field += vec3(sec * (0.85 + 0.35 * dust)) * inBeam;
+    field += crossGlyph + vec3(core);
+    field += vec3(haze * 0.35 * inBeam);
+    field += vec3(motes * min(beamMaskW + sec * 2.2, 1.0) * inBeam * exp(-r / (u_falloffL * 1.1)));
 
     // hover: the hovered link's whole zone blazes far harder than the rest
     float zone = 0.0;
@@ -302,16 +505,75 @@ void main() {
     }
     // tight falloff: the blaze lives near the center and breathes toward the
     // link without swallowing the label itself
-    col += vec3(1.06, 1.0, 0.9) * zone * exp(-r / (u_falloffL * 0.55)) * 1.35;
+    field += vec3(1.06, 1.0, 0.9) * zone * exp(-r / (u_falloffL * 0.55)) * 0.95;
   }
+
+  // ---- hovered links occlude the light: clean dark shadow cone ----------
+  // (the field is radial from one point, so occlusion is analytic). The cone
+  // starts AT the label's outer edge (r ≥ linkDist) — anchoring it earlier is
+  // what made the shadow "start from the middle of the link"; no noise contour.
+  if (u_shadow > 0.003) {
+    float shadowMask = 0.0;
+    for (int j = 0; j < 4; j++) {
+      float hov = u_beamHover[j];
+      float ld = u_linkDist[j];
+      if (hov < 0.01 || ld < 1.0) continue;
+      float dA = atan(sin(th - u_linkAngles[j]), cos(th - u_linkAngles[j]));
+      // gentle penumbra widening with distance behind the label
+      float pw = u_linkHalfAng[j] * (1.0 + 0.5 * max(r - ld, 0.0) / ld);
+      float occl = 1.0 - smoothstep(pw * 0.6, pw, abs(dA)); // soft cone edges
+      float behind = smoothstep(ld, ld * 1.2, r);           // fades in past the label
+      shadowMask = max(shadowMask, occl * behind * hov);
+    }
+    field *= 1.0 - u_shadow * shadowMask * 0.8;
+  }
+
+  // ---- lens-flare ghosts on the camera axis (holographic register) -----
+  float gAmt = u_ghosting * (1.0 - u_modeMix) * smoothstep(0.3, 0.8, pd);
+  // ghosts only sometimes appear — a slow gate, the lens catching the angle
+  gAmt *= smoothstep(0.35, 0.75, vnoise(vec2(u_time * 0.06, 23.7)));
+  if (gAmt > 0.004) {
+    for (int j = 0; j < 4; j++) {
+      float fj = float(j);
+      vec2 gp = q * (-0.4 + 0.55 * fj);
+      float gr = length(p - gp);
+      float rad = 30.0 + 26.0 * fj;
+      // soft disc with a faint bright rim
+      float disc = exp(-pow(gr / rad, 2.4));
+      disc += exp(-abs(gr - rad * 0.8) / (rad * 0.14)) * 0.35;
+      vec3 gTint = 0.65 + 0.35 * cos(vec3(0.0, 2.1, 4.2) + fj * 1.9);
+      field += gTint * disc * 0.05 * gAmt;
+    }
+  }
+
+  // ---- «Прорезь»: the logo as light, blended over the field ------------
+  vec3 col = field;
+  if (u_slitMix > 0.001) {
+    vec2 hoverDir = vec2(0.0);
+    float hoverAmt = 0.0;
+    for (int j = 0; j < 4; j++) {
+      hoverAmt += u_beamHover[j];
+      hoverDir += u_beamHover[j] * vec2(cos(u_linkAngles[j]), sin(u_linkAngles[j]));
+    }
+    // never blank: fall back to the procedural cross glow if the mask is absent
+    vec3 slit = (u_hasMask > 0.5)
+      ? slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx))
+      : (crossGlyph + vec3(core));
+    col = mix(field, slit, u_slitMix);
+  }
+
+  // dusty register: hot yellowish core falling to deep amber (dust perfect ref)
+  vec3 dusty = mix(vec3(1.08, 0.94, 0.62), vec3(1.0, 0.62, 0.27), clamp(r / 620.0, 0.0, 1.0));
+  col = mix(col, col * dusty, u_modeMix);
 
   // slightly cool the far field, warm the core — subtle temperature drift
   vec3 tint = mix(vec3(1.0, 0.99, 0.955), vec3(0.9, 0.97, 1.08), clamp(r / 900.0, 0.0, 1.0));
   col *= tint;
 
-  // hover gallery-dark scene: the light surges and warms
-  col *= 1.0 + 1.25 * u_sceneDim;
-  col = mix(col, col * vec3(1.14, 0.98, 0.80), u_sceneDim * 0.45);
+  // hover gallery-dark scene: the light surges (modeMix owns the warmth now);
+  // tempered from 1.25 — the old surge whited out the shadow wedge
+  col *= 1.0 + 0.75 * u_sceneDim;
+  col = mix(col, col * vec3(1.14, 0.98, 0.80), u_sceneDim * 0.2);
 
   // dim a touch over photos so the showreel reads through
   col *= mix(1.0, 0.72, u_bgMix);

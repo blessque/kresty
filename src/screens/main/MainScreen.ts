@@ -1,4 +1,6 @@
 import logoSvg from '../../assets/logo.svg?raw';
+import alsLogoSvg from '../../assets/als-logo.svg?raw';
+import signSvg from '../../assets/sign.svg?raw';
 import {
   STAGE_W,
   STAGE_H,
@@ -7,13 +9,34 @@ import {
   NAV_LINKS,
   stageScale,
 } from './layout';
-import { VARIANTS, variantIndexFromUrl } from './variants';
+import { asset } from '../../shared/assetUrl';
+import { VARIANTS, variantIndexFromUrl, SWITCHER_COUNT } from './variants';
 import { NewsTicker } from './NewsTicker';
 import { Showreel } from './Showreel';
+import { PhotoSlider } from './PhotoSlider';
 import { selectBackend } from '../../gpu/capabilities';
+import { lerpParams } from '../../gpu/rayFieldTypes';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 import { SmoothPointer } from '../../shared/pointer';
 import { getPerfTier } from '../../shared/performanceTier';
+
+/** Variants whose look is the logo-slit light (drive slitMix + the burst). */
+const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
+
+/**
+ * Slow continuous rotation of the whole light cross, rad/s (round 7).
+ * ~0.6°/s — a quarter turn in ≈2.5 min: alive, never distracting. Drives the
+ * slit-mask sampling (signRot) AND the procedural beam base angles, so every
+ * variant turns in lockstep; cursor wind/parallax stay screen-true on top.
+ */
+const ROT_SPEED = 0.0105;
+
+/**
+ * Length of the light's dip on a slide throw, seconds. A half-sine, so it peaks
+ * at half this — which must coincide with the cross-fade's midpoint. Mirrors
+ * `FADE_DELAY + FADE_MS / 2` in PhotoSlider.ts (round 9: 150 + 400 = 550ms).
+ */
+const SLIDE_DIP_S = 1.1;
 
 export class MainScreen {
   el: HTMLElement;
@@ -25,6 +48,9 @@ export class MainScreen {
   private pointer = new SmoothPointer();
   private ticker!: NewsTicker;
   private showreel!: Showreel;
+  private photoSlider!: PhotoSlider;
+  /** seconds since the last slide throw — drives the light dip (round 8) */
+  private slideT = 10;
   private tier = getPerfTier();
 
   private raf = 0;
@@ -32,7 +58,14 @@ export class MainScreen {
   private lastT = 0;
   private timeSec = 0;
 
-  private params: RayFieldParams = { ...VARIANTS[variantIndexFromUrl()].params };
+  private variantIndex = variantIndexFromUrl();
+  private params: RayFieldParams = { ...VARIANTS[this.variantIndex].params };
+  /** segmented-control crossfade between variant presets */
+  private paramsFrom: RayFieldParams | null = null;
+  private paramsTo: RayFieldParams | null = null;
+  private paramsBlend = 1;
+  private fxButtons: HTMLButtonElement[] = [];
+  private fxSwitch!: HTMLDivElement;
 
   /** 0..1 transition converge amount, driven by TransitionController */
   converge = 0;
@@ -44,15 +77,31 @@ export class MainScreen {
   private beamAngles: [number, number, number, number] = [0, 0, 0, 0];
   /** measured link directions, index-aligned with linkEls/hover */
   private linkAngles: [number, number, number, number] = [0, 0, 0, 0];
+  private linkDist: [number, number, number, number] = [0, 0, 0, 0];
+  private linkHalfAng: [number, number, number, number] = [0, 0, 0, 0];
   private linkEls: HTMLElement[] = [];
   private hoverScene!: HTMLElement;
   private hoverImgs: HTMLImageElement[] = [];
   private lastHovered = 0;
   private sceneDim = 0;
+  /** 0 holographic white/rainbow (blue bg) → 1 dusty amber (dark scene) */
+  private modeMix = 0;
+  /** 0 procedural field («Призма») → 1 logo-slit light («Сияние»/«Прорезь») */
+  private slitMix = SLIT_IDS.has(VARIANTS[this.variantIndex].id) ? 1 : 0;
+  /** seconds since a slit variant became active — drives the appearance burst */
+  private burstT = 0;
 
   constructor(container: HTMLElement) {
     this.el = container;
     this.buildDom();
+  }
+
+  /**
+   * The slider must not take the screen while the pointer rests on a nav link —
+   * the hover "gallery dark" scene is the hero interaction and owns that moment.
+   */
+  private syncSliderHoverGate() {
+    this.photoSlider?.setHoverBlocked(this.hoverTarget.some((v) => v > 0));
   }
 
   private buildDom() {
@@ -66,15 +115,18 @@ export class MainScreen {
     const dark = document.createElement('div');
     dark.className = 'hover-dark';
     this.hoverScene.appendChild(dark);
+    // index-aligned with NAV_LINKS (positional coupling — keep the order).
+    // «Концепция» gets its own plan render, fixed by Figma frame 340:594; the
+    // rest borrow the closest slide photo by meaning.
     const hoverImages = [
-      '/resources/reference-light-3.png',
-      '/resources/карта.png',
-      '/resources/reference-light-5.png',
-      '/resources/reference-light-4.png',
+      '/resources/atrium-roof.webp', // История — the cross-shaped block from above
+      '/resources/concept-plan.webp', // Концепция — hover-only, never a slide
+      '/resources/table.webp', // Аренда
+      '/resources/forum.webp', // Контакты
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');
-      img.src = encodeURI(src);
+      img.src = asset(encodeURI(src));
       img.alt = '';
       this.hoverScene.appendChild(img);
       this.hoverImgs.push(img);
@@ -89,11 +141,22 @@ export class MainScreen {
     this.stage.className = 'stage';
     this.el.appendChild(this.stage);
 
+    // Corner furniture (logo, news, studio mark) is pinned to the VIEWPORT, not
+    // to the stage. The stage is a fixed 1440×800 box under a contain-fit
+    // `scale(s)`, so a child at `left: 32px` renders at
+    // `(innerWidth − 1440·s)/2 + 32·s` from the window edge — both terms grow
+    // with the window, which is why the corners crept inward on a wide monitor.
+    // Only geometry that must stay locked to the light centre (the nav links,
+    // the slider headline) belongs in the stage.
+    const corners = document.createElement('div');
+    corners.className = 'corners';
+    this.el.appendChild(corners);
+
     const logo = document.createElement('div');
     logo.className = 'logo';
     logo.innerHTML = logoSvg;
     logo.setAttribute('aria-label', 'Кресты');
-    this.stage.appendChild(logo);
+    corners.appendChild(logo);
 
     NAV_LINKS.forEach((spec, i) => {
       const a = document.createElement('a');
@@ -102,12 +165,17 @@ export class MainScreen {
       a.href = spec.route ? '#concept' : '#';
       a.style.left = `${spec.x}px`;
       a.style.top = `${spec.y}px`;
-      a.innerHTML = `<span class="nav-rot" style="transform: rotate(${spec.rot}deg)">${spec.label}</span>`;
+      // data-label feeds the ::after engraved-echo copy on hover
+      a.innerHTML = `<span class="nav-rot" data-label="${spec.label}" style="transform: rotate(${spec.rot}deg)">${spec.label}</span>`;
       a.addEventListener('pointerenter', () => {
         this.hoverTarget[i] = 1;
         this.lastHovered = i;
+        this.syncSliderHoverGate();
       });
-      a.addEventListener('pointerleave', () => (this.hoverTarget[i] = 0));
+      a.addEventListener('pointerleave', () => {
+        this.hoverTarget[i] = 0;
+        this.syncSliderHoverGate();
+      });
       a.addEventListener('click', (e) => {
         e.preventDefault();
         if (spec.route === 'concept') this.onNavigate('concept');
@@ -118,15 +186,75 @@ export class MainScreen {
 
     const news = document.createElement('div');
     news.className = 'news';
-    this.stage.appendChild(news);
+    corners.appendChild(news);
     this.ticker = new NewsTicker(news);
 
+    // bottom-right studio mark (Figma node 340:574) — the ARTLEBEDEV stroke
+    // logo with its "2026" line, one vector. Replaced the «КРЕСТЫ · 2026» text
+    // placeholder in round 8.
     const mark = document.createElement('div');
     mark.className = 'corner-mark';
-    mark.textContent = 'КРЕСТЫ · 2026';
-    this.stage.appendChild(mark);
+    mark.innerHTML = alsLogoSvg;
+    mark.setAttribute('aria-label', 'Артлебедев, 2026');
+    corners.appendChild(mark);
+
+    // «Слайдер» idle show (armed only on its tab; headline goes in the stage).
+    // NOTE built after the nav links, whose handlers call
+    // `syncSliderHoverGate()` — that method guards on `photoSlider` being set.
+    this.photoSlider = new PhotoSlider(this.el, this.stage);
+    this.photoSlider.onSlideStart = () => (this.slideT = 0);
+
+    // segmented control: Сияние · Прорезь · Призма · Слайдер
+    // hidden by default (pitch shows «Слайдер» only); the V key reveals it
+    const fx = document.createElement('div');
+    fx.className = 'fx-switch hidden';
+    this.fxSwitch = fx;
+    VARIANTS.slice(0, SWITCHER_COUNT).forEach((v, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = v.label;
+      b.classList.toggle('active', i === this.variantIndex);
+      b.addEventListener('click', () => this.setVariant(i));
+      fx.appendChild(b);
+      this.fxButtons.push(b);
+    });
+    this.el.appendChild(fx);
 
     this.layout();
+  }
+
+  private setVariant(i: number) {
+    if (i === this.variantIndex) return;
+    this.variantIndex = i;
+    this.paramsFrom = { ...this.params };
+    this.paramsTo = { ...VARIANTS[i].params };
+    this.paramsBlend = 0;
+    // slit variants appear with the explosive burst, not a polite scale-in
+    if (SLIT_IDS.has(VARIANTS[i].id)) this.burstT = 0;
+    this.fxButtons.forEach((b, j) => b.classList.toggle('active', j === i));
+    this.armIdleShow();
+  }
+
+  /**
+   * Dev shortcut, on a physical key code so it works on the Russian layout:
+   *   V — the light-variant switcher (hidden by default, as since round 6)
+   * Round 9 deleted the T key with the `.tr-switch` transition picker.
+   */
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === 'KeyV') this.fxSwitch.classList.toggle('hidden');
+  };
+
+  /** the «Слайдер» tab arms the star slider; every other tab, the showreel */
+  private armIdleShow() {
+    if (!this.running) return;
+    if (VARIANTS[this.variantIndex].id === 'slider') {
+      this.showreel.detach();
+      this.photoSlider.attach();
+    } else {
+      this.photoSlider.detach();
+      this.showreel.attach();
+    }
   }
 
   /** stage transform + canvas backing store */
@@ -152,7 +280,13 @@ export class MainScreen {
     const cy = stageRect.top + CENTER_Y * s;
     this.linkEls.forEach((el, i) => {
       const r = el.getBoundingClientRect();
-      this.linkAngles[i] = Math.atan2(r.top + r.height / 2 - cy, r.left + r.width / 2 - cx);
+      const lx = r.left + r.width / 2 - cx;
+      const ly = r.top + r.height / 2 - cy;
+      this.linkAngles[i] = Math.atan2(ly, lx);
+      // distance + apparent angular half-width feed the shadow-casting wedge
+      const dist = Math.hypot(lx, ly);
+      this.linkDist[i] = dist / s;
+      this.linkHalfAng[i] = Math.atan2(Math.max(r.width, r.height) * 0.3, dist);
     });
     const sorted = [...this.linkAngles].sort((a, b) => a - b);
     for (let i = 0; i < 4; i++) {
@@ -181,6 +315,13 @@ export class MainScreen {
       this.renderer = r;
     }
     console.info(`[kresty] ray field backend: ${this.renderer.backend}`);
+    // rasterize the emblem (sign.svg) into the slit mask; on failure the
+    // «Прорезь» path falls back to the procedural cross glow (never blank)
+    try {
+      this.renderer.setSignMask(await rasterizeSign());
+    } catch (err) {
+      console.warn('[kresty] sign mask failed; «Прорезь» falls back to cross glow', err);
+    }
     this.layout();
   }
 
@@ -189,9 +330,10 @@ export class MainScreen {
     this.running = true;
     this.el.classList.remove('hidden');
     this.pointer.attach();
-    this.showreel.attach();
+    this.armIdleShow();
     this.ticker.start();
     addEventListener('resize', this.layout);
+    addEventListener('keydown', this.onKeyDown);
     this.lastT = performance.now();
     const loop = (now: number) => {
       if (!this.running) return;
@@ -210,8 +352,10 @@ export class MainScreen {
     this.el.classList.add('hidden');
     this.pointer.detach();
     this.showreel.detach();
+    this.photoSlider.detach();
     this.ticker.stop();
     removeEventListener('resize', this.layout);
+    removeEventListener('keydown', this.onKeyDown);
   }
 
   private update(dt: number) {
@@ -223,13 +367,13 @@ export class MainScreen {
     }
     this.pointer.update(dt);
 
-    // living beams: slow global sway (never far from the bisectors)
-    // plus small independent per-beam wander
+    // living beams: slow continuous rotation of the whole cross (replaces the
+    // old ±8° sway) plus small independent per-beam wander
     const t = this.timeSec;
-    const sway = Math.sin((t * Math.PI * 2) / 45) * 0.14;
+    const rot = t * ROT_SPEED;
     for (let i = 0; i < 4; i++) {
       const wander = 0.035 * Math.sin(t * 0.23 + i * 2.1) + 0.02 * Math.sin(t * 0.11 + i * 4.7);
-      this.beamAngles[i] = this.baseBeamAngles[i] + sway + wander;
+      this.beamAngles[i] = this.baseBeamAngles[i] + rot + wander;
     }
 
     // hover gallery-dark scene: rise 250ms, release 500ms
@@ -239,7 +383,25 @@ export class MainScreen {
     this.hoverScene.style.opacity = String(this.sceneDim);
     this.hoverImgs.forEach((img, i) => img.classList.toggle('visible', i === this.lastHovered));
 
+    // white light lives on blue only: any dark scene flips the dusty register
+    const modeTarget = Math.max(this.sceneDim, this.showreel.dark);
+    this.modeMix += (modeTarget - this.modeMix) * (1 - Math.exp(-dt / 0.3));
+
+    // crossfade between the procedural field and the logo-slit light
+    const slitTarget = SLIT_IDS.has(VARIANTS[this.variantIndex].id) ? 1 : 0;
+    this.slitMix += (slitTarget - this.slitMix) * (1 - Math.exp(-dt / 0.4));
+
+    // segmented-control crossfade between variant presets
+    if (this.paramsBlend < 1 && this.paramsFrom && this.paramsTo) {
+      this.paramsBlend = Math.min(1, this.paramsBlend + dt / 0.6);
+      const e = this.paramsBlend * this.paramsBlend * (3 - 2 * this.paramsBlend);
+      this.params = lerpParams(this.paramsFrom, this.paramsTo, e);
+    }
+
     if (!this.renderer) return;
+    // burst clock only runs once frames actually render (dt is clamped, so a
+    // hidden tab cannot fast-forward past the flash)
+    this.burstT += dt;
 
     // transition converge override
     let p = this.params;
@@ -255,6 +417,36 @@ export class MainScreen {
       p.crossIntensity *= 1 + 0.8 * e;
     }
 
+    // explosive appearance: the light smashes out of nothing — violently
+    // expands from a point (~0.25 s) under a blinding flash that decays in
+    // ~0.5 s. Replaces the old polite scale-in ("funny, no drama").
+    if (this.burstT < 1.2 && this.slitMix > 0.01) {
+      const bt = this.burstT;
+      p = { ...p };
+      p.signSize *= 0.25 + 0.75 * (1 - Math.exp(-bt / 0.09));
+      const k = Math.exp(-bt / 0.15);
+      p.godrays *= 1 + 4 * k;
+      p.bloom *= 1 + 3 * k;
+      p.coreIntensity *= 1 + 2.5 * k;
+    }
+
+    // Round 8: the slide throw used to SURGE (×2.4 godrays, τ 0.3s) and it
+    // landed in the empty gap between headlines, which is what read as a flash
+    // "at the end" of every slide. Now the light DIPS with the photos instead —
+    // it joins the change and recovers as the new photo resolves.
+    //
+    // The window is a half-sine, so its peak sits at SLIDE_DIP_S/2; that has to
+    // land on the cross-fade's midpoint, which round 9 moved to 550ms
+    // (FADE_DELAY 150 + FADE_MS 800 / 2). Gated to the slider tab so a fast tab
+    // switch can't leak the tail onto another variant.
+    if (this.slideT < SLIDE_DIP_S && VARIANTS[this.variantIndex].id === 'slider') {
+      p = { ...p };
+      const k = Math.sin((this.slideT / SLIDE_DIP_S) * Math.PI); // 0 → 1 → 0
+      p.godrays *= 1 - 0.22 * k;
+      p.bloom *= 1 - 0.18 * k;
+    }
+    this.slideT += dt;
+
     const s = stageScale();
     const rs = this.tier.renderScale;
     const stageRect = this.stage.getBoundingClientRect();
@@ -263,11 +455,16 @@ export class MainScreen {
       centerPx: [(stageRect.left + CENTER_X * s) * rs, (stageRect.top + CENTER_Y * s) * rs],
       pointerPx: [this.pointer.smooth.x * rs, this.pointer.smooth.y * rs],
       scale: s * rs,
+      signRot: this.timeSec * ROT_SPEED,
       beamAngles: this.beamAngles,
       linkAngles: this.linkAngles,
+      linkDist: this.linkDist,
+      linkHalfAng: this.linkHalfAng,
       beamHover: [this.hover[0], this.hover[1], this.hover[2], this.hover[3]],
-      bgMix: this.showreel.mix,
+      bgMix: Math.max(this.showreel.mix, this.photoSlider.mix),
       sceneDim: this.sceneDim,
+      modeMix: this.modeMix,
+      slitMix: this.slitMix,
       layers: this.tier.layers,
       octaves: this.tier.octaves,
       params: p,
@@ -281,4 +478,84 @@ export class MainScreen {
     const s = stageScale() * (1 - 0.045 * t);
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
   }
+}
+
+/**
+ * Rasterize the emblem (sign.svg) into the three-channel mask for the slit
+ * path: R = crisp antialiased emblem (the «Прорезь» readable core), G = a
+ * round blur (feeds the bloom halo), B = a RADIAL smear — the emblem drawn at
+ * several scales about the centre and averaged (feeds the god-ray march).
+ * Why: a handful of sparse jittered taps against a hard-edged mask has huge
+ * per-pixel variance (heavy stipple noise), but a round pre-blur also melts
+ * the razor-sharp tangential edges of the light trails. The march integrates
+ * the mask RADIALLY, so smearing only along that direction removes the
+ * variance the march sees while keeping the trail edges razor sharp — and the
+ * smear length grows with radius exactly like the march step does.
+ * Opaque black background (no premultiply concerns); the svg viewBox is
+ * centered, so the emblem center lands at the texture center — where the
+ * shader maps the convergence point.
+ */
+async function rasterizeSign(): Promise<HTMLCanvasElement> {
+  const size = 640;
+  const url = URL.createObjectURL(new Blob([signSvg], { type: 'image/svg+xml' }));
+  let img: HTMLImageElement;
+  try {
+    img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('sign.svg failed to load'));
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  const makeCtx = () => {
+    const cv = document.createElement('canvas');
+    cv.width = size;
+    cv.height = size;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('2d context unavailable');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size, size);
+    return ctx;
+  };
+  const draw = (blurPx: number) => {
+    const ctx = makeCtx();
+    if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
+    ctx.drawImage(img, 0, 0, size, size);
+    return ctx.getImageData(0, 0, size, size);
+  };
+  // radial smear: K scaled copies about the centre, additively averaged
+  // (a tiny fixed blur keeps a smoothing floor near the centre, where the
+  // scale steps barely move the strokes)
+  const smearDraw = () => {
+    const ctx = makeCtx();
+    const K = 13;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 1 / K;
+    ctx.filter = 'blur(1.5px)';
+    for (let k = 0; k < K; k++) {
+      const s = 0.965 + (0.07 * k) / (K - 1); // 0.965 .. 1.035
+      const d = size * s;
+      ctx.drawImage(img, (size - d) / 2, (size - d) / 2, d, d);
+    }
+    return ctx.getImageData(0, 0, size, size);
+  };
+  const crisp = draw(0);
+  const soft = draw(6);
+  const smear = smearDraw();
+  const cv = document.createElement('canvas');
+  cv.width = size;
+  cv.height = size;
+  const ctx = cv.getContext('2d');
+  if (!ctx) throw new Error('2d context unavailable');
+  const out = ctx.createImageData(size, size);
+  for (let i = 0; i < out.data.length; i += 4) {
+    out.data[i] = crisp.data[i]; // R: crisp emblem (core)
+    out.data[i + 1] = soft.data[i]; // G: round blur (bloom halo)
+    out.data[i + 2] = smear.data[i]; // B: radial smear (god-ray march)
+    out.data[i + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return cv;
 }

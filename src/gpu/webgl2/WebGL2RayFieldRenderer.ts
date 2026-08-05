@@ -25,6 +25,14 @@ const PARAM_UNIFORMS = [
   'breathe',
   'refraction',
   'shimmer',
+  'fiberDrift',
+  'angleWarp',
+  'ghosting',
+  'shadow',
+  'signSize',
+  'godrays',
+  'bloom',
+  'dissolve',
   'hoverMode',
   'compositeMode',
 ] as const;
@@ -34,6 +42,8 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
   private gl!: WebGL2RenderingContext;
   private program!: WebGLProgram;
   private uniforms = new Map<string, WebGLUniformLocation | null>();
+  private signTex: WebGLTexture | null = null;
+  private hasMask = 0;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     const gl = canvas.getContext('webgl2', {
@@ -75,17 +85,38 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
       'u_scale',
       'u_beamAngles',
       'u_linkAngles',
+      'u_linkDist',
+      'u_linkHalfAng',
       'u_beamHover',
       'u_bgMix',
       'u_sceneDim',
+      'u_modeMix',
+      'u_slitMix',
+      'u_hasMask',
+      'u_signMask',
       'u_layers',
       'u_octaves',
       ...PARAM_UNIFORMS.map((k) => `u_${k}`),
     ];
     for (const n of names) this.uniforms.set(n, gl.getUniformLocation(program, n));
+    gl.uniform1i(this.uniforms.get('u_signMask') ?? null, 0); // sampler on unit 0
 
     // bufferless triangle still needs a bound VAO on some drivers
     gl.bindVertexArray(gl.createVertexArray());
+  }
+
+  setSignMask(source: TexImageSource): void {
+    const gl = this.gl;
+    if (!this.signTex) this.signTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.signTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // top row -> v=0 (p.y is down)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.hasMask = 1;
   }
 
   resize(w: number, h: number): void {
@@ -108,18 +139,29 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     gl.uniform1f(u('u_scale'), s.scale);
     gl.uniform4f(u('u_beamAngles'), ...s.beamAngles);
     gl.uniform4f(u('u_linkAngles'), ...s.linkAngles);
+    gl.uniform4f(u('u_linkDist'), ...s.linkDist);
+    gl.uniform4f(u('u_linkHalfAng'), ...s.linkHalfAng);
     gl.uniform4f(u('u_beamHover'), ...s.beamHover);
     gl.uniform1f(u('u_bgMix'), s.bgMix);
     gl.uniform1f(u('u_sceneDim'), s.sceneDim);
+    gl.uniform1f(u('u_modeMix'), s.modeMix);
+    gl.uniform1f(u('u_slitMix'), s.slitMix);
+    gl.uniform1f(u('u_signRot'), s.signRot);
+    gl.uniform1f(u('u_hasMask'), this.hasMask);
     gl.uniform1f(u('u_layers'), s.layers);
     gl.uniform1f(u('u_octaves'), s.octaves);
     for (const k of PARAM_UNIFORMS) {
       gl.uniform1f(u(`u_${k}`), s.params[k]);
     }
+    if (this.signTex) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.signTex);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   destroy(): void {
+    if (this.signTex) this.gl?.deleteTexture(this.signTex);
     this.gl?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }
