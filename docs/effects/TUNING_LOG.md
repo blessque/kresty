@@ -2354,15 +2354,112 @@ no showreel; no appearance burst, so stills are reproducible.
 **Dev overrides:** `?icon=N` (jump straight to one section — the hook for headless capture),
 `?dissolve=`, `?px=`, `?exp=`, plus the existing `?backend=`. Verified on **both** backends.
 
+## Round 12.1 (2026-08-06) — «Контакты»: un-mirrored, an admin panel, perf answered
+
+**1. Every mask has always been rendered VERTICALLY MIRRORED.** Both renderers upload with a
+Y-flip (`WebGL2RayFieldRenderer.ts:112` `UNPACK_FLIP_Y_WEBGL = true`; `WebGPURayFieldRenderer.ts:84`
+`flipY: true`), both commented "top row -> v=0" — but a Y-flip puts the **bottom** row at v=0,
+and the shader samples `uv0 = 0.5 + p/S` with `p.y` running **downward**. Screen-top therefore
+reads texture-bottom. `sign.svg` is included in this; it survived unnoticed because a mirrored
+starburst still looks like a starburst.
+
+It is a **mirror, not a 180° rotation** — proven by the sparkle stars in `Bed`, which sit
+top-left in the mask and rendered bottom-**left**; a rotation would have put them bottom-right.
+The distinction is load-bearing: rotating would move Cup's handle to the wrong side.
+
+Fixed **contained to this page** via `rasterizeMask({ flipY: true })`, which pre-mirrors the
+source so the two flips cancel. The default stays `false`, so the hero remains byte-identical
+(re-verified: **0 differing pixels of 409 600**). Correcting the renderers is the proper fix but
+re-orients the emblem and «Прорезь» on a branch awaiting the client's verdict — see open issues.
+
+**2. Admin panel** (`ControlPanel.ts`, schema-driven; `H` hides it; values persist to
+localStorage; "Copy URL" emits a reproducible link). The editorial work was deciding what NOT to
+expose: at `slitMix: 1` the shader builds the procedural field and **discards** it
+(`col = mix(field, slit, 1)`), so `dustAmount`, `dustScale`, `moteAmount`, `hazeBase`,
+`primaryIntensity`, `primaryK`, `sec*`, `channelDark`, `refraction`, `fiberDrift`, `angleWarp`,
+`ghosting`, `shadow`, `rotSpeed`, `coreRadius`, `crossSize` and `crossIntensity` are **inert
+here** and would have been seventeen dead sliders.
+
+Each surviving handle was then **swept min→max and measured**. That caught one more dead
+control, which had been in the plan: **the global `#grain` film overlay does nothing on a black
+page.** It blends with `mix-blend-mode: overlay`, and overlay against black is arithmetically a
+no-op (`b < 0.5 ⇒ 2·b·s`, which is 0 at `b = 0`). Measured Δmean **0.02** across its full range;
+removed. The real second noise source is the **per-pixel march dither** (`hash21(fragPx)`, the
+round-5 anti-ladder jitter), governed by `steps` — Δmean 16.7, the largest of any noise handle.
+
+**Sweeping by luminance is the wrong test for a perf dial**, and nearly caused a false removal:
+`rs` (render scale) measured Δmean 0.05 because *not changing the look is its entire purpose*.
+Verified instead by backing-store size and frame time.
+
+**3. Performance — measured, and the answer is not what the question assumed.**
+
+| config | canvas | MPx | median | fps |
+|---|---|---|---|---|
+| render scale 2.0 | 2880×1800 | 5.18 | 33.1 ms | **30.2** |
+| render scale 1.0 | 1440×900 | 1.30 | 16.7 ms | **59.9** |
+| render scale 0.5 | 720×450 | 0.32 | 16.7 ms | **59.9** |
+| **rs 2.0 + steps 20** | 2880×1800 | 5.18 | **16.7 ms** | **59.9** |
+| rs 2.0 + freeze | 2880×1800 | 5.18 | 16.7 ms | 59.9 |
+
+**Seven icons cost exactly what one costs** — one canvas, one renderer, one live mask; icon
+count never enters the per-frame cost. The expense is pure fill rate (~109 texture fetches per
+pixel: 32 march steps × 3 chromatic taps + 12 bloom taps + crisp), confirmed by dpr 1→2 scaling
+the frame time exactly 2.0×. **The main screen already runs at 30 fps on a retina display** —
+this is a pre-existing property of «Сияние», not something the showcase introduced.
+
+The useful result: **full retina resolution AND 60 fps is available by dropping march steps 32 →
+20**, trading a little ray smoothness rather than resolution.
+
+## Round 12.2 (2026-08-06) — the designer's settings become the defaults; page colour
+
+**Defaults are now the designer's own dial-in**, handed over verbatim as a «Copy URL» link from
+the live panel rather than re-derived: `dissolve 0.36`, `core 0.45`, `godrays 1.75`, `bloom
+1.05`, `reach 1010`, `exposure 1.3`, `rainbow 0.028`, `grain 0`, `px 220`, `parallax 2`,
+`svg 0`, `breathe 1`, `shimmer 0.6`, `freeze 1`. Note `px 220` — a *small* icon with long rays,
+much closer to «Сияние»'s starburst register than round 12's 640px. That the panel could hand
+back an exact reproducible link is the reason this took one round-trip instead of several.
+
+Two consequences worth knowing: `freeze 1` stops the clock, so `breathe`/`shimmer` sit inert
+until freeze is turned off; and **localStorage outranks defaults**, so a browser that has already
+touched the panel keeps its own values — press Reset to see these.
+
+**Page colour (`bg`) needed a compositing change to be a live handle at all.** The shader writes
+`fragColor = vec4(col, 1.0)` — fully OPAQUE — so the canvas covered the page background and a
+colour control would have done nothing. Fixed by giving `.fx-canvas` the project's standard
+`mix-blend-mode: screen`, the same model the main screen uses over `#56b7e6`. Screen is
+`1 − (1−a)(1−b)`, which against black reduces to exactly `a`, so **turning it on preserved the
+existing look bit-for-bit** while making every other colour composite correctly. Verified live:
+mean luminance 32.9 (#000000) → 77.9 (#123a5c) → 255 (#ffffff).
+
+That last number is the limit of the model, not a bug: **screen against white is always white**,
+so the lighter the page colour the less light can show, and at `#ffffff` nothing shows at all.
+Light-on-dark is additive by construction. A light background would need the eclipse composite
+mode (`compositeMode: 1`), not a blending tweak.
+
+`ControlValues` widened from `Record<string, number>` to `number | string` for the hex, with a
+`normalizeHex()` that accepts `#101820`, `101820` and `#123`. Bare hex matters: a literal `#`
+typed into a query string starts the fragment and swallows the rest of the URL.
+
 ## Open issues
 
-- **[OPEN] The «Контакты» showcase ships at `dissolve: 1`, where solid icons are not legible.**
-  This is the client's explicit choice ("identical to the main screen") made with the trade-off
-  stated, and it is faithful. But a bed and a cup look alike at that setting; `?dissolve=0`
-  renders the same icons sharply and keeps the rays. One constant if the deck needs it.
-- **[OPEN] `EXPOSURE_TRIM` is 1 and untested against a designer's eye.** Coverage normalisation
+- **[OPEN] `bg` is useless above roughly 70% lightness** — screen blending cannot darken, so
+  pale page colours wash the light out and `#ffffff` renders a blank white page. If the designer
+  wants light backgrounds, that is the eclipse composite mode, not a CSS change.
+- **[OPEN] The renderers upload every mask Y-flipped, so `sign.svg` renders mirrored on the
+  hero and on «Прорезь».** Round 12.1 cancelled it for «Контакты» only. The real fix is
+  `flipY: false` in both renderers plus dropping `flipY` from the contacts call — three lines,
+  but it re-orients the shipped emblem, so it wants the designer's nod first.
+- ~~**[OPEN] The showcase ships at `dissolve: 1`, where solid icons are not legible.**~~
+  **RESOLVED (round 12.1):** the verdict on the round-12 stills was "the icon is barely seen,
+  too much noise around it", so the defaults moved to the user's «clearer» pick — `dissolve`
+  0.35, `grain` 0.02, SVG overlay 0.4. Both registers remain reachable from the panel.
+- **[OPEN] Panel defaults are a starting point, not a designer's pass.** `dissolve 0.35` /
+  `core 1` / `svg 0.4` were chosen to answer the legibility complaint, not tuned against the
+  deck. The panel exists precisely so this is settled by sliding; "Copy URL" captures whatever
+  wins.
+- **[OPEN] `exposure` is 1 and untested against a designer's eye.** Coverage normalisation
   corrects ink, not aperture area (500 → 906 ref px), so a residual trim may be wanted. Measured
-  frames sit at mean 65–80/255 with corners 4–37; `?exp=` is the dial.
+  frames sit at mean 65–80/255 with corners 4–37; it is now a panel handle.
 - **[OPEN] «Контакты» is a temporary page on a real nav link.** `layout.ts` now routes
   `kontakty` to it. It is not designed UI and must be reverted or replaced before the client
   sees the nav as finished.

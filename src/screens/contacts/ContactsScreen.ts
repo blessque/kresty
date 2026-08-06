@@ -1,14 +1,15 @@
 import logoSvg from '../../assets/logo.svg?raw';
 import { asset } from '../../shared/assetUrl';
-import { rasterizeMask, maskCoverage } from '../../shared/rasterizeMask';
+import { rasterizeMask, maskCoverage, maskToOverlayUrl } from '../../shared/rasterizeMask';
 import { SmoothPointer } from '../../shared/pointer';
 import { getPerfTier } from '../../shared/performanceTier';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
+import { ControlPanel, type ControlSpec, type ControlValues } from './ControlPanel';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 
 /**
- * TEMPORARY — «Контакты» as an icon showcase.
+ * TEMPORARY — «Контакты» as an icon showcase, with an admin panel.
  *
  * Not a designed screen. It exists so the client's own icons can be shot for a
  * presentation wearing the main screen's light: a black page, one icon per full
@@ -19,14 +20,14 @@ import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/
  * - `slitLight()` never referenced the emblem. It reads a three-channel mask
  *   through `signMask`/`signMaskSoft`/`signMaskRay`, and `setSignMask()` takes
  *   any `TexImageSource` — so the effect transfers with ZERO shader changes.
- * - The «Сияние» preset is read back out of `VARIANTS` verbatim, so `signSize`,
- *   `falloffL`, `godrays`, `bloom`, `ca` and the rest cannot drift from the
- *   shipped hero. Apparent size is set by ONE dial (`ICON_PX`) via `scale`,
- *   which moves everything together: this is the main screen zoomed, not the
- *   main screen re-tuned.
+ * - The «Сияние» preset is read back out of `VARIANTS`, so the panel's defaults
+ *   start from the shipped hero rather than from invented numbers.
  * - ONE canvas, not one per icon. The scroll position picks which icon is live
  *   and the mask is swapped on the boundary, so "the lights must not overlap"
- *   is true by construction, and there are not seven GPU contexts.
+ *   is true by construction, there are not seven GPU contexts, and **icon count
+ *   does not enter the per-frame cost at all** — seven icons cost exactly what
+ *   one costs. The expense is fill rate (~109 texture fetches per pixel), which
+ *   is why `rs` (render scale) and `steps` are panel handles.
  *
  * Three deliberate departures from the hero, all requested:
  *   `signRot` 0  — the cross's ~0.6°/s rotation reads as a bug on a bed
@@ -45,9 +46,6 @@ const ICONS = [
   'SPA-640.svg',
   'Window-640.svg',
 ];
-
-/** Apparent size of an icon's ink, CSS px. `?px=` overrides. */
-const ICON_PX = 640;
 
 /**
  * Fraction of the mask an icon's ink should span — matched to `sign.svg`, which
@@ -70,22 +68,76 @@ const CONTENT_FRAC = 0.706;
  */
 const REF_COVERAGE = 0.0806;
 
-/**
- * Trim applied on top of the coverage normalisation. Coverage corrects for how
- * much INK a shape has; it cannot correct for the aperture being wider than the
- * hero's (500 → 906 ref px for a 640px icon), which lengthens the part of every
- * god-ray march that runs inside the footprint. Tuned by measuring the rendered
- * frame, not by eye. `?exp=` overrides.
- */
-const EXPOSURE_TRIM = 1;
-
 /** the «Сияние» preset, read back rather than copied, so it cannot drift */
 const SIYANIE: RayFieldParams = VARIANTS.find((v) => v.id === 'siyanie')!.params;
+
+/**
+ * The panel schema.
+ *
+ * EVERY handle here is live. At `slitMix: 1` the shader builds the procedural
+ * field and then discards it (`col = mix(field, slit, 1)`), so `dustAmount`,
+ * `dustScale`, `moteAmount`, `hazeBase`, `primaryIntensity`, `primaryK`,
+ * `sec*`, `channelDark`, `refraction`, `fiberDrift`, `angleWarp`, `ghosting`,
+ * `shadow`, `rotSpeed`, `coreRadius`, `crossSize` and `crossIntensity` do
+ * NOTHING on this page and are deliberately absent — dead sliders are worse
+ * than no panel.
+ *
+ * Keys double as URL params, so `?dissolve=0&px=800` still works and simply
+ * seeds the panel.
+ */
+const CONTROLS: ControlSpec[] = [
+  { key: 'dissolve', label: 'dissolve', min: 0, max: 1, step: 0.01, group: 'Light',
+    hint: 'THE clarity dial. 1 deletes the crisp icon entirely and leaves only glow.' },
+  { key: 'core', label: 'core', min: 0, max: 3, step: 0.05, group: 'Light',
+    hint: 'Brightness of the crisp icon. Only visible below dissolve 1.' },
+  { key: 'godrays', label: 'godrays', min: 0, max: 3, step: 0.05, group: 'Light',
+    hint: 'Radial trails streaming out through the shape.' },
+  { key: 'bloom', label: 'bloom', min: 0, max: 3, step: 0.05, group: 'Light',
+    hint: 'Soft halo around the shape.' },
+  { key: 'falloff', label: 'reach', min: 200, max: 2000, step: 10, group: 'Light',
+    hint: 'How far light carries, px. Low = light on black; high = fog.' },
+  { key: 'exp', label: 'exposure', min: 0.2, max: 3, step: 0.05, group: 'Light',
+    hint: 'Trim on top of the per-icon coverage normalisation.' },
+  { key: 'ca', label: 'rainbow', min: 0, max: 0.08, step: 0.002, group: 'Light',
+    hint: 'Chromatic fringing on the ray edges.' },
+
+  // The two noise sources that actually exist on a BLACK page. The global
+  // `#grain` overlay is NOT one of them and deliberately has no handle: it
+  // blends with `mix-blend-mode: overlay`, and overlay against black is
+  // arithmetically a no-op (b < 0.5 ⇒ 2·b·s, which is 0 at b = 0). Measured
+  // Δmean 0.02 across its whole range — it reads on the blue main screen and
+  // cannot read here.
+  { key: 'grain', label: 'grain', min: 0, max: 0.2, step: 0.005, group: 'Noise',
+    hint: 'Shader film grain added after the tone curve.' },
+  { key: 'steps', label: 'march steps', min: 12, max: 32, step: 1, group: 'Noise',
+    hint: 'The BIG one. Low steps = visible dither speckle in the rays; 32 = smooth, and most GPU.' },
+
+  { key: 'px', label: 'icon size', min: 200, max: 1200, step: 10, group: 'Geometry',
+    hint: 'Apparent size of the icon ink, CSS px.' },
+  { key: 'parallax', label: 'cursor push', min: 0, max: 2, step: 0.05, group: 'Geometry',
+    hint: 'How much the cursor shifts the light behind the shape.' },
+
+  { key: 'svg', label: 'SVG opacity', min: 0, max: 1, step: 0.01, group: 'Overlay',
+    hint: 'The actual crisp icon laid over the light.' },
+
+  { key: 'breathe', label: 'breathe', min: 0, max: 1, step: 0.02, group: 'Motion' },
+  { key: 'shimmer', label: 'shimmer', min: 0, max: 1, step: 0.02, group: 'Motion' },
+  { key: 'freeze', label: 'freeze', min: 0, max: 1, step: 1, group: 'Motion',
+    hint: 'Stops the clock and skips redraws while nothing moves — steady stills, less GPU.' },
+
+  { key: 'bg', label: 'page colour', kind: 'color', group: 'Page',
+    hint: 'Background behind the light. Works because the canvas composites with mix-blend-mode: screen.' },
+
+  { key: 'rs', label: 'render scale', min: 0.5, max: 2, step: 0.05, group: 'Performance',
+    hint: 'THE perf dial — cost is quadratic in this. 1.0 ≈ 60fps, 2.0 ≈ 30fps.' },
+];
 
 interface IconMask {
   canvas: HTMLCanvasElement;
   /** hero-matching exposure multiplier for godrays/bloom */
   exposure: number;
+  /** crisp white icon for the DOM overlay, derived from the mask's R channel */
+  overlayUrl: string;
 }
 
 export class ContactsScreen {
@@ -94,38 +146,62 @@ export class ContactsScreen {
 
   private canvas!: HTMLCanvasElement;
   private scroller!: HTMLElement;
+  private overlay!: HTMLImageElement;
   private renderer: RayFieldRenderer | null = null;
   private rendererPending = false;
   private masks: (IconMask | null)[] = ICONS.map(() => null);
   private activeIdx = -1;
-  /** exposure of the mask currently uploaded (1 until the first one lands) */
   private exposure = 1;
 
   private pointer = new SmoothPointer();
   private tier = getPerfTier();
+  private panel!: ControlPanel;
+  private v: ControlValues;
+
   private running = false;
   private raf = 0;
   private lastT = 0;
   private timeSec = 0;
-
-  /** dev overrides, mirroring the project's `?fx=` / `?ob=` convention */
-  private iconPx = ICON_PX;
-  private dissolve = SIYANIE.dissolve;
-  /** extra exposure trim on top of the coverage normalisation, `?exp=` */
-  private trim = EXPOSURE_TRIM;
+  /** last rendered state signature — lets `freeze` skip redundant draws */
+  private lastKey = '';
 
   constructor(el: HTMLElement) {
     this.el = el;
     this.el.classList.add('hidden');
     this.build();
 
-    const q = new URLSearchParams(location.search);
-    const px = Number(q.get('px'));
-    if (Number.isFinite(px) && px > 0) this.iconPx = px;
-    const d = Number(q.get('dissolve'));
-    if (Number.isFinite(d) && q.has('dissolve')) this.dissolve = Math.max(0, Math.min(1, d));
-    const t = Number(q.get('exp'));
-    if (Number.isFinite(t) && t > 0) this.trim = t;
+    // The designer's own settings, dialled in on the live panel and handed over
+    // verbatim as a "Copy URL" link — not re-derived here. Notable choices:
+    // a much smaller icon (220 vs 640), no shader grain, no SVG overlay, and
+    // `freeze` ON, which stops the clock (so `breathe`/`shimmer` sit inert
+    // until freeze is turned off) and skips redraws while nothing moves.
+    const defaults: ControlValues = {
+      dissolve: 0.36,
+      core: 0.45,
+      godrays: 1.75,
+      bloom: 1.05,
+      falloff: 1010,
+      exp: 1.3,
+      ca: 0.028,
+      grain: 0,
+      steps: 32,
+      px: 220,
+      parallax: 2,
+      svg: 0,
+      breathe: 1,
+      shimmer: 0.6,
+      freeze: 1,
+      bg: '#000000',
+      rs: this.tier.renderScale,
+    };
+
+    this.panel = new ControlPanel(this.el, CONTROLS, defaults);
+    this.v = this.panel.values;
+    this.panel.onChange = (v) => {
+      this.v = v;
+      this.applySideEffects();
+      this.lastKey = ''; // force a redraw even when frozen
+    };
   }
 
   private build() {
@@ -135,6 +211,15 @@ export class ContactsScreen {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'fx-canvas';
     this.el.appendChild(this.canvas);
+
+    // the crisp icon over the light. Its source is the MASK's R channel, so it
+    // shares the light's footprint and centre exactly — no per-icon margin
+    // arithmetic. The mask is pre-mirrored to cancel the renderers' upload
+    // flip, so the DOM copy has to be mirrored back: scaleY(-1).
+    this.overlay = document.createElement('img');
+    this.overlay.className = 'fx-overlay';
+    this.overlay.alt = '';
+    this.el.appendChild(this.overlay);
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'fx-scroll';
@@ -156,6 +241,21 @@ export class ContactsScreen {
       this.onNavigate('main');
     });
     this.el.appendChild(home);
+  }
+
+  /** panel values are mixed-type now (colours are strings) — read numbers here */
+  private n(key: string): number {
+    return Number(this.v[key]);
+  }
+
+  /** panel values that live outside the shader state */
+  private applySideEffects() {
+    this.layout();
+    this.overlay.style.opacity = String(this.n('svg'));
+    // The canvas composites with `mix-blend-mode: screen`, so this shows
+    // through wherever the light is dark. Screen against black reduces to the
+    // canvas itself, which is why turning it on changed nothing at #000000.
+    this.el.style.background = String(this.v.bg ?? '#000000');
   }
 
   /**
@@ -186,8 +286,7 @@ export class ContactsScreen {
       }
       console.info(`[kresty] contacts backend: ${this.renderer.backend}`);
       this.layout();
-      // force the first mask upload on the next frame
-      this.activeIdx = -1;
+      this.activeIdx = -1; // force the first mask upload
     } finally {
       this.rendererPending = false;
     }
@@ -200,11 +299,13 @@ export class ContactsScreen {
     try {
       const canvas = await rasterizeMask(asset(`/resources/${ICONS[i]}`), {
         contentFrac: CONTENT_FRAC,
+        flipY: true, // cancels the renderers' Y-flipped upload; see rasterizeMask
       });
       const coverage = maskCoverage(canvas);
       const m: IconMask = {
         canvas,
         exposure: coverage > 0 ? REF_COVERAGE / coverage : 1,
+        overlayUrl: maskToOverlayUrl(canvas),
       };
       this.masks[i] = m;
       return m;
@@ -215,9 +316,8 @@ export class ContactsScreen {
   }
 
   private layout = () => {
-    const w = Math.round(innerWidth * this.tier.renderScale);
-    const h = Math.round(innerHeight * this.tier.renderScale);
-    this.renderer?.resize(w, h);
+    const rs = this.v ? this.n('rs') : this.tier.renderScale;
+    this.renderer?.resize(Math.round(innerWidth * rs), Math.round(innerHeight * rs));
   };
 
   start() {
@@ -226,6 +326,7 @@ export class ContactsScreen {
     this.el.classList.remove('hidden');
     this.pointer.attach();
     addEventListener('resize', this.layout);
+    this.applySideEffects();
     void this.ensureRenderer();
 
     // `?icon=N` jumps straight to one section — the hook a headless screenshot
@@ -242,7 +343,7 @@ export class ContactsScreen {
       if (!this.running) return;
       const dt = Math.min(0.05, (now - this.lastT) / 1000);
       this.lastT = now;
-      this.timeSec += dt;
+      if (!this.n('freeze')) this.timeSec += dt;
       this.pointer.update(dt);
       this.update();
       this.raf = requestAnimationFrame(loop);
@@ -265,10 +366,7 @@ export class ContactsScreen {
 
     // which icon is live: nearest section centre to the viewport centre
     const scrollTop = this.scroller.scrollTop;
-    const idx = Math.max(
-      0,
-      Math.min(ICONS.length - 1, Math.round(scrollTop / sectionH)),
-    );
+    const idx = Math.max(0, Math.min(ICONS.length - 1, Math.round(scrollTop / sectionH)));
     if (idx !== this.activeIdx) {
       this.activeIdx = idx;
       void this.maskFor(idx).then((m) => {
@@ -277,43 +375,69 @@ export class ContactsScreen {
         if (!m || this.activeIdx !== idx) return;
         this.renderer?.setSignMask(m.canvas);
         this.exposure = m.exposure;
+        this.overlay.src = m.overlayUrl;
+        this.lastKey = '';
       });
     }
 
-    const rs = this.tier.renderScale;
+    const rs = this.n('rs');
     // the light rides with its section, so scrolling translates it rather than
     // cutting between two stationary lights
     const cx = this.scroller.clientWidth / 2;
     const cy = idx * sectionH + sectionH / 2 - scrollTop;
 
+    // `freeze` is not just a clock stop: with nothing moving there is no reason
+    // to re-run a 109-fetch-per-pixel shader every frame
+    const key = `${idx}|${Math.round(cy)}|${Math.round(this.pointer.smooth.x)}|${Math.round(this.pointer.smooth.y)}`;
+    if (this.n('freeze') && key === this.lastKey) return;
+    this.lastKey = key;
+
+    const signSize = this.n('px') / CONTENT_FRAC;
+
+    // the overlay shares the light's footprint by construction; mirror it back,
+    // since the mask itself is pre-mirrored for the GPU
+    this.overlay.style.width = `${signSize}px`;
+    this.overlay.style.height = `${signSize}px`;
+    this.overlay.style.transform =
+      `translate(${cx - signSize / 2}px, ${cy - signSize / 2}px) scaleY(-1)`;
+
     // exposure normalisation: a solid silhouette carries 2–3.6× the ink of the
     // emblem, and the march is linear in that, so the preset's own numbers
     // would white out. See REF_COVERAGE.
-    const p: RayFieldParams = { ...SIYANIE, dissolve: this.dissolve };
-    p.godrays *= this.exposure * this.trim;
-    p.bloom *= this.exposure * this.trim;
-    p.coreIntensity *= this.exposure * this.trim; // inert at dissolve 1; matters via ?dissolve=
+    const gain = this.exposure * this.n('exp');
+    const p: RayFieldParams = {
+      ...SIYANIE,
+      dissolve: this.n('dissolve'),
+      godrays: this.n('godrays') * gain,
+      bloom: this.n('bloom') * gain,
+      coreIntensity: this.n('core') * gain,
+      falloffL: this.n('falloff'),
+      ca: this.n('ca'),
+      parallax: this.n('parallax'),
+      breathe: this.n('breathe'),
+      shimmer: this.n('shimmer'),
+      grain: this.n('grain'),
+      // Reference px are CSS px here, so `falloffL` and friends keep their HERO
+      // MAGNITUDE and the light decays inside the frame exactly as on the main
+      // screen. Only the APERTURE grows to make the icon the requested size.
+      // Scaling everything instead ("the hero zoomed 1.8×") also stretches the
+      // 780px falloff to ~1414px, past the corner of a 1440×900 frame, so the
+      // rays never decay and the page reads as grey fog. Measured, not guessed.
+      signSize,
+    };
 
-    // Reference px are CSS px here, so `falloffL` and friends keep their HERO
-    // MAGNITUDE and the light decays inside the frame exactly as it does on the
-    // main screen. Only the aperture grows to make the icon the requested size.
-    //
-    // The rejected alternative was scaling everything together (`scale =
-    // iconPx / (signSize·CONTENT_FRAC)`): that is "the hero zoomed 1.8×", which
-    // also stretches the 780px falloff to ~1414px — past the corner of a
-    // 1440×900 frame — so the rays never decay and the whole page reads as grey
-    // fog instead of light on black. Measured, not guessed.
-    const scale = rs;
-    p.signSize = this.iconPx / CONTENT_FRAC;
+    // march steps without a shader change: N = clamp(layers·8 + octaves·4, 12,
+    // 32), and at slitMix 1 layers/octaves affect nothing else on this page
+    const steps = this.n('steps');
 
     const state: RayFieldState = {
       timeSec: this.timeSec,
       centerPx: [cx * rs, cy * rs],
       pointerPx: [this.pointer.smooth.x * rs, this.pointer.smooth.y * rs],
-      scale,
+      scale: rs,
       signRot: 0,
-      // inert: «Сияние» runs the procedural field at zero intensity, but the
-      // fields are required and must stay finite (linkDist divides)
+      // inert: the procedural field is discarded at slitMix 1, but the fields
+      // are required and must stay finite (linkDist divides)
       beamAngles: [0, Math.PI / 2, Math.PI, -Math.PI / 2],
       linkAngles: [0, Math.PI / 2, Math.PI, -Math.PI / 2],
       linkDist: [400, 400, 400, 400],
@@ -323,8 +447,8 @@ export class ContactsScreen {
       sceneDim: 0,
       modeMix: 0, // never warms — there is no showreel here
       slitMix: 1,
-      layers: this.tier.layers,
-      octaves: this.tier.octaves,
+      layers: steps / 8,
+      octaves: 0,
       params: p,
     };
     this.renderer.render(state);

@@ -4,9 +4,17 @@ name: Deploy to GitHub Pages
 #
 # Requires ONE manual step, once: repo Settings → Pages → Source → "GitHub Actions".
 # Without it this workflow builds green and publishes nothing.
+#
+# ONE branch deploys: `main`. It used to also deploy `map-plan-oblique`, and
+# with parallel work going on that is a live footgun — the site is whichever
+# branch pushed LAST, so a push to a branch that happens to be behind silently
+# republishes an older site. `map-plan-oblique` was two merges behind `main`
+# (no «Контакты») at the time this was narrowed. Everything now lands on `main`
+# and the site is single-sourced. Use workflow_dispatch to publish a branch
+# deliberately.
 on:
   push:
-    branches: [main, map-plan-oblique]
+    branches: [main]
   workflow_dispatch: # lets you deploy any branch by hand from the Actions tab
 
 # The deploy job needs to mint an OIDC token to prove to Pages that it is this

@@ -42,6 +42,24 @@ export interface RasterizeMaskOptions {
    * visibly different optical sizes.
    */
   contentFrac?: number;
+  /**
+   * Draw the source vertically mirrored.
+   *
+   * BOTH renderers upload this texture with a Y-flip
+   * (`UNPACK_FLIP_Y_WEBGL = true` / `flipY: true`), which puts the canvas's
+   * BOTTOM row at v=0 — while the shader samples with `uv0 = 0.5 + p/S` where
+   * `p.y` runs DOWNWARD. Screen-top therefore reads texture-bottom and every
+   * mask renders vertically mirrored, `sign.svg` included; it went unnoticed
+   * because a mirrored starburst still looks like a starburst.
+   *
+   * Setting this pre-mirrors the source so the two flips cancel. Default false
+   * keeps the hero byte-identical — correcting the renderers instead would
+   * re-orient the emblem on a branch awaiting the client's verdict.
+   *
+   * Note this is a MIRROR, not a 180° rotation: rotating would move an
+   * asymmetric detail (Cup's handle, Bed's headboard) to the wrong side.
+   */
+  flipY?: boolean;
 }
 
 /** where the source image is drawn inside the texture, px */
@@ -137,6 +155,57 @@ export function maskCoverage(cv: HTMLCanvasElement): number {
   return sum / (data.length / 4) / 255;
 }
 
+/**
+ * Draws the source at `p`, optionally mirrored about the texture's horizontal
+ * centre line. Safe to combine with `contentFrac`: that path always lands the
+ * ink's centre ON the texture centre, and mirroring about that same centre
+ * leaves it there — so measuring before flipping is correct.
+ */
+function drawSource(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  p: Placement,
+  size: number,
+  flipY: boolean,
+) {
+  if (!flipY) {
+    ctx.drawImage(img, p.dx, p.dy, p.dw, p.dh);
+    return;
+  }
+  ctx.save();
+  ctx.translate(0, size);
+  ctx.scale(1, -1);
+  ctx.drawImage(img, p.dx, p.dy, p.dw, p.dh);
+  ctx.restore();
+}
+
+/**
+ * The mask's R channel IS the crisp, normalised, centred artwork — so the
+ * showcase's "show me the actual SVG on top" overlay is built from it rather
+ * than from the source file. That makes the overlay align with the light BY
+ * CONSTRUCTION (same footprint, same centre) instead of having to re-derive
+ * each icon's viewBox margin. Returns a white image whose alpha is the ink.
+ */
+export function maskToOverlayUrl(cv: HTMLCanvasElement): string {
+  const src = cv.getContext('2d', { willReadFrequently: true });
+  if (!src) return '';
+  const { data } = src.getImageData(0, 0, cv.width, cv.height);
+  const out = document.createElement('canvas');
+  out.width = cv.width;
+  out.height = cv.height;
+  const octx = out.getContext('2d');
+  if (!octx) return '';
+  const img = octx.createImageData(cv.width, cv.height);
+  for (let i = 0; i < data.length; i += 4) {
+    img.data[i] = 255;
+    img.data[i + 1] = 255;
+    img.data[i + 2] = 255;
+    img.data[i + 3] = data[i]; // alpha from the crisp channel
+  }
+  octx.putImageData(img, 0, 0);
+  return out.toDataURL('image/png');
+}
+
 /** the placement scaled about the TEXTURE centre — the radial smear's axis */
 function scaledAboutCentre(p: Placement, size: number, s: number): Placement {
   const c = size / 2;
@@ -160,10 +229,11 @@ export async function rasterizeMask(
       ? fitToContent(img, size, opts.contentFrac)
       : { dx: 0, dy: 0, dw: size, dh: size };
 
+  const flipY = opts.flipY ?? false;
   const draw = (blurPx: number) => {
     const ctx = makeCtx(size);
     if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
-    ctx.drawImage(img, place.dx, place.dy, place.dw, place.dh);
+    drawSource(ctx, img, place, size, flipY);
     return ctx.getImageData(0, 0, size, size);
   };
   // radial smear: K scaled copies about the centre, additively averaged
@@ -178,7 +248,7 @@ export async function rasterizeMask(
     for (let k = 0; k < K; k++) {
       const s = 0.965 + (0.07 * k) / (K - 1); // 0.965 .. 1.035
       const q = scaledAboutCentre(place, size, s);
-      ctx.drawImage(img, q.dx, q.dy, q.dw, q.dh);
+      drawSource(ctx, img, q, size, flipY);
     }
     return ctx.getImageData(0, 0, size, size);
   };
