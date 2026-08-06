@@ -1,0 +1,23 @@
+# Append-only logs, written by parallel agents on parallel branches.
+#
+# THE PROBLEM these solve: both files are pure appends at a SHARED ANCHOR —
+# CHANGELOG.md inserts a row right after the table header, TUNING_LOG.md inserts
+# a section right before «## Open issues». Two branches doing that always touch
+# the same line, so every parallel round ends in a merge conflict that has no
+# semantic content: both sides are simply right and both should be kept.
+#
+# `merge=union` is git's built-in driver for exactly this. It takes BOTH sides'
+# lines instead of raising a conflict, so nothing is ever lost.
+#
+# WHAT IT DOES NOT DO, and it bit us once already (round 14.1 / «Контакты»):
+# union merge is silent, so it cannot notice that both sides picked the SAME
+# ITERATION NUMBER. `21` meant «Контакты» round 12 on one branch and Map round 12
+# on the other; that one was caught by hand. After any merge that touches
+# CHANGELOG.md, check the first column for duplicates and for ordering — the
+# rest of the row carries its own date and round name, so a wrong number is the
+# only thing here worth re-reading.
+#
+# Deliberately NOT applied to source: union merge on code produces plausible
+# nonsense. These two files only, and only because they are append-only prose.
+docs/CHANGELOG.md          merge=union
+docs/effects/TUNING_LOG.md merge=union

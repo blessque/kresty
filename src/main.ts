@@ -2,9 +2,11 @@ import './styles/fonts.css';
 import './styles/global.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
+import './screens/contacts/contacts.css';
 
 import { MainScreen } from './screens/main/MainScreen';
 import { ConceptScreen } from './screens/concept/ConceptScreen';
+import { ContactsScreen } from './screens/contacts/ContactsScreen';
 import { Router } from './router';
 
 // global film grain overlay (tiny generated noise tile, blend: overlay)
@@ -28,7 +30,9 @@ async function boot() {
 
   const main = new MainScreen(document.getElementById('screen-main')!);
   const concept = new ConceptScreen(document.getElementById('screen-concept')!);
-  const router = new Router(main, concept);
+  // TEMPORARY: icon showcase for presentation stills (see screens/contacts/)
+  const contacts = new ContactsScreen(document.getElementById('screen-contacts')!);
+  const router = new Router(main, concept, contacts);
 
   router.showInitial();
   await main.initRenderer();

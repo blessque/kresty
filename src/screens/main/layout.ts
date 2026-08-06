@@ -25,7 +25,7 @@ export interface NavLinkSpec {
   x: number; // stage px, element center
   y: number;
   rot: number; // deg
-  route: 'concept' | null;
+  route: 'concept' | 'contacts' | null;
 }
 
 /**
@@ -37,7 +37,9 @@ export const NAV_LINKS: NavLinkSpec[] = [
   { id: 'istoria', label: 'История', x: 480, y: 167, rot: 45.29, route: null },
   { id: 'kontseptsia', label: 'Концепция', x: 955, y: 175, rot: -44.71, route: 'concept' },
   { id: 'arenda', label: 'Аренда', x: 465, y: 645, rot: -44.71, route: null },
-  { id: 'kontakty', label: 'Контакты', x: 937, y: 644, rot: 45.29, route: null },
+  // TEMPORARY: «Контакты» hosts the icon-showcase page used to shoot the
+  // presentation stills. Not a designed screen — see screens/contacts/.
+  { id: 'kontakty', label: 'Контакты', x: 937, y: 644, rot: 45.29, route: 'contacts' },
 ];
 
 /**

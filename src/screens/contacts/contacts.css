@@ -1,0 +1,262 @@
+/* ============================================================ «Контакты»
+
+   TEMPORARY icon-showcase page — a black field, one icon per full viewport,
+   used to shoot presentation stills of the main screen's light applied to the
+   client's own icons. Not designed UI; see ContactsScreen.ts.
+
+   Layout note: the canvas sits OUTSIDE the scroll container as a sibling, not
+   inside it. A `position: fixed` canvas nested in a scroller works today but
+   depends on no ancestor ever gaining a transform/filter (either would make it
+   a containing block and the canvas would start scrolling away). An absolutely
+   positioned sibling has no such dependency. */
+
+#screen-contacts {
+  background: #000;
+}
+
+/* The shader writes alpha 1.0, so the canvas is OPAQUE and would otherwise
+   hide the page colour entirely — which would make the `bg` handle dead. The
+   project's compositing model solves it: the canvas outputs light-on-black and
+   composites with `screen`, exactly as the main screen does over #56b7e6.
+   Screen is `1 − (1−a)(1−b)`, which against black (b=0) reduces to `a`, so
+   this is a no-op at #000000 and correct at every other colour. */
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* the crisp icon over the light. Sized and positioned from JS to the light's
+   own footprint — its source is the mask's R channel, so it cannot drift out
+   of alignment. transform-origin is the top-left because JS supplies an
+   absolute translate; the scaleY(-1) undoes the mask's pre-mirror. */
+.fx-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.fx-scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* mandatory snapping is load-bearing for the actual job: at rest the live
+     icon is always dead centre, so every screenshot frames identically */
+  scroll-snap-type: y mandatory;
+  /* no scrollbar in the shots */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.fx-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 100% (not 100dvh) resolves against the scroller, which is already pinned to
+   the viewport — so this sidesteps the mobile URL-bar dvh churn entirely */
+.fx-section {
+  height: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+.fx-home {
+  position: absolute;
+  left: 32px;
+  top: 40px;
+  width: 220px;
+  z-index: 6;
+  cursor: pointer;
+}
+
+.fx-home svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* the logo ships fill="white", which is already right on the black field */
+
+/* ------------------------------------------------------------ admin panel
+
+   TEMPORARY dev tool, not product UI. Styled after the main screen's
+   `.fx-switch` (translucent dark + backdrop blur) so it reads as part of the
+   same debug furniture. `H` hides it for clean screenshots. */
+
+.fx-panel {
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  bottom: 24px;
+  z-index: 7;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: rgba(6, 12, 20, 0.62);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+}
+
+.fx-panel.hidden {
+  display: none;
+}
+
+.fx-panel-head,
+.fx-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  flex: none;
+}
+
+.fx-panel-head {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.fx-panel-head span {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+}
+
+.fx-panel-foot {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.fx-panel-foot button {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.fx-panel-foot button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.fx-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 14px 12px;
+  scrollbar-width: thin;
+}
+
+.fx-group {
+  margin: 12px 0 4px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.fx-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.fx-name {
+  color: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-val {
+  color: rgba(255, 255, 255, 0.5);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-row input[type='range'] {
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+}
+
+.fx-row input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* colour row: swatch + hex field. `#rrggbb` needs more than the 42px the
+   numeric readout uses, so this row gets its own last column. */
+.fx-row-color {
+  grid-template-columns: 84px 1fr 74px;
+}
+
+.fx-swatch {
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.fx-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.fx-swatch::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+.fx-hex {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-hex:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.fx-row input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+}
