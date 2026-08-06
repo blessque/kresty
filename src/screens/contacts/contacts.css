@@ -1,0 +1,68 @@
+/* ============================================================ «Контакты»
+
+   TEMPORARY icon-showcase page — a black field, one icon per full viewport,
+   used to shoot presentation stills of the main screen's light applied to the
+   client's own icons. Not designed UI; see ContactsScreen.ts.
+
+   Layout note: the canvas sits OUTSIDE the scroll container as a sibling, not
+   inside it. A `position: fixed` canvas nested in a scroller works today but
+   depends on no ancestor ever gaining a transform/filter (either would make it
+   a containing block and the canvas would start scrolling away). An absolutely
+   positioned sibling has no such dependency. */
+
+#screen-contacts {
+  background: #000;
+}
+
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.fx-scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* mandatory snapping is load-bearing for the actual job: at rest the live
+     icon is always dead centre, so every screenshot frames identically */
+  scroll-snap-type: y mandatory;
+  /* no scrollbar in the shots */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.fx-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 100% (not 100dvh) resolves against the scroller, which is already pinned to
+   the viewport — so this sidesteps the mobile URL-bar dvh churn entirely */
+.fx-section {
+  height: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+.fx-home {
+  position: absolute;
+  left: 32px;
+  top: 40px;
+  width: 220px;
+  z-index: 6;
+  cursor: pointer;
+}
+
+.fx-home svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* the logo ships fill="white", which is already right on the black field */

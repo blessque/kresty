@@ -19,6 +19,7 @@ import { lerpParams } from '../../gpu/rayFieldTypes';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 import { SmoothPointer } from '../../shared/pointer';
 import { getPerfTier } from '../../shared/performanceTier';
+import { rasterizeMask } from '../../shared/rasterizeMask';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
 const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
@@ -40,7 +41,7 @@ const SLIDE_DIP_S = 1.1;
 
 export class MainScreen {
   el: HTMLElement;
-  onNavigate: (to: 'concept') => void = () => {};
+  onNavigate: (to: 'concept' | 'contacts') => void = () => {};
 
   private canvas!: HTMLCanvasElement;
   private stage!: HTMLElement;
@@ -162,7 +163,7 @@ export class MainScreen {
       const a = document.createElement('a');
       a.className = 'nav-link';
       a.id = `nav-${spec.id}`;
-      a.href = spec.route ? '#concept' : '#';
+      a.href = spec.route ? `#${spec.route}` : '#';
       a.style.left = `${spec.x}px`;
       a.style.top = `${spec.y}px`;
       // data-label feeds the ::after engraved-echo copy on hover
@@ -178,7 +179,7 @@ export class MainScreen {
       });
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        if (spec.route === 'concept') this.onNavigate('concept');
+        if (spec.route) this.onNavigate(spec.route);
       });
       this.stage.appendChild(a);
       this.linkEls.push(a);
@@ -318,7 +319,7 @@ export class MainScreen {
     // rasterize the emblem (sign.svg) into the slit mask; on failure the
     // «Прорезь» path falls back to the procedural cross glow (never blank)
     try {
-      this.renderer.setSignMask(await rasterizeSign());
+      this.renderer.setSignMask(await rasterizeMask(signSvg, { raw: true }));
     } catch (err) {
       console.warn('[kresty] sign mask failed; «Прорезь» falls back to cross glow', err);
     }
@@ -480,82 +481,6 @@ export class MainScreen {
   }
 }
 
-/**
- * Rasterize the emblem (sign.svg) into the three-channel mask for the slit
- * path: R = crisp antialiased emblem (the «Прорезь» readable core), G = a
- * round blur (feeds the bloom halo), B = a RADIAL smear — the emblem drawn at
- * several scales about the centre and averaged (feeds the god-ray march).
- * Why: a handful of sparse jittered taps against a hard-edged mask has huge
- * per-pixel variance (heavy stipple noise), but a round pre-blur also melts
- * the razor-sharp tangential edges of the light trails. The march integrates
- * the mask RADIALLY, so smearing only along that direction removes the
- * variance the march sees while keeping the trail edges razor sharp — and the
- * smear length grows with radius exactly like the march step does.
- * Opaque black background (no premultiply concerns); the svg viewBox is
- * centered, so the emblem center lands at the texture center — where the
- * shader maps the convergence point.
- */
-async function rasterizeSign(): Promise<HTMLCanvasElement> {
-  const size = 640;
-  const url = URL.createObjectURL(new Blob([signSvg], { type: 'image/svg+xml' }));
-  let img: HTMLImageElement;
-  try {
-    img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('sign.svg failed to load'));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-  const makeCtx = () => {
-    const cv = document.createElement('canvas');
-    cv.width = size;
-    cv.height = size;
-    const ctx = cv.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('2d context unavailable');
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, size, size);
-    return ctx;
-  };
-  const draw = (blurPx: number) => {
-    const ctx = makeCtx();
-    if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
-    ctx.drawImage(img, 0, 0, size, size);
-    return ctx.getImageData(0, 0, size, size);
-  };
-  // radial smear: K scaled copies about the centre, additively averaged
-  // (a tiny fixed blur keeps a smoothing floor near the centre, where the
-  // scale steps barely move the strokes)
-  const smearDraw = () => {
-    const ctx = makeCtx();
-    const K = 13;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 1 / K;
-    ctx.filter = 'blur(1.5px)';
-    for (let k = 0; k < K; k++) {
-      const s = 0.965 + (0.07 * k) / (K - 1); // 0.965 .. 1.035
-      const d = size * s;
-      ctx.drawImage(img, (size - d) / 2, (size - d) / 2, d, d);
-    }
-    return ctx.getImageData(0, 0, size, size);
-  };
-  const crisp = draw(0);
-  const soft = draw(6);
-  const smear = smearDraw();
-  const cv = document.createElement('canvas');
-  cv.width = size;
-  cv.height = size;
-  const ctx = cv.getContext('2d');
-  if (!ctx) throw new Error('2d context unavailable');
-  const out = ctx.createImageData(size, size);
-  for (let i = 0; i < out.data.length; i += 4) {
-    out.data[i] = crisp.data[i]; // R: crisp emblem (core)
-    out.data[i + 1] = soft.data[i]; // G: round blur (bloom halo)
-    out.data[i + 2] = smear.data[i]; // B: radial smear (god-ray march)
-    out.data[i + 3] = 255;
-  }
-  ctx.putImageData(out, 0, 0);
-  return cv;
-}
+/* The mask rasterizer moved to `shared/rasterizeMask.ts` — the «Контакты»
+   showcase feeds the same slit path with arbitrary icons. Called with no
+   options it is byte-identical to the version that lived here. */

@@ -2295,8 +2295,77 @@ frames 4 s apart; `prefers-reduced-motion` freezes; `tsc` and build clean.
 important constant), `WAVES[].len` (scale), `DEEP`/`LIGHT` (contrast), `CALM` (how much of the
 surface goes still). Do not add stages.
 
+## Round 12 (2026-08-06) — «Контакты»: the light applied to arbitrary icons
+
+**TEMPORARY page**, built to shoot presentation stills of the client's own icons wearing the
+main screen's light. Black field, one icon per full viewport, scroll-snapped. Seven icons
+(`public/resources/{Bed,Cup,Office,Park,Restaurant,SPA,Window}-640.svg`).
+
+**The effect transferred with ZERO shader changes**, and that was not luck: `slitLight()` never
+referenced the emblem. It reads a three-channel mask through `signMask`/`signMaskSoft`/
+`signMaskRay`, and `setSignMask()` already accepted any `TexImageSource`. «Сияние» additionally
+runs `primaryIntensity: 0`, `secCount: 0`, `moteAmount: 0` — the hero light IS the mask, so
+nothing procedural had to be ported. `MainScreen.rasterizeSign()` moved to
+`shared/rasterizeMask.ts` and gained two options; called bare it is unchanged.
+
+**Verified byte-identical, not assumed.** The old function was extracted FROM GIT (ab86430) by a
+test rather than retyped, run beside the new one in the same page: **0 differing pixels of
+409 600, max channel delta 0**, with a non-blank assertion (36 265 ink px) so the comparison
+could not pass trivially. The generalisation is a *placement rect* defaulting to
+`(0,0,size,size)`; the smear's new `c + (dx−c)·s` reduces algebraically to the old
+`(size−size·s)/2`, so "identical by default" is provable, not hoped for.
+
+**Three findings, each measured:**
+
+1. **Brightness is a property of the ARTWORK, not the preset.** `sign.svg` averages **0.081**
+   ink coverage (a starburst of thin slivers); the icons are solid silhouettes at **0.172–0.292**
+   — 2.1–3.6× more. The god-ray march accumulates the mask along each ray and divides by the step
+   count, so its output is very nearly **linear in coverage**, and the identical uniforms
+   white-out. Fixed by dividing `godrays`/`bloom` by each icon's own coverage ratio
+   (`maskCoverage()`), which puts an arbitrary shape back at the hero's exposure.
+2. **"Zoom the hero" is not the same as "the hero".** Scaling everything so a 640px icon fits
+   (`scale = 1.81`) also stretches `falloffL` 780 → **1414 CSS px**, past the corner of a
+   1440×900 frame — so the rays never decay and the page reads as **grey fog**. Reference px are
+   now CSS px (`scale = renderScale`) and only the APERTURE grows (`signSize = ICON_PX /
+   CONTENT_FRAC`), so the falloff keeps its hero magnitude and the corners measure 4–37/255.
+3. **«Сияние»'s signature is authored into the emblem, not into the shader.** The emblem is thin
+   needles CONVERGING ON THE TEXTURE CENTRE, and the march runs toward that centre — which is
+   what drags them into long trails. A solid silhouette has no converging needles, and
+   `dissolve: 1` deletes the crisp core, so it can only ever be a soft blob. At `dissolve: 0`
+   the same icons read perfectly. **Do not re-tune uniforms trying to get trails out of a solid
+   shape; the geometry cannot produce them.**
+
+**Normalisation is not optional polish.** `sign.svg` carries ~14.7 % margin inside its viewBox;
+the icons range 4.4 % (Park) to 12.5 % (Window). `signMask()` hard-zeros outside `[0,1]`, so a
+tight shape would have its bloom cut along a straight line, and 4.4 % vs 12.5 % renders at
+visibly different optical sizes. `contentFrac: 0.706` fits each icon's MEASURED ink box and
+centres on the ink, not the viewBox (the shader maps texture centre → convergence point).
+
+**A false alarm worth recording:** the first renders showed what looked like a hard horizontal
+seam. Probing per-row and per-column luminance found **no discontinuity** — the largest
+row-to-row deltas away from the logo were ~20–28, i.e. the film grain, over a gradient spanning
+30–50 rows. High contrast between a lit upper half and a dark lower half reads as an edge. Probe
+before fixing.
+
+**Deltas from the hero, all requested:** `signRot` 0 (a tilting bed reads as a bug); `modeMix` 0
+— "not going warm on delay" is the idle showreel driving the amber register, and this page has
+no showreel; no appearance burst, so stills are reproducible.
+
+**Dev overrides:** `?icon=N` (jump straight to one section — the hook for headless capture),
+`?dissolve=`, `?px=`, `?exp=`, plus the existing `?backend=`. Verified on **both** backends.
+
 ## Open issues
 
+- **[OPEN] The «Контакты» showcase ships at `dissolve: 1`, where solid icons are not legible.**
+  This is the client's explicit choice ("identical to the main screen") made with the trade-off
+  stated, and it is faithful. But a bed and a cup look alike at that setting; `?dissolve=0`
+  renders the same icons sharply and keeps the rays. One constant if the deck needs it.
+- **[OPEN] `EXPOSURE_TRIM` is 1 and untested against a designer's eye.** Coverage normalisation
+  corrects ink, not aperture area (500 → 906 ref px), so a residual trim may be wanted. Measured
+  frames sit at mean 65–80/255 with corners 4–37; `?exp=` is the dial.
+- **[OPEN] «Контакты» is a temporary page on a real nav link.** `layout.ts` now routes
+  `kontakty` to it. It is not designed UI and must be reverted or replaced before the client
+  sees the nav as finished.
 - **[OPEN] The secondary buildings' identities are a reading of the zoning plan, not a
   lit-letter match.** b00/b01/b02/b04/b15/b18 are certain from geometry; the other twelve
   carry plausible functions from the plan's legend, assigned by which side of the site they
