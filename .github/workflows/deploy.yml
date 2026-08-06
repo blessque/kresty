@@ -62,3 +62,12 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The 2026-08-06 run (dd33cd2) went red with "Timeout reached,
+          # aborting!" — but the deployment HAD been created and the site DID
+          # publish; the action simply gave up waiting for Pages to flip the
+          # deployment to "succeeded". A red X on a site that actually shipped
+          # is worse than a slow green one, so give the backend real room.
+          # Defaults are timeout 600000 / error_count 10.
+          timeout: 1800000 # 30 min
+          error_count: 20
