@@ -24,15 +24,30 @@ permissions:
   pages: write
   id-token: write
 
-# Never let two deploys race. `cancel-in-progress: false` so a queued deploy
-# finishes rather than being killed halfway through publishing.
+# Never let two deploys race — but the NEWEST commit is always the one that
+# should be live, so a newer run supersedes an older one.
+#
+# This was `cancel-in-progress: false` ("let a queued deploy finish rather than
+# be killed halfway"), which is sound reasoning for two healthy overlapping
+# deploys and has no answer for a STRANDED one. During the 2026-08-06 Actions
+# outage, run 31111489359 sat in `queued` having never been picked up by a
+# runner, and because a queued run holds the group, every later deploy would
+# have silently waited behind a job that was never going to start — the site
+# just quietly stops updating, which is a worse failure than a superseded
+# publish. Cancelling is safe here: upload and deploy are separate steps, and a
+# cancelled run leaves the PREVIOUS deployment intact rather than a half-written
+# site.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # bounds EXECUTION, not queue time — the concurrency setting above is what
+    # actually unblocks a stranded run. This just stops a hung build from
+    # sitting on the group for six hours.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +71,8 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # generous, because deploy-pages legitimately waits on Pages to confirm
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
