@@ -14,6 +14,7 @@ import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
 import { MapInfo } from './MapInfo';
+import { MapScroll, STAGE_VH } from './mapScroll';
 
 /**
  * Plan-oblique («military») projection: the camera is PERMANENTLY straight
@@ -33,24 +34,32 @@ import { MapInfo } from './MapInfo';
 
 const MODEL_GLB = asset('/resources/map-w-river.glb');
 /**
- * Yaw applied to the whole model so geographic NORTH points up the screen.
+ * Yaw applied to the whole model, so the SITE GRID is square to the screen.
  *
  * The GLB is authored on the site's own grid, not on the compass: the Neva
  * slab lies entirely on the local −X side and both roads (Арсенальная наб.,
- * ул. Комсомола) run along local ±Y. Against the real map those two run at a
- * bearing of ~81°/261° with the water south of the complex — so the model
- * arrives with south pointing up and needs roughly a half turn plus the
- * street grid's tilt. Baked into the geometry at load, so every downstream
- * bbox, centroid and axisAngle is already in the final world frame.
+ * ул. Комсомола) run along local ±Y. So the model arrives with south pointing
+ * up and needs a half turn. Baked into the geometry at load, so every
+ * downstream bbox, centroid and axisAngle is already in the final world frame.
  *
- * 189° = a half turn (to put the water south) + 9° for the street grid. Both
- * numbers were checked against the Yandex plan two independent ways — the
- * shoreline bearing, and the axis joining the Западный and Восточный cross
- * blocks — which agreed to under a degree.
+ * ROUND 12: GEOGRAPHIC NORTH IS DELIBERATELY ABANDONED. This used to be 189°
+ * = a half turn + 9° for the street grid's real bearing, which put north up
+ * the screen (checked against the Yandex plan two independent ways — the
+ * shoreline bearing and the axis joining the two cross blocks — agreeing to
+ * under a degree). But the site grid runs 9° off north, so north-up delivered
+ * the embankment and the shoreline as slightly tilted lines, and a schematic
+ * wants them level. The designer measured the correction in Figma as −9.05°.
  *
- * Dev override: ?yaw=<degrees>
+ * Dropping the 9° returns the model to the grid it was drawn on, which is
+ * axis-aligned by construction — which is why the answer is exactly 180.00°
+ * and not 179.95°. Measured on the GLB's boundary edges (edges used by a
+ * single triangle, so triangulation diagonals don't pollute the reading):
+ * at 189° the Арсенальная наб. edge and the shoreline segments both sit at
+ * −9.00°; at 180° both measure 0.00°. The Figma reading's 0.05 is noise.
+ *
+ * Dev override: ?yaw=<degrees> — ?yaw=189 restores true north.
  */
-const MODEL_YAW_DEG = 189;
+const MODEL_YAW_DEG = 180;
 /** max shear (wall reveal per unit height) at the screen edge; ?ob=<k> */
 const MAX_SHEAR = 0.55;
 /** cursor deadzone around the center — inside it the view is a flat plan */
@@ -81,17 +90,27 @@ export class ConceptScreen {
   private shearGroup = new THREE.Group();
 
   private model?: THREE.Object3D;
+  private scroll!: MapScroll;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
   private labels!: MapLabels;
   private drawer!: BuildingDrawer;
   private mapInfo!: MapInfo;
+  private panel?: import('./WaterPanel').WaterPanel;
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
   private yawDeg = MODEL_YAW_DEG;
+  private stageVh = STAGE_VH;
   private raf = 0;
   private running = false;
+
+  /** the river's own clock — an accumulator, not performance.now, so the admin
+   *  panel can slow it or freeze it without the surface jumping phase */
+  private waterT = 0;
+  private timeScale = 1;
+  private fpsFrames = 0;
+  private fpsSince = 0;
 
   private inputX = 0;
   private inputY = 0;
@@ -99,6 +118,8 @@ export class ConceptScreen {
   private smY = 0;
   private dragging = false;
   private lastDrag = { x: 0, y: 0 };
+  /** last cursor position in WINDOW coordinates; off-screen until the first move */
+  private cursor = { x: -9999, y: -9999 };
 
   constructor(container: HTMLElement) {
     this.el = container;
@@ -109,8 +130,42 @@ export class ConceptScreen {
     if (Number.isFinite(fit)) this.fitMargin = fit;
     const yaw = parseFloat(q.get('yaw') ?? '');
     if (Number.isFinite(yaw)) this.yawDeg = yaw;
+    const vh = parseFloat(q.get('vh') ?? '');
+    if (Number.isFinite(vh)) this.stageVh = vh;
     this.buildDom();
     this.buildScene();
+    if (q.get('admin') === '1') void this.openAdmin();
+  }
+
+  /**
+   * The water tuning panel — DYNAMICALLY imported, so Vite splits it and its
+   * stylesheet into a chunk a normal load never fetches. Gating the constructor
+   * behind a flag would still ship the code to every client demo.
+   */
+  private async openAdmin() {
+    const { WaterPanel } = await import('./WaterPanel');
+    this.panel = new WaterPanel(this.el, {
+      apply: (p) => {
+        this.ground?.river?.setParams(p);
+        this.ground?.setWaterColor(p.color);
+      },
+      setPixelRatio: (r) => {
+        this.renderer.setPixelRatio(r);
+        this.resize();
+      },
+      setTimeScale: (k) => (this.timeScale = k),
+      scrollToRiver: () => this.scroll.toBottom(),
+    });
+    // the GLB may still be loading, in which case `ground` did not exist above
+    this.pushWaterParams();
+  }
+
+  /** re-push once the model exists, so a stored tuning survives a reload */
+  private pushWaterParams() {
+    const p = this.panel?.params;
+    if (!p || !this.ground) return;
+    this.ground.river?.setParams(p);
+    this.ground.setWaterColor(p.color);
   }
 
   private buildDom() {
@@ -125,7 +180,11 @@ export class ConceptScreen {
     // which is what made the roofs read flat. Neutral (Khronos PBR Neutral)
     // rolls the 1–4 range off while preserving hue.
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.el.appendChild(this.renderer.domElement);
+    // The canvas and the caption layer go INSIDE the scroller; everything else
+    // built below stays a direct child of the screen and therefore stays
+    // pinned. See mapScroll.ts.
+    this.scroll = new MapScroll(this.el, this.stageVh);
+    this.scroll.stage.appendChild(this.renderer.domElement);
 
     const add = (tag: string, cls: string, html: string) => {
       const n = document.createElement(tag);
@@ -147,7 +206,9 @@ export class ConceptScreen {
     // doubles as the hover read-out.
     this.mapInfo = new MapInfo(this.el);
 
-    this.labels = new MapLabels(this.el);
+    // in the STAGE, not the screen: a caption is welded to the map and has to
+    // scroll with it
+    this.labels = new MapLabels(this.scroll.stage, this.el);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
     this.picker.onHoverChange = (id) => {
@@ -156,7 +217,12 @@ export class ConceptScreen {
     };
 
     this.el.addEventListener('pointermove', (e) => {
-      this.picker.setPointer(e.clientX, e.clientY);
+      // Kept in WINDOW coordinates and converted per frame (see the loop): the
+      // stage scrolls under a stationary cursor, so the picked building changes
+      // without a pointermove — exactly like the shear moving geometry, which
+      // is why picking already runs per frame rather than per event.
+      this.cursor.x = e.clientX;
+      this.cursor.y = e.clientY;
       // the drawer must not steer the plan: the lean maps raw cursor position
       // to shear across the whole screen and DEADZONE is 0, so without this
       // the plan keeps tilting while you read the panel
@@ -287,7 +353,13 @@ export class ConceptScreen {
     // Neva slab reaches far off-site), so measuring the whole root would
     // silently shrink the volumes to a third of the size MAX_SHEAR and
     // FIT_MARGIN were tuned against. The plan is meant to bleed off every edge.
-    const box = new THREE.Box3().setFromObject(buildings);
+    //
+    // …and on the VOLUMES alone within that. `b18`, the pier, is a 0.09-tall
+    // slab standing out in the river, far past the embankment — plan furniture
+    // wearing a building's clothes. It contributed nothing to the drawing and
+    // 20 % of the framed height, which is why the cluster read small with wide
+    // empty margins (round 13). See FIT_HEIGHT_FRAC.
+    const box = massedBox(parts);
     const bsize = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const scale = MODEL_SPAN / Math.max(bsize.x, bsize.z);
@@ -313,11 +385,14 @@ export class ConceptScreen {
     this.mapCam.setModelMatrix(root.matrix);
     // after root.updateMatrix(): the captions project world-space anchors, so
     // they need the normalize transform that is only final at this point
-    this.labels.build(flats, root.matrix, Math.max(bsize.x, bsize.z));
+    this.labels.build(flats, parts, root.matrix, Math.max(bsize.x, bsize.z));
 
     this.model = root;
     this.shearGroup.add(root);
     this.resize(); // frustum now fits the real bounds
+    // the panel may have opened before the GLB arrived — its stored tuning has
+    // nothing to write to until now
+    this.pushWaterParams();
     this.primeFrame();
   }
 
@@ -329,6 +404,9 @@ export class ConceptScreen {
     // the drawer takes over the read-out while focused, and it occupies the
     // same left column — the rail would sit underneath it
     this.mapInfo.setMuted(id !== null);
+    // the isometric framing assumes the window, so pin the view to the top for
+    // as long as a building is focused
+    this.scroll.lock(id !== null);
     // the drawer animates open, so re-read its width next frame rather than
     // framing against a panel that is still sliding in
     requestAnimationFrame(() => {
@@ -341,18 +419,39 @@ export class ConceptScreen {
   // ------------------------------------------------------------------ frame
 
   resize = () => {
-    this.renderer.setSize(innerWidth, innerHeight);
-    this.picker.setResolution(innerWidth, innerHeight);
+    // Back to the top FIRST: the caption solve that follows measures the
+    // window-pinned chrome as obstacles, and the resting composition is the one
+    // the design is judged in.
+    this.scroll.reset();
+    // The canvas is the STAGE, 1.5x the window's height (mapScroll.ts) — but
+    // the camera's FIT stays measured against the window, or the taller aspect
+    // would silently re-zoom the map. setOverscan carries the difference.
+    const { stageW, stageH } = this.scroll;
+    this.renderer.setSize(stageW, stageH);
+    this.picker.setResolution(stageW, stageH);
     // the drawer's real width, so the focus framing tracks the CSS (incl. its
     // max-width: 86vw clamp on narrow viewports)
     this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
+    this.mapCam.setOverscan(this.scroll.overscan);
     this.mapCam.snap();
   };
+
+  /** the canvas the captions and the picker work in — never the window */
+  private get view() {
+    return {
+      w: this.scroll.stageW,
+      h: this.scroll.stageH,
+      restH: innerHeight,
+      scrollTop: this.scroll.scrollTop,
+    };
+  }
 
   start() {
     if (this.running) return;
     this.running = true;
     this.el.classList.remove('hidden');
+    // arriving from the main screen must always land on the resting composition
+    this.scroll.reset();
     addEventListener('resize', this.resize);
     let last = performance.now();
     const loop = (now: number) => {
@@ -364,11 +463,19 @@ export class ConceptScreen {
       this.smY += (this.inputY - this.smY) * k;
       this.mapCam.update(dt);
       this.ground?.setFocus(this.mapCam.focus);
-      this.ground?.update(now / 1000);
+      this.waterT += dt * this.timeScale;
+      this.ground?.update(this.waterT);
       this.updateShear();
+      this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.scrollTop);
       this.picker.update(this.scene, this.mapCam.camera);
-      this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
+      this.labels.update(
+        this.mapCam.camera,
+        this.view,
+        this.mapCam.focus,
+        this.shearGroup.matrix
+      );
       this.renderer.render(this.scene, this.mapCam.camera);
+      if (this.panel) this.reportStats(now);
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -388,8 +495,24 @@ export class ConceptScreen {
     this.mapCam.snap();
     this.ground?.setFocus(this.mapCam.focus);
     this.updateShear();
-    this.labels.update(this.mapCam.camera, innerWidth, innerHeight, this.mapCam.focus);
+    this.labels.update(
+      this.mapCam.camera,
+      this.view,
+      this.mapCam.focus,
+      this.shearGroup.matrix
+    );
     this.renderer.render(this.scene, this.mapCam.camera);
+  }
+
+  /** averaged over a second: a per-frame readout is noise, and it would make
+   *  the panel's header the only thing repainting every frame */
+  private reportStats(now: number) {
+    this.fpsFrames++;
+    const span = now - this.fpsSince;
+    if (span < 1000) return;
+    this.panel?.setStats((this.fpsFrames * 1000) / span, span / this.fpsFrames);
+    this.fpsFrames = 0;
+    this.fpsSince = now;
   }
 
   private updateShear() {
@@ -417,6 +540,32 @@ export class ConceptScreen {
     );
     this.shearGroup.matrixWorldNeedsUpdate = true;
   }
+}
+
+/**
+ * The bounding box of the parts that actually have MASS, used for framing.
+ *
+ * Scale-free: a part counts once it stands at least this fraction of the
+ * tallest volume. Measured on this model the split is unambiguous — the pier is
+ * 3.3 % of the tallest building and the next-shortest part, the canopy `b17`,
+ * is 7.4 % — but the test is a ratio so it survives a re-export at any units.
+ *
+ * Deliberately NOT a distance-from-the-cluster test: an outlier is not what is
+ * wrong with the pier. A ground slab in the river is wrong for the framing
+ * because it is not a volume, and that is what gets measured.
+ */
+const FIT_HEIGHT_FRAC = 0.05;
+
+function massedBox(parts: { bbox: THREE.Box3 }[]): THREE.Box3 {
+  let tallest = 0;
+  for (const p of parts) tallest = Math.max(tallest, p.bbox.max.y - p.bbox.min.y);
+  const box = new THREE.Box3();
+  for (const p of parts) {
+    if (p.bbox.max.y - p.bbox.min.y >= tallest * FIT_HEIGHT_FRAC) box.union(p.bbox);
+  }
+  // a model of nothing but slabs would leave this empty — fall back to all of it
+  if (box.isEmpty()) for (const p of parts) box.union(p.bbox);
+  return box;
 }
 
 /** the GLTF material name — the only per-surface identity this export carries */

@@ -140,7 +140,13 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   // Named «Западный крест» after the client's own drawer design, which is also
   // the geography: with the Neva to the north, Лит Е1 is the western of the two.
   b01: {
-    name: 'Западный крест',
+    // ROUND 13: the client's own map (Figma export, 2026-08-06) names the
+    // screen-RIGHT cross «Восточный» and the screen-LEFT one «Западный» — the
+    // opposite of round 10.2's empirical assignment, and the compass agrees
+    // with the client (under round 9's north-up yaw of 189°, screen-right IS
+    // east). Only the two NAMES were wrong: the star ratings, residents and the
+    // SPA all sit on the buildings the client's map puts them on.
+    name: 'Восточный крест',
     kind: 'Лит. Е1 · отель Cosmos 5★',
     photo: '/resources/hotel.webp',
     logo: '/resources/cosmos-logo.svg',
@@ -157,7 +163,8 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
 
   // 2626 tris · 9.77×9.77 · the second cross, further from the Neva → Лит Е3
   b02: {
-    name: 'Восточный крест',
+    // see b01 — the client's map names this, the screen-LEFT cross, «Западный»
+    name: 'Западный крест',
     kind: 'Лит. Е3 · отель Cosmos 4★',
     photo: '/resources/hotel.webp',
     logo: '/resources/cosmos-logo.svg',

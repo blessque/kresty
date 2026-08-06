@@ -1,0 +1,164 @@
+/* Water admin panel (round 14, `?admin=1`).
+
+   Its own stylesheet, imported by WaterPanel.ts rather than from main.ts: the
+   module is dynamically imported behind the flag, so Vite puts both in a chunk
+   a normal load never fetches. Deleting the tool one day is deleting two files.
+
+   Deliberately NOT in the site's type — this is an instrument, not a page. */
+
+.water-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 296px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 26, 38, 0.93);
+  color: #cfe3ef;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 400;
+  backdrop-filter: blur(6px);
+  transition: transform 0.25s cubic-bezier(0.3, 0, 0.12, 1);
+}
+.water-panel.hidden {
+  transform: translateX(100%);
+}
+
+.wp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wp-stat {
+  margin-left: auto;
+  opacity: 0.6;
+  text-transform: none;
+  letter-spacing: 0;
+  /* tabular so the readout does not jitter the header every frame */
+  font-variant-numeric: tabular-nums;
+}
+.wp-x {
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.wp-x:hover {
+  opacity: 1;
+}
+
+.wp-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.wp-body h3 {
+  margin: 14px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6fb6dd;
+}
+
+.wp-note {
+  margin: 2px 0 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.45;
+}
+
+.wp-row {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 3px 0;
+}
+.wp-row label {
+  opacity: 0.8;
+}
+.wp-row .wp-val {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.95;
+}
+/* the control takes the full width on its own line, under label + value */
+.wp-row input[type='range'],
+.wp-row select,
+.wp-row input[type='color'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #56b7e6;
+}
+.wp-row select {
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border: none;
+  font: inherit;
+  padding: 2px 4px;
+}
+.wp-row input[type='color'] {
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.wp-row .wp-note {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+}
+/* an action row is just its button */
+.wp-row > .wp-btn:only-child {
+  grid-column: 1 / -1;
+}
+
+.wp-foot {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.wp-btn {
+  flex: 1;
+  font: inherit;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  text-align: center;
+}
+.wp-btn:hover {
+  background: rgba(86, 183, 230, 0.35);
+}
+
+/* the reopen tab, shown only while the panel is away */
+.wp-tab {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 9;
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  line-height: 1;
+  color: #cfe3ef;
+  background: rgba(12, 26, 38, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.wp-tab.on {
+  opacity: 1;
+  pointer-events: auto;
+}

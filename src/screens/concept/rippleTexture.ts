@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WATER_DEFAULTS, type RippleParams } from './waterParams';
 
 /**
  * A seamlessly tiling value-noise FBM, baked once at load, used as the river's
@@ -28,42 +29,28 @@ import * as THREE from 'three';
  *
  * The generator is a fixed-seed LCG on purpose — the same bytes every reload, so
  * a screenshot diff is meaningful and "it looks different today" cannot happen.
+ *
+ * NOT ALWAYS CHEAP. Measured in this browser at the shipped 2 octaves:
+ * 256² = 1.9 ms / 64 KiB, 512² = 7.8 ms / 256 KiB, **1024² = 31.5 ms / 1 MiB**,
+ * which is what round 14 ships. It runs once, synchronously, inside
+ * `new GroundPlan(...)` — i.e. AFTER the GLB has loaded and before the map's
+ * first frame, so it costs roughly one dropped frame at load rather than any
+ * added latency. The admin panel can call it again at any time.
  */
 
 /**
- * Grid cells across the tile for the COARSEST octave.
+ * Bakes one tile. The dials and the argument behind each shipped value live in
+ * waterParams.ts (`RippleParams`) — round 14 moved them there so the admin
+ * panel could rebake on demand. `baseGrid` is the one that decides what the
+ * water looks like: an FBM's dominant feature size is tile/baseGrid, and the
+ * coarsest octave carries the most amplitude.
  *
- * This is the dial that decides what the water looks like, because an FBM's
- * dominant feature size is tile/BASE_GRID and the coarsest octave carries the
- * most amplitude.
- *
- * ROUND 11 dropped this from 32 to 4, and the reasoning behind the old value
- * was the trap. At 32 the COARSEST feature is tile/32 — so at any tile size
- * that makes the blobs the right size on screen, everything else in the texture
- * is finer than that. Under the round-9.2 `chop` mode the result read as mould
- * or camouflage, and no tile size could have fixed it: the content was wrong,
- * not the mapping.
- *
- * At 4 with 3 octaves the features are tile/4, tile/8, tile/16. Against
- * water.ts's 113-world-unit tile at the overview camera's 2.48 px per world
- * unit, that is 70 / 35 / 17 screen px — the coarsest lands in the 60–90 px
- * band the designer chose, and the finest still carries detail into focus mode,
- * where the camera zooms and the surface magnifies ~3x.
+ * Cheap enough to call live: ~4 ms at 256².
  */
-const BASE_GRID = 4;
-/** each octave doubles the grid. GAIN 0.5 (down from 0.6) because the register
- *  is calm: the fine octaves should support the coarse one, not compete. */
-const OCTAVES = 3;
-const GAIN = 0.5;
-const SEED = 0x5f3a91;
-
-/**
- * 256 is not a downgrade from the old 512 — it is the right size for the
- * content above. The finest lattice is 16x16 within the tile, so 512 texels
- * were resolving a 16-cell grid at 32 texels per cell: pure interpolation, no
- * information. 64 KiB and a ~4 ms bake instead of 256 KiB and ~18 ms.
- */
-export function buildRippleTexture(size = 256): THREE.DataTexture {
+export function buildRippleTexture(
+  opts: RippleParams = WATER_DEFAULTS.texture
+): THREE.DataTexture {
+  const { size, baseGrid: BASE_GRID, octaves: OCTAVES, gain: GAIN, seed: SEED } = opts;
   const rnd = lcg(SEED);
 
   // one random lattice per octave, each already sized to its own grid
@@ -124,8 +111,9 @@ export function buildRippleTexture(size = 256): THREE.DataTexture {
   // Focus mode swings the camera to ~35° elevation, so the water runs to a
   // grazing angle and trilinear picks its mip from the worst axis — which
   // over-blurs along the other one. three clamps this to the hardware maximum
-  // on upload, so a flat 4 is safe everywhere.
-  tex.anisotropy = 4;
+  // on upload, so a flat 4 is safe everywhere. Bake-time, not live: anisotropy
+  // is applied when the texture is uploaded.
+  tex.anisotropy = opts.anisotropy;
   // raw scalar field, not colour — must not be tagged sRGB or three will
   // gamma-decode it and skew the crest threshold
   tex.colorSpace = THREE.NoColorSpace;

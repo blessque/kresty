@@ -35,6 +35,8 @@ export class BuildingPicker {
   private parts = new Map<string, BuildingPart>();
   private ray = new THREE.Raycaster();
   private ndc = new THREE.Vector2(-2, -2); // off-screen until the first move
+  private resW = 1;
+  private resH = 1;
 
   constructor() {
     this.base = buildMaterial();
@@ -71,11 +73,22 @@ export class BuildingPicker {
 
   /** fat lines are screen-space and need the pixel resolution */
   setResolution(w: number, h: number) {
+    this.resW = w;
+    this.resH = h;
     for (const e of [this.edge, this.edgeHover, this.edgeDim]) e.resolution.set(w, h);
   }
 
-  setPointer(clientX: number, clientY: number) {
-    this.ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+  /**
+   * Pointer position in CANVAS pixels, not window pixels.
+   *
+   * Round 14: the canvas is 1.5x the window's height and scrolls under it, so
+   * `innerHeight` stopped being the NDC divisor and the caller has to add the
+   * scroll offset. Without both halves of that the hover silently drifts by
+   * however far you have scrolled — the map still highlights buildings, just
+   * the wrong ones.
+   */
+  setPointer(canvasX: number, canvasY: number) {
+    this.ndc.set((canvasX / this.resW) * 2 - 1, -(canvasY / this.resH) * 2 + 1);
   }
 
   /**

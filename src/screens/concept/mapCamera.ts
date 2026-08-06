@@ -61,6 +61,7 @@ export class MapCamera {
   private viewW = 1;
   private viewH = 1;
   private inset = 0; // drawer width in px
+  private overscan = 1;
 
   // animated state
   private halfH = new Spring(150);
@@ -101,11 +102,40 @@ export class MapCamera {
     this.fitMargin = fitMargin;
   }
 
-  /** `inset` = width in px of the drawer occupying the left edge */
+  /**
+   * `inset` = width in px of the drawer occupying the left edge.
+   *
+   * This is the DESIGN VIEWPORT — the window — not the canvas. Round 14 made
+   * the canvas 1.5x taller than the window, and every fit here must keep being
+   * measured against the window; see setOverscan.
+   */
   setViewport(w: number, h: number, inset: number) {
     this.viewW = w;
     this.viewH = h;
     this.inset = inset;
+  }
+
+  /**
+   * canvasH / viewportH (round 14's 150vh map scroll, 1 before it).
+   *
+   * The FIT MUST NOT SEE THIS. `overviewHalfH` returns
+   * `max(needH, needW / aspect)` and the current framing is height-bound;
+   * feeding it the taller canvas's aspect (1.80 → 1.20) flips it width-bound
+   * and renders the buildings ~35% larger than the framing signed off in round
+   * 13 — the exact opposite of what a scroll added to inspect the water at its
+   * shipped scale is for.
+   *
+   * So the fit stays on the window and the extra height is bolted on afterwards
+   * in `applyToCamera`, which gives two properties worth stating:
+   *   - world units per pixel are bit-for-bit unchanged, because the frustum
+   *     grows by exactly the factor the canvas does;
+   *   - the camera target stays centred in the TOP viewport band, so at
+   *     scrollTop 0 the composition is pointwise the pre-scroll one — in the
+   *     overview and in focus mode, where the focused building must still land
+   *     in the middle of the screen.
+   */
+  setOverscan(k: number) {
+    this.overscan = Math.max(1, k);
   }
 
   /** null returns to the overview */
@@ -190,8 +220,12 @@ export class MapCamera {
     const cx = -this.ndcX.value * halfW;
     this.camera.left = cx - halfW;
     this.camera.right = cx + halfW;
+    // The top edge is the fixed one and the frustum grows DOWNWARD, so the
+    // window-sized band at the top of the canvas keeps framing the target
+    // symmetrically. Asymmetric ortho bounds are already how the drawer inset
+    // works horizontally (`cx` above) — same mechanism, other axis.
     this.camera.top = halfH;
-    this.camera.bottom = -halfH;
+    this.camera.bottom = halfH - 2 * halfH * this.overscan;
     this.camera.updateProjectionMatrix();
 
     this.camera.quaternion.copy(this.quat);
