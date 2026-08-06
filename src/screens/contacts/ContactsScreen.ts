@@ -125,6 +125,9 @@ const CONTROLS: ControlSpec[] = [
   { key: 'freeze', label: 'freeze', min: 0, max: 1, step: 1, group: 'Motion',
     hint: 'Stops the clock and skips redraws while nothing moves — steady stills, less GPU.' },
 
+  { key: 'bg', label: 'page colour', kind: 'color', group: 'Page',
+    hint: 'Background behind the light. Works because the canvas composites with mix-blend-mode: screen.' },
+
   { key: 'rs', label: 'render scale', min: 0.5, max: 2, step: 0.05, group: 'Performance',
     hint: 'THE perf dial — cost is quadratic in this. 1.0 ≈ 60fps, 2.0 ≈ 30fps.' },
 ];
@@ -167,24 +170,28 @@ export class ContactsScreen {
     this.el.classList.add('hidden');
     this.build();
 
-    // "clearer defaults", per the user: less dissolve, less of both noises, a
-    // visible SVG overlay. Everything else starts from the shipped «Сияние».
+    // The designer's own settings, dialled in on the live panel and handed over
+    // verbatim as a "Copy URL" link — not re-derived here. Notable choices:
+    // a much smaller icon (220 vs 640), no shader grain, no SVG overlay, and
+    // `freeze` ON, which stops the clock (so `breathe`/`shimmer` sit inert
+    // until freeze is turned off) and skips redraws while nothing moves.
     const defaults: ControlValues = {
-      dissolve: 0.35,
-      core: 1,
-      godrays: SIYANIE.godrays,
-      bloom: SIYANIE.bloom,
-      falloff: SIYANIE.falloffL,
-      exp: 1,
-      ca: SIYANIE.ca,
-      grain: 0.02,
+      dissolve: 0.36,
+      core: 0.45,
+      godrays: 1.75,
+      bloom: 1.05,
+      falloff: 1010,
+      exp: 1.3,
+      ca: 0.028,
+      grain: 0,
       steps: 32,
-      px: 640,
-      parallax: SIYANIE.parallax,
-      svg: 0.4,
-      breathe: SIYANIE.breathe,
-      shimmer: SIYANIE.shimmer,
-      freeze: 0,
+      px: 220,
+      parallax: 2,
+      svg: 0,
+      breathe: 1,
+      shimmer: 0.6,
+      freeze: 1,
+      bg: '#000000',
       rs: this.tier.renderScale,
     };
 
@@ -236,10 +243,19 @@ export class ContactsScreen {
     this.el.appendChild(home);
   }
 
+  /** panel values are mixed-type now (colours are strings) — read numbers here */
+  private n(key: string): number {
+    return Number(this.v[key]);
+  }
+
   /** panel values that live outside the shader state */
   private applySideEffects() {
     this.layout();
-    this.overlay.style.opacity = String(this.v.svg);
+    this.overlay.style.opacity = String(this.n('svg'));
+    // The canvas composites with `mix-blend-mode: screen`, so this shows
+    // through wherever the light is dark. Screen against black reduces to the
+    // canvas itself, which is why turning it on changed nothing at #000000.
+    this.el.style.background = String(this.v.bg ?? '#000000');
   }
 
   /**
@@ -300,7 +316,7 @@ export class ContactsScreen {
   }
 
   private layout = () => {
-    const rs = this.v?.rs ?? this.tier.renderScale;
+    const rs = this.v ? this.n('rs') : this.tier.renderScale;
     this.renderer?.resize(Math.round(innerWidth * rs), Math.round(innerHeight * rs));
   };
 
@@ -327,7 +343,7 @@ export class ContactsScreen {
       if (!this.running) return;
       const dt = Math.min(0.05, (now - this.lastT) / 1000);
       this.lastT = now;
-      if (!this.v.freeze) this.timeSec += dt;
+      if (!this.n('freeze')) this.timeSec += dt;
       this.pointer.update(dt);
       this.update();
       this.raf = requestAnimationFrame(loop);
@@ -364,7 +380,7 @@ export class ContactsScreen {
       });
     }
 
-    const rs = this.v.rs;
+    const rs = this.n('rs');
     // the light rides with its section, so scrolling translates it rather than
     // cutting between two stationary lights
     const cx = this.scroller.clientWidth / 2;
@@ -373,10 +389,10 @@ export class ContactsScreen {
     // `freeze` is not just a clock stop: with nothing moving there is no reason
     // to re-run a 109-fetch-per-pixel shader every frame
     const key = `${idx}|${Math.round(cy)}|${Math.round(this.pointer.smooth.x)}|${Math.round(this.pointer.smooth.y)}`;
-    if (this.v.freeze && key === this.lastKey) return;
+    if (this.n('freeze') && key === this.lastKey) return;
     this.lastKey = key;
 
-    const signSize = this.v.px / CONTENT_FRAC;
+    const signSize = this.n('px') / CONTENT_FRAC;
 
     // the overlay shares the light's footprint by construction; mirror it back,
     // since the mask itself is pre-mirrored for the GPU
@@ -388,19 +404,19 @@ export class ContactsScreen {
     // exposure normalisation: a solid silhouette carries 2–3.6× the ink of the
     // emblem, and the march is linear in that, so the preset's own numbers
     // would white out. See REF_COVERAGE.
-    const gain = this.exposure * this.v.exp;
+    const gain = this.exposure * this.n('exp');
     const p: RayFieldParams = {
       ...SIYANIE,
-      dissolve: this.v.dissolve,
-      godrays: this.v.godrays * gain,
-      bloom: this.v.bloom * gain,
-      coreIntensity: this.v.core * gain,
-      falloffL: this.v.falloff,
-      ca: this.v.ca,
-      parallax: this.v.parallax,
-      breathe: this.v.breathe,
-      shimmer: this.v.shimmer,
-      grain: this.v.grain,
+      dissolve: this.n('dissolve'),
+      godrays: this.n('godrays') * gain,
+      bloom: this.n('bloom') * gain,
+      coreIntensity: this.n('core') * gain,
+      falloffL: this.n('falloff'),
+      ca: this.n('ca'),
+      parallax: this.n('parallax'),
+      breathe: this.n('breathe'),
+      shimmer: this.n('shimmer'),
+      grain: this.n('grain'),
       // Reference px are CSS px here, so `falloffL` and friends keep their HERO
       // MAGNITUDE and the light decays inside the frame exactly as on the main
       // screen. Only the APERTURE grows to make the icon the requested size.
@@ -412,7 +428,7 @@ export class ContactsScreen {
 
     // march steps without a shader change: N = clamp(layers·8 + octaves·4, 12,
     // 32), and at slitMix 1 layers/octaves affect nothing else on this page
-    const steps = this.v.steps;
+    const steps = this.n('steps');
 
     const state: RayFieldState = {
       timeSec: this.timeSec,

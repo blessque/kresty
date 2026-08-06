@@ -14,6 +14,12 @@
   background: #000;
 }
 
+/* The shader writes alpha 1.0, so the canvas is OPAQUE and would otherwise
+   hide the page colour entirely — which would make the `bg` handle dead. The
+   project's compositing model solves it: the canvas outputs light-on-black and
+   composites with `screen`, exactly as the main screen does over #56b7e6.
+   Screen is `1 − (1−a)(1−b)`, which against black (b=0) reduces to `a`, so
+   this is a no-op at #000000 and correct at every other colour. */
 .fx-canvas {
   position: absolute;
   inset: 0;
@@ -22,6 +28,7 @@
   height: 100%;
   z-index: 1;
   pointer-events: none;
+  mix-blend-mode: screen;
 }
 
 /* the crisp icon over the light. Sized and positioned from JS to the light's
@@ -201,6 +208,49 @@
   height: 12px;
   border-radius: 50%;
   background: #fff;
+}
+
+/* colour row: swatch + hex field. `#rrggbb` needs more than the 42px the
+   numeric readout uses, so this row gets its own last column. */
+.fx-row-color {
+  grid-template-columns: 84px 1fr 74px;
+}
+
+.fx-swatch {
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.fx-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.fx-swatch::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+.fx-hex {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-hex:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .fx-row input[type='range']::-moz-range-thumb {

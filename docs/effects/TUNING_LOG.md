@@ -2410,8 +2410,41 @@ this is a pre-existing property of «Сияние», not something the showcase 
 The useful result: **full retina resolution AND 60 fps is available by dropping march steps 32 →
 20**, trading a little ray smoothness rather than resolution.
 
+## Round 12.2 (2026-08-06) — the designer's settings become the defaults; page colour
+
+**Defaults are now the designer's own dial-in**, handed over verbatim as a «Copy URL» link from
+the live panel rather than re-derived: `dissolve 0.36`, `core 0.45`, `godrays 1.75`, `bloom
+1.05`, `reach 1010`, `exposure 1.3`, `rainbow 0.028`, `grain 0`, `px 220`, `parallax 2`,
+`svg 0`, `breathe 1`, `shimmer 0.6`, `freeze 1`. Note `px 220` — a *small* icon with long rays,
+much closer to «Сияние»'s starburst register than round 12's 640px. That the panel could hand
+back an exact reproducible link is the reason this took one round-trip instead of several.
+
+Two consequences worth knowing: `freeze 1` stops the clock, so `breathe`/`shimmer` sit inert
+until freeze is turned off; and **localStorage outranks defaults**, so a browser that has already
+touched the panel keeps its own values — press Reset to see these.
+
+**Page colour (`bg`) needed a compositing change to be a live handle at all.** The shader writes
+`fragColor = vec4(col, 1.0)` — fully OPAQUE — so the canvas covered the page background and a
+colour control would have done nothing. Fixed by giving `.fx-canvas` the project's standard
+`mix-blend-mode: screen`, the same model the main screen uses over `#56b7e6`. Screen is
+`1 − (1−a)(1−b)`, which against black reduces to exactly `a`, so **turning it on preserved the
+existing look bit-for-bit** while making every other colour composite correctly. Verified live:
+mean luminance 32.9 (#000000) → 77.9 (#123a5c) → 255 (#ffffff).
+
+That last number is the limit of the model, not a bug: **screen against white is always white**,
+so the lighter the page colour the less light can show, and at `#ffffff` nothing shows at all.
+Light-on-dark is additive by construction. A light background would need the eclipse composite
+mode (`compositeMode: 1`), not a blending tweak.
+
+`ControlValues` widened from `Record<string, number>` to `number | string` for the hex, with a
+`normalizeHex()` that accepts `#101820`, `101820` and `#123`. Bare hex matters: a literal `#`
+typed into a query string starts the fragment and swallows the rest of the URL.
+
 ## Open issues
 
+- **[OPEN] `bg` is useless above roughly 70% lightness** — screen blending cannot darken, so
+  pale page colours wash the light out and `#ffffff` renders a blank white page. If the designer
+  wants light backgrounds, that is the eclipse composite mode, not a CSS change.
 - **[OPEN] The renderers upload every mask Y-flipped, so `sign.svg` renders mirrored on the
   hero and on «Прорезь».** Round 12.1 cancelled it for «Контакты» only. The real fix is
   `flipY: false` in both renderers plus dropping `flipY` from the contacts call — three lines,

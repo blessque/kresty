@@ -19,17 +19,32 @@
 export interface ControlSpec {
   key: string;
   label: string;
-  min: number;
-  max: number;
-  step: number;
   group: string;
-  /** shown under the label — say what it DOES, not what it is */
+  /** 'range' (default) = slider; 'color' = swatch + hex field */
+  kind?: 'range' | 'color';
+  min?: number;
+  max?: number;
+  step?: number;
+  /** shown on hover — say what it DOES, not what it is */
   hint?: string;
 }
 
-export type ControlValues = Record<string, number>;
+/** numbers for sliders, `#rrggbb` strings for colours */
+export type ControlValues = Record<string, number | string>;
+
+/** accepts `#101820`, `101820`, or a short `#123`; returns `#rrggbb` or null */
+export function normalizeHex(raw: string): string | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(raw.trim());
+  if (!m) return null;
+  const h = m[1].toLowerCase();
+  return `#${h.length === 3 ? [...h].map((c) => c + c).join('') : h}`;
+}
 
 const STORE_KEY = 'kresty.contacts.panel';
+
+type Widget =
+  | { range: HTMLInputElement; out: HTMLElement }
+  | { swatch: HTMLInputElement; hex: HTMLInputElement };
 
 export class ControlPanel {
   values: ControlValues;
@@ -38,7 +53,7 @@ export class ControlPanel {
   private el: HTMLElement;
   private defaults: ControlValues;
   private specs: ControlSpec[];
-  private inputs = new Map<string, { range: HTMLInputElement; out: HTMLElement }>();
+  private inputs = new Map<string, Widget>();
 
   constructor(parent: HTMLElement, specs: ControlSpec[], defaults: ControlValues) {
     this.specs = specs;
@@ -61,7 +76,12 @@ export class ControlPanel {
       // resurrect a stale value forever
       const out: ControlValues = {};
       for (const s of this.specs) {
-        if (typeof parsed[s.key] === 'number') out[s.key] = parsed[s.key];
+        const v = parsed[s.key];
+        if (s.kind === 'color') {
+          if (typeof v === 'string' && normalizeHex(v)) out[s.key] = normalizeHex(v)!;
+        } else if (typeof v === 'number') {
+          out[s.key] = v;
+        }
       }
       return out;
     } catch {
@@ -75,6 +95,14 @@ export class ControlPanel {
     for (const s of this.specs) {
       const raw = q.get(s.key);
       if (raw === null) continue;
+      if (s.kind === 'color') {
+        // URLSearchParams encodes '#' as %23 and decodes it back, but accept a
+        // bare `bg=101820` too — a literal '#' typed by hand would otherwise
+        // start the fragment and swallow the rest of the query
+        const hex = normalizeHex(raw);
+        if (hex) out[s.key] = hex;
+        continue;
+      }
       const n = Number(raw);
       if (Number.isFinite(n)) out[s.key] = n;
     }
@@ -115,6 +143,39 @@ export class ControlPanel {
       name.className = 'fx-name';
       name.textContent = s.label;
       if (s.hint) name.title = s.hint;
+
+      if (s.kind === 'color') {
+        row.classList.add('fx-row-color'); // wider last column for the hex text
+        const cur = String(this.values[s.key] ?? this.defaults[s.key] ?? '#000000');
+        const swatch = document.createElement('input');
+        swatch.type = 'color';
+        swatch.className = 'fx-swatch';
+        swatch.value = cur;
+        const hex = document.createElement('input');
+        hex.type = 'text';
+        hex.className = 'fx-hex';
+        hex.spellcheck = false;
+        hex.value = cur;
+
+        const commit = (raw: string, echo: boolean) => {
+          const norm = normalizeHex(raw);
+          if (!norm) return; // half-typed hex: leave the field alone
+          this.values[s.key] = norm;
+          swatch.value = norm;
+          if (echo) hex.value = norm;
+          this.save();
+          this.onChange(this.values);
+        };
+        swatch.addEventListener('input', () => commit(swatch.value, true));
+        hex.addEventListener('input', () => commit(hex.value, false));
+        // tidy the field once the user is done, so `abc` becomes `#aabbcc`
+        hex.addEventListener('blur', () => commit(hex.value, true));
+
+        row.append(name, swatch, hex);
+        body.appendChild(row);
+        this.inputs.set(s.key, { swatch, hex });
+        continue;
+      }
 
       const out = document.createElement('span');
       out.className = 'fx-val';
@@ -171,11 +232,16 @@ export class ControlPanel {
   /** applies a whole value set to both the state and the widgets */
   set(v: ControlValues) {
     this.values = { ...this.values, ...v };
-    for (const [key, { range, out }] of this.inputs) {
+    for (const [key, w] of this.inputs) {
       const val = this.values[key];
       if (val === undefined) continue;
-      range.value = String(val);
-      out.textContent = this.fmt(val);
+      if ('swatch' in w) {
+        w.swatch.value = String(val);
+        w.hex.value = String(val);
+      } else {
+        w.range.value = String(val);
+        w.out.textContent = this.fmt(Number(val));
+      }
     }
     this.save();
     this.onChange(this.values);
