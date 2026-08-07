@@ -3011,6 +3011,194 @@ The default row is not neutral grey because the shader's own cool far-field drif
 there — correct, and the proof the tint composes with it instead of replacing it. The main
 screen is unchanged: ×(1,1,1) is exact identity, and every variant in `base` ships white.
 
+## Map round 16 (2026-08-07) — the map becomes a page: resident sections under it
+
+The brief: put the «Контакты» icons on «Концепция» after the map with a white gap, one
+section per group of residents, each on its own bright background colour, the colour
+changing smoothly between sections, and kill the sticky scroll so it reads as a normal page.
+
+Round 14 had already written down what this would take, in `mapScroll.ts`'s own header —
+"when content lands before and after the map, the stage becomes a section in a document
+rather than a pane in a fixed screen, and nothing else moves". That held: the scroller
+gained siblings and nothing about the map's framing moved. **Proven, not assumed** — see
+Verified below.
+
+### The one thing in the brief that could not be built
+
+**Bright backgrounds and the hero light are mutually exclusive, by construction.** The
+canvas composites with `mix-blend-mode: screen` = `1 − (1−a)(1−b)`, which can only lighten;
+this log already carried it as a standing limitation ("`bg` is useless above roughly 70%
+lightness"). Offered the choice, the user kept the light, so the palette went deep instead
+— seven jewel tones at roughly 15–22% lightness. Making the light survive a bright field is
+not a palette change, it is the eclipse composite mode.
+
+### Nothing about the sections is authored
+
+Every resident in `buildingsInfo.ts` already carries a `ResidentType`, so a group is a set
+of those types and membership falls out of the map's own data — the section list and the
+building drawer cannot drift apart because there is one table and it is the drawer's. The
+user's own example of a name to invent, «Cosmos Selection», turned out to have been written
+into this repo three rounds earlier.
+
+Two things the sweep had to do that a naive filter would not:
+
+- **Merge by label, summing `count`.** «Офисы резидентов» is listed on four separate
+  buildings (8 + 12 + 9 + 6) and «Кафе» on two. Unmerged, the offices section prints the
+  same row four times and claims nothing; merged it reads 35, which is the actual fact.
+- **`rooms` is a building-level fact, not a resident**, exactly as `summarize()` already
+  treats it — so the hotels section folds in 262 the same way rather than missing it.
+
+`hall` is the one type that genuinely spans two groups («Концертный зал» is culture,
+«Переговорные» is what you book from your desk). Rather than split the type and re-key the
+drawer's summaries, one `LABEL_GROUP` table re-points the mis-fits — the only place
+membership is decided by name rather than by data. `service` and `parking` reach no section
+on purpose; `buildingsInfo.ts` already records that back-of-house is not a selling point.
+
+### The gap is 0.8 vh because three things have to happen in order
+
+Not a taste number. The map's canvas is **opaque** and covers its whole stage, so any
+crossfade that starts while the map is still on screen happens *behind it* and is simply
+lost — the reader then meets an already-coloured page the instant the map clears. The first
+build used 0.24 vh and did exactly that: measured, the light was still gated off at the
+first seam and the white was never seen.
+
+With the blend band centred on the first section's top, the fade begins at
+`top0 − viewH·(0.5 + BAND_VH/2)`. Requiring that to land after `scrollTop = stageH` gives
+**gap > 0.8 viewports**. The same figure independently clears the light: section 0's icon
+enters the frame at `top0 − viewH·(1 − ICON_FY)`, which at 0.8 also lands after the map. One
+number satisfies both, and it is the smallest one that does.
+
+The gap element deliberately has **no background of its own**. `.res-bg` is the single
+source of the page colour; a hard-coded white there sits as an unfading band across the
+crossfade the plate is running underneath it.
+
+### Pure colour, blended only at the seam
+
+The user was explicit that the background is a pure colour that changes smoothly, not a
+gradient. So each section holds its exact hex across almost all of its height and the blend
+runs over a band of 0.6 vh centred on the boundary. **The sample point is the viewport
+centre**, which is what makes the band the right size — when a boundary sits at the centre
+the screen is exactly half each section and the mix is exactly 50/50.
+
+Interpolation is `color-mix(in oklab, …)`, feature-detected once. Two deep saturated colours
+lerped in sRGB pass through a muddy neutral, and this log already records being caught
+assuming a linear ratio is the ratio you see (water round 11).
+
+### The swap has to dip, because free scrolling removed what hid it
+
+ONE canvas means one mask, so at some scroll position the mask is swapped. «Контакты» could
+hide this behind its scroll-snap; a page you read cannot. The icons sit exactly one viewport
+apart, so the outgoing and incoming icons meet at the frame edge with neither overlap nor
+gap — but the light's ~1010 px falloff reaches far past the icon, so swapping at full
+brightness pops a halo across the whole frame.
+
+So the canvas opacity follows an envelope on the active icon's own screen position, flat
+across the middle and rolling off in the outer fifth, reaching **exactly 0 at the swap**.
+Measured across a handoff: `1.000 → 0.910 → 0.364 → 0.000 → 0.358 → 0.906 → 1.000`, and all
+six handoffs measure a minimum of exactly 0.0000.
+
+**And that survives sections of unequal height, which is not luck.** Two groups outgrow the
+viewport (`min-height`, so they may), which breaks the tidy "icons are exactly one viewport
+apart" argument. The spacing between consecutive icons is
+
+```
+s = (2/3)·h[i] + (1/3)·h[i+1]
+```
+
+so `s ≥ viewH` for *any* set of heights where every `h ≥ viewH` — which `min-height: 100%`
+guarantees. Spacing can only ever be too large, and too large just means a beat with no
+light at all, never a swap at brightness. The dip is structural.
+
+This is the shipped «Слайдер» rule reused, not a new invention — *the light dips, it never
+flashes*.
+
+One trap worth recording, because it cost a false failure: the handoff is at
+`(iconA + iconB)/2 − viewH/2`, not at `(iconA + iconB)/2`. The active icon is chosen by
+distance to the viewport **centre**, so a probe that forgets the half-viewport samples the
+plateau and reports a 0.96 minimum on a mechanism that is in fact reaching zero.
+
+### Two triggers for the chrome, not one
+
+The logo is authored `#123a5c` for the near-white map and vanishes on a deep section; white
+would in turn vanish against the white gap. So its flip is driven by the **background's own
+luminance**, computed from a numeric sRGB mix even though the emitted colour is an
+unparseable `color-mix()` string.
+
+The hover rail leaves on a **different** trigger — whether the map is still on screen. It
+reads «Наведите на здание, чтобы узнать о резидентах», and tying it to darkness left that
+instruction standing over the white gap, addressed to a map that had already scrolled away.
+Caught by looking at the frame, not by a test.
+
+### Three consumers of `scrollTop` that were bugs waiting to happen
+
+Before this round `scrollTop` *was* the map's scroll, because the map was all there was.
+
+| consumer | what would have happened |
+|---|---|
+| `toBottom()` — the river hint | targeted `scrollHeight`; would now fly past seven sections to the foot of the page |
+| `picker.setPointer(x, y + scrollTop)` | pick point dragged out past the stage |
+| `labels.update({ scrollTop })` | caption solve domain dragged with it |
+
+All three now read one clamped accessor, `MapScroll.mapScrollTop`, so the clamp exists once.
+
+### Never two renderers in one frame
+
+Three.js and the ray field are gated on whether the map stage still intersects the viewport
+— the map is above, the sections below, and neither is ever wanted while the other is. This
+was **measured directly** rather than argued: WebGL draw calls counted per canvas, patched
+onto the context prototypes before any page script runs.
+
+The lazy warm-up caught a self-inflicted bug worth recording: the first form was
+`scrollTop > stageH − 2·viewH`, and at the shipped 1.5 stage that is **negative** — so it
+fired on frame one and quietly gave a second GPU context to every visitor, including one who
+never scrolled. Measured against the first section's own top instead, at 1.5 viewports:
+warms at 640, which is past the river hint's 400, so «посмотреть Неву» stays a purely map
+interaction and there is still ~670 px of runway before the first envelope lifts off zero.
+
+### One module rule now reads wrong
+
+`.claude/rules/architecture.md` says `screens/concept/ → imports from: shared/, three`, and
+this round has it import `gpu/rayFieldTypes` plus the two renderers. That is consistent with
+the rule's own stated rationale — the constraint is that **`gpu/` must never import from
+`screens/`**, so the GPU layer stays portable, and `screens/main` and `screens/contacts`
+already import `gpu/` the same way. Only the line is stale. It needs:
+
+```
+screens/concept/ → imports from: gpu/ (via rayFieldTypes interface), shared/, three.
+                   The ONLY place three.js may appear.
+```
+
+That file and `CLAUDE.md` are both untracked and local, so neither is edited from a
+worktree; the amendment is noted here so the reason survives.
+
+### Verified
+
+- **The round-14 framing invariant holds exactly.** `overscan` still 1.5, canvas still
+  1440×1200, and the map at `scrollTop 0` is **0 differing pixels out of 1,147,753**
+  compared before vs after. The water animates, so the moving pixels were identified
+  self-calibratingly (two baseline shots 1200 ms apart, dilated 2 px) and excluded — 4247 of
+  them. This mattered because round 14 recorded that a taller canvas flips the height-bound
+  fit to width-bound and renders buildings ~35% larger; the claim that *siblings* cannot do
+  that (percentage height resolves against the content box, not `scrollHeight`) is now a
+  measurement.
+- **Captions identical**, all 7, same text and same placed positions.
+- **Picking invariant**, round 14's own proof re-run with the clamp in place:
+  `id(x, y)@0 === id(x, y−300)@300` at `?ob=0`, **20/20**.
+- **Colour purity exact** at every section midpoint — `rgb(19,42,82)`, `rgb(78,18,31)`,
+  `rgb(69,38,18)`, `rgb(13,57,55)`, `rgb(56,19,63)`, `rgb(42,36,80)`, `rgb(20,53,29)` — and
+  monotonic across the band with no reversal.
+- **Both backends**: forced `?backend=webgl2` renders the sections with no page errors, and
+  WebGPU is what the default picks.
+- Focus mode still opens, still locks the scroll; the river hint lands on the map bottom
+  (400) and not the page bottom (6640); `touch-action` is `pan-y` on the scroller and no
+  longer `none` on the screen.
+- `tsc`, `vite build` and `scripts/interact-test.mjs` clean. The single 404 the smoke test
+  logs is **pre-existing** — it is in the pre-change baseline log too.
+
+One honest note on the probes: the 8-point pick fingerprint is mildly nondeterministic
+because the lean is still settling at 120 ms, and one run in four disagreed with itself. The
+`?ob=0` proof above is the deterministic one and is what the claim rests on.
+
 ## Open issues
 
 
@@ -3039,11 +3227,30 @@ screen is unchanged: ×(1,1,1) is exact identity, and every variant in `base` sh
 - **[OPEN] `localStorage` shadows the shipped defaults in admin mode.** `?admin=1` restores
   the last panel session, merged onto the defaults — so after editing `WATER_DEFAULTS` you
   will still see the old tuning until you press **Reset**. A plain load is never affected.
-- **[OPEN] There is no touch scrolling on the map.** `#screen-concept` keeps
-  `touch-action: none` and touch drag keeps driving the lean, so the river is desktop-only this
-  round. Making vertical drag scroll would silently demote a shipped interaction to
-  horizontal-only, and the map is not yet inside a scrolling document; revisit when the
-  surrounding content lands.
+- ~~**[OPEN] There is no touch scrolling on the map.**~~ **RESOLVED (round 16):** the
+  surrounding content landed, which settles it. `touch-action` is `pan-y` on the scroller,
+  vertical drag scrolls, and the lean is horizontal-drag-only on touch. That is exactly the
+  demotion round 14 declined to make — but with seven sections below the map the alternative
+  was a page whose lower two thirds no phone could reach, and an interaction nobody can get
+  past is worse than a halved one. Unchanged with a mouse.
+- **[OPEN] The seven section titles, leads and colours are a starting point, not a
+  designer's pass** (round 16). «Магазины и мастерские» in particular is a title covering two
+  types that had no icon of their own, and the seven hexes were picked to be deep enough for
+  the light and distinct from each other — not against the deck. All of it is authored in one
+  table in `residentGroups.ts` precisely so the pass is a text edit.
+- **[OPEN] The SPA section is four fifths invented** (round 16). The map carries exactly one
+  spa resident, and a section of one line is not a section, so «Хаммам и сауны» / «Бассейн
+  25 метров» / «Фитнес-зал» / «Салон красоты» stand in. They are flagged `invented` in the
+  data and rendered dimmer, but they are still placeholder copy in a client-facing page.
+- **[OPEN] Section icons carry no crisp overlay.** The designer's «Контакты» settings ship
+  `svg: 0`, so the icon IS the light at `dissolve 0.36`. That reads well for the bed and the
+  cup; the busier silhouettes are worth a second look at section size, and the dial is one
+  number.
+- **[OPEN] The light washes out mid-crossfade.** Between the white gap and the first deep
+  section the background passes through a mid tone, and `screen` over a mid tone is a weak
+  light — the icon reads pale for roughly half a viewport of scrolling. It resolves as the
+  colour deepens and no one holds still there, but it is the bright-background limitation
+  showing through in miniature.
 - **[OPEN] Nothing signals that the map scrolls.** The scrollbar is suppressed (as `.bld-scroll`
   suppresses its own, and for the same reason: a permanent grey gutter down a full-bleed map is
   not the drawing). If the reveal ships as a page behaviour rather than a tuning affordance it

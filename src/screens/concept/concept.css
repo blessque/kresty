@@ -2,7 +2,6 @@
    but the CSS avoids a flash of the wrong colour before the JS runs. */
 #screen-concept {
   background: #f2f6fa;
-  touch-action: none;
   /* overlay UI sits on a near-white studio field, so it is dark, not white */
   color: #123a5c;
 }
@@ -16,20 +15,26 @@
 
 /* ------------------------------------------------------------ the scroller
 
-   Round 14: the map is 150vh tall so the Neva sits below the fold. See
-   mapScroll.ts for why the DOCUMENT still does not scroll — this container
-   does, and it holds only the canvas and the caption layer. Everything pinned
-   (logo, rail, drawer, admin panel) is a sibling of `.map-scroll`, not a child,
-   or it would scroll away with the map. */
-.map-scroll {
+   Round 14 made the map 150vh so the Neva sat below the fold. Round 16 turned
+   the same container into the PAGE scroller: it now holds the map stage and the
+   resident sections after it. See mapScroll.ts for why the DOCUMENT still does
+   not scroll. Everything pinned (logo, rail, drawer, admin panel) is a sibling
+   of `.concept-scroll`, not a child, or it would scroll away with the map. */
+.concept-scroll {
   position: absolute;
   inset: 0;
-  /* below all the chrome (rail 5, logo 6, drawer 8, panel 9) */
+  /* above the flat background plate (0), below the light (2) and all the
+     chrome (rail 5, logo 6, drawer 8, panel 9) */
   z-index: 1;
   overflow-x: hidden;
   overflow-y: auto;
+  /* Round 16: `touch-action: none` used to sit on the screen so touch drag drove
+     the map lean. With seven sections below the map that made the whole lower
+     page unreachable on a phone, so scrolling wins: vertical drag scrolls, and
+     the lean reads horizontal drag only on touch. Unchanged with a mouse. */
+  touch-action: pan-y;
   /* body already has `overscroll-behavior: none`; this stops a flick past the
-     end of the map from chaining anywhere at all */
+     end of the page from chaining anywhere at all */
   overscroll-behavior: contain;
   /* Suppressed for the same reason `.bld-scroll` suppresses it: on Windows and
      on a mouse-wheel Mac the platform gutter is permanent, and a grey bar down
@@ -37,12 +42,12 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.map-scroll::-webkit-scrollbar {
+.concept-scroll::-webkit-scrollbar {
   display: none;
 }
 
 /* focus mode pins the view — see MapScroll.lock */
-.map-scroll.locked {
+.concept-scroll.locked {
   overflow: hidden;
 }
 
@@ -58,6 +63,204 @@
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* ------------------------------------------------- resident sections (r16)
+
+   One full viewport per group of residents, below the map. NO scroll-snap:
+   «Контакты» snaps because every presentation still must frame identically,
+   and this is a page you read instead. See residentSections.ts. */
+
+/* The flat page colour, crossfaded from JS. It sits BEHIND the scroller and is
+   only ever seen through the gap and the sections — the map's own canvas is
+   opaque and covers its whole stage. One element painting one flat colour, so
+   a scroll repaints a single rect rather than seven. */
+.res-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* The hero light. A SIBLING of the scroller, pinned to the viewport, exactly as
+   the «Контакты» canvas is — a `position: fixed` canvas nested in a scroller
+   works today but breaks the moment any ancestor gains a transform or filter.
+
+   `mix-blend-mode: screen` is the project's compositing model: the shader
+   writes light-on-black and screen is `1 − (1−a)(1−b)`, so the black field
+   drops out and the section colour shows through. It is also exactly why the
+   section colours had to go deep — screen cannot darken, so a bright field
+   would swallow the light entirely. */
+.res-light {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+}
+
+/* Breathing room between the map and the first section. Deliberately has NO
+   background of its own: `.res-bg` is the single source of the page colour, and
+   a hard-coded white here would sit as an unfading band across the crossfade
+   the plate is busy running underneath it. It is white because the colour track
+   says white here — see LEAD_COLOR. */
+.res-gap {
+  position: relative;
+  width: 100%;
+  height: calc(var(--gap-vh, 0.8) * 100%);
+}
+
+/* `min-height`, not `height`: a group whose list outgrows the viewport must grow
+   rather than clip, and residentSections.ts measures the real geometry off the
+   DOM so the colour track follows it.
+
+   The text is anchored BELOW the icon zone rather than to the bottom of the
+   frame. Bottom-aligned, the block climbs as the list gets longer and a 5-row
+   group («Культура») drives its title straight up into the icon, while a 3-row
+   one sits far below it — the two never agree. The icon's ink ends at
+   `ICON_FY + halfIcon` ≈ 47 % of the frame, so the text starts just under it and
+   long lists grow downward, which is the direction there is room in. */
+.res-section {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: 100%;
+  padding: 46vh 0 8vh;
+  /* transparent — .res-bg is the colour */
+  color: #fff;
+}
+
+/* the lower two thirds of the frame; the icon's light lands above and spills
+   down across this, which is the reason they share a frame at all */
+.res-body {
+  width: min(560px, 46vw);
+  margin-left: 32px;
+}
+
+.res-title {
+  /* Chromius Medium = wght 150 on this font's axis — see fonts.css. NEVER add
+     `font-variation-settings` here: it overrides `font-weight`, and this axis
+     (min 50 / default 120 / max 232) has already caused this bug three times. */
+  font-family: 'ALS Chromius', sans-serif;
+  font-weight: 150;
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+}
+
+.res-lead {
+  font-weight: 120;
+  font-size: 20px;
+  line-height: 1.45;
+  margin: 0 0 26px;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 36em;
+}
+
+.res-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.res-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  font-weight: 120;
+  font-size: 18px;
+}
+
+.res-name,
+.res-link {
+  color: #fff;
+}
+
+.res-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.res-link:hover {
+  opacity: 0.66;
+}
+
+/* the resident's own call to action, e.g. «Забронировать номер» */
+.res-cta {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.res-cta::after {
+  content: ' ›';
+}
+
+.res-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Invented top-ups, where the map's own data leaves a group too thin to read
+   as a section. Marked so a placeholder cannot reach a client deck looking
+   like a signed tenant — the same discipline residentLogos.ts applies. */
+.res-row--placeholder .res-name {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* ---- the chrome over a dark page
+
+   The logo is authored for the near-white map (`#123a5c`) and vanishes on a
+   deep section; white would in turn vanish against the white gap. So the flip
+   is driven by the BACKGROUND'S OWN LUMINANCE (ResidentSections.track → `dark`),
+   not by "are we past the map" — which would fire in the middle of the gap.
+   The transition covers the crossing, so it changes while the colour is
+   changing rather than as a step of its own.
+
+   The hover rail leaves on a DIFFERENT trigger — `past-map`, not `on-dark`. It
+   reads «Наведите на здание, чтобы узнать о резидентах», and the moment the map
+   is gone there is nothing to hover; tying it to darkness instead would leave
+   that instruction standing over the white gap, addressed to a map that has
+   already scrolled away. */
+#screen-concept .concept-home svg path,
+#screen-concept .map-info {
+  transition:
+    fill 0.4s ease,
+    opacity 0.4s ease;
+}
+
+#screen-concept.on-dark .concept-home svg path {
+  fill: #fff;
+}
+
+#screen-concept.past-map .map-info {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .res-body {
+    width: auto;
+    margin: 0 24px;
+  }
+  .res-title {
+    font-size: 34px;
+  }
+  .res-lead {
+    font-size: 17px;
+  }
 }
 
 .concept-home {
