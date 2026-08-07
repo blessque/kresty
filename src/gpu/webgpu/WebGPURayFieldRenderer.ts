@@ -152,6 +152,10 @@ export class WebGPURayFieldRenderer implements RayFieldRenderer {
     d[65] = p.bloom;
     d[66] = p.dissolve;
     d[67] = s.signRot;
+    d[68] = p.lightR;
+    d[69] = p.lightG;
+    d[70] = p.lightB;
+    // d[71] spare — p10.w
     this.device.queue.writeBuffer(this.ubuf, 0, d);
 
     const enc = this.device.createCommandEncoder();

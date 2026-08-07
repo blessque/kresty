@@ -37,6 +37,11 @@ const base: RayFieldParams = {
   godrays: 0,
   bloom: 0,
   dissolve: 0,
+  // white light — every shipped variant's register. The «Контакты» panel is the
+  // only thing that moves these, and it does so per-frame, not per-preset.
+  lightR: 1,
+  lightG: 1,
+  lightB: 1,
   hoverMode: 0,
   compositeMode: 0,
 };

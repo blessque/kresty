@@ -20,8 +20,18 @@ export interface ControlSpec {
   key: string;
   label: string;
   group: string;
-  /** 'range' (default) = slider; 'color' = swatch + hex field */
-  kind?: 'range' | 'color';
+  /**
+   * 'range' (default) = slider; 'color' = swatch + hex field;
+   * 'choice' = segmented control over `options`.
+   *
+   * A two-state choice COULD be a 0/1 slider — `freeze` is exactly that — but
+   * that idiom only reads when the label alone says which end is which. Two
+   * NAMED positions rendered as "0" and "1" would need decoding every time, and
+   * the point of a switcher is flipping back and forth without thinking.
+   */
+  kind?: 'range' | 'color' | 'choice';
+  /** 'choice' only: the segments, in order. First one is the fallback. */
+  options?: { value: string; label: string }[];
   min?: number;
   max?: number;
   step?: number;
@@ -44,7 +54,8 @@ const STORE_KEY = 'kresty.contacts.panel';
 
 type Widget =
   | { range: HTMLInputElement; out: HTMLElement }
-  | { swatch: HTMLInputElement; hex: HTMLInputElement };
+  | { swatch: HTMLInputElement; hex: HTMLInputElement }
+  | { seg: Map<string, HTMLButtonElement> };
 
 export class ControlPanel {
   values: ControlValues;
@@ -79,6 +90,9 @@ export class ControlPanel {
         const v = parsed[s.key];
         if (s.kind === 'color') {
           if (typeof v === 'string' && normalizeHex(v)) out[s.key] = normalizeHex(v)!;
+        } else if (s.kind === 'choice') {
+          // a renamed segment must not resurrect a value that no longer exists
+          if (typeof v === 'string' && s.options?.some((o) => o.value === v)) out[s.key] = v;
         } else if (typeof v === 'number') {
           out[s.key] = v;
         }
@@ -101,6 +115,10 @@ export class ControlPanel {
         // start the fragment and swallow the rest of the query
         const hex = normalizeHex(raw);
         if (hex) out[s.key] = hex;
+        continue;
+      }
+      if (s.kind === 'choice') {
+        if (s.options?.some((o) => o.value === raw)) out[s.key] = raw;
         continue;
       }
       const n = Number(raw);
@@ -136,13 +154,54 @@ export class ControlPanel {
         g.textContent = s.group;
         body.appendChild(g);
       }
-      const row = document.createElement('label');
+      // A <label> is right for a row owning ONE control, but `button` is a
+      // labelable element too — so a <label> wrapping a segmented control
+      // labels its first segment, and clicking the row's own text silently
+      // activates that segment. Choice rows are plain divs for that reason.
+      const row = document.createElement(s.kind === 'choice' ? 'div' : 'label');
       row.className = 'fx-row';
 
       const name = document.createElement('span');
       name.className = 'fx-name';
       name.textContent = s.label;
       if (s.hint) name.title = s.hint;
+
+      if (s.kind === 'choice') {
+        row.classList.add('fx-row-choice'); // the segments span the two right columns
+        const opts = s.options ?? [];
+        const cur = String(this.values[s.key] ?? this.defaults[s.key] ?? opts[0]?.value ?? '');
+
+        const seg = document.createElement('div');
+        seg.className = 'fx-seg';
+        seg.setAttribute('role', 'group');
+        seg.setAttribute('aria-label', s.label);
+        const buttons = new Map<string, HTMLButtonElement>();
+        for (const o of opts) {
+          const btn = document.createElement('button');
+          btn.type = 'button'; // the row is a <label>; a submit button would be a trap
+          btn.className = 'fx-seg-btn';
+          btn.textContent = o.label;
+          btn.classList.toggle('on', o.value === cur);
+          btn.setAttribute('aria-pressed', String(o.value === cur));
+          btn.addEventListener('click', () => {
+            if (this.values[s.key] === o.value) return;
+            this.values[s.key] = o.value;
+            for (const [v, el] of buttons) {
+              el.classList.toggle('on', v === o.value);
+              el.setAttribute('aria-pressed', String(v === o.value));
+            }
+            this.save();
+            this.onChange(this.values);
+          });
+          seg.appendChild(btn);
+          buttons.set(o.value, btn);
+        }
+
+        row.append(name, seg);
+        body.appendChild(row);
+        this.inputs.set(s.key, { seg: buttons });
+        continue;
+      }
 
       if (s.kind === 'color') {
         row.classList.add('fx-row-color'); // wider last column for the hex text
@@ -235,7 +294,12 @@ export class ControlPanel {
     for (const [key, w] of this.inputs) {
       const val = this.values[key];
       if (val === undefined) continue;
-      if ('swatch' in w) {
+      if ('seg' in w) {
+        for (const [v, el] of w.seg) {
+          el.classList.toggle('on', v === val);
+          el.setAttribute('aria-pressed', String(v === val));
+        }
+      } else if ('swatch' in w) {
         w.swatch.value = String(val);
         w.hex.value = String(val);
       } else {

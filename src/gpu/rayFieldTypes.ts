@@ -35,6 +35,20 @@ export interface RayFieldParams {
   godrays: number; // «Прорезь»: radial light-scatter strength through the slits, 0..1+
   bloom: number; // «Прорезь»: emissive halo around the emblem, 0..1+
   dissolve: number; // «Сияние»: 0 crisp logo, 1 dissolved into zoom-blur light trails
+  /**
+   * Colour of the light itself — a per-channel multiplier, (1,1,1) = the white
+   * the whole prototype shipped with. Three floats rather than a vec3 on
+   * purpose: `NUMERIC_KEYS` below is what `lerpParams` crossfades and what the
+   * WebGL2 renderer uploads, and a tuple would snap at t=0.5 instead of blending.
+   *
+   * Applied BEFORE the filmic shoulder, so a hot core still blooms toward white
+   * while the falloff keeps the hue — a coloured light, not a gel laid over a
+   * white one. Callers are expected to hand over a colour whose brightest
+   * channel is 1; brightness belongs to the exposure/intensity dials.
+   */
+  lightR: number;
+  lightG: number;
+  lightB: number;
   hoverMode: number; // 0 brighten+turb | 1 widen | 2 flood | 3 arm-elongate | 4 mote-stream
   compositeMode: number; // 0 additive light | 1 eclipse (bright haze, dark channels)
 }
@@ -72,6 +86,9 @@ export const NUMERIC_KEYS: ParamKey[] = [
   'godrays',
   'bloom',
   'dissolve',
+  'lightR',
+  'lightG',
+  'lightB',
 ];
 
 export function lerpParams(a: RayFieldParams, b: RayFieldParams, t: number): RayFieldParams {

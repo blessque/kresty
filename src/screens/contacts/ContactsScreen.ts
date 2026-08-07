@@ -68,6 +68,48 @@ const CONTENT_FRAC = 0.706;
  */
 const REF_COVERAGE = 0.0806;
 
+/**
+ * Where the icon's centre sits inside its slide, as fractions of the slide.
+ *
+ * `corner` comes from the client's layout: it divides a slide into 4 columns ×
+ * 3 rows and puts the icon on the FIRST gridline of each axis — the col-1/col-2
+ * seam and the row-1/row-2 seam, i.e. the upper-left third. `center` is the
+ * original composition and stays the default.
+ *
+ * Fractions rather than px because a slide is one viewport and every viewport is
+ * a different size. Both numbers feed `centerPx` (the shader's convergence
+ * point) AND the DOM overlay, so the crisp icon and its light cannot drift apart.
+ */
+const ICON_POS: Record<string, readonly [number, number]> = {
+  center: [1 / 2, 1 / 2],
+  corner: [1 / 4, 1 / 3],
+};
+
+/**
+ * `#rrggbb` → the shader's per-channel light multiplier.
+ *
+ * NORMALISED so the brightest channel is 1: the wheel is a HUE dial, and
+ * `exposure` stays the only brightness dial. Un-normalised, picking a deep
+ * blue would also dim the page by ~60% and the obvious suspect is the wrong
+ * slider. Saturation still costs light in the OTHER channels, which is correct
+ * — that is what makes a colour a colour.
+ *
+ * The components are used as authored, NOT gamma-decoded to linear. This is a
+ * designer's dial, not a photometric one: dragging to a mid-blue should give a
+ * mid-blue light, and sRGB→linear would land it much darker and more saturated
+ * than the swatch it was picked from.
+ */
+function lightTint(hex: string): [number, number, number] {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return [1, 1, 1];
+  const n = parseInt(m[1], 16);
+  const rgb: [number, number, number] = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  const peak = Math.max(rgb[0], rgb[1], rgb[2]);
+  // pure black would extinguish the light entirely and read as a broken page
+  if (peak <= 0) return [1, 1, 1];
+  return [rgb[0] / peak, rgb[1] / peak, rgb[2] / peak];
+}
+
 /** the «Сияние» preset, read back rather than copied, so it cannot drift */
 const SIYANIE: RayFieldParams = VARIANTS.find((v) => v.id === 'siyanie')!.params;
 
@@ -100,6 +142,8 @@ const CONTROLS: ControlSpec[] = [
     hint: 'Trim on top of the per-icon coverage normalisation.' },
   { key: 'ca', label: 'rainbow', min: 0, max: 0.08, step: 0.002, group: 'Light',
     hint: 'Chromatic fringing on the ray edges.' },
+  { key: 'light', label: 'light colour', kind: 'color', group: 'Light',
+    hint: 'Colour of the light itself. Hue only — brightness stays on exposure. The hot core still blooms to white; the falloff carries the colour.' },
 
   // The two noise sources that actually exist on a BLACK page. The global
   // `#grain` overlay is NOT one of them and deliberately has no handle: it
@@ -112,6 +156,9 @@ const CONTROLS: ControlSpec[] = [
   { key: 'steps', label: 'march steps', min: 12, max: 32, step: 1, group: 'Noise',
     hint: 'The BIG one. Low steps = visible dither speckle in the rays; 32 = smooth, and most GPU.' },
 
+  { key: 'pos', label: 'position', kind: 'choice', group: 'Geometry',
+    options: [{ value: 'center', label: 'Center' }, { value: 'corner', label: 'Corner' }],
+    hint: 'Where the icon sits in the slide. Corner = the client 4×3 grid, first gridline on each axis (upper-left third).' },
   { key: 'px', label: 'icon size', min: 200, max: 1200, step: 10, group: 'Geometry',
     hint: 'Apparent size of the icon ink, CSS px.' },
   { key: 'parallax', label: 'cursor push', min: 0, max: 2, step: 0.05, group: 'Geometry',
@@ -153,6 +200,9 @@ export class ContactsScreen {
   private activeIdx = -1;
   private exposure = 1;
 
+  /** parsed once per panel change rather than per frame — see applySideEffects */
+  private tint: [number, number, number] = [1, 1, 1];
+
   private pointer = new SmoothPointer();
   private tier = getPerfTier();
   private panel!: ControlPanel;
@@ -185,12 +235,14 @@ export class ContactsScreen {
       ca: 0.028,
       grain: 0,
       steps: 32,
+      pos: 'center',
       px: 220,
       parallax: 2,
       svg: 0,
       breathe: 1,
       shimmer: 0.6,
       freeze: 1,
+      light: '#ffffff',
       bg: '#000000',
       rs: this.tier.renderScale,
     };
@@ -252,6 +304,7 @@ export class ContactsScreen {
   private applySideEffects() {
     this.layout();
     this.overlay.style.opacity = String(this.n('svg'));
+    this.tint = lightTint(String(this.v.light ?? '#ffffff'));
     // The canvas composites with `mix-blend-mode: screen`, so this shows
     // through wherever the light is dark. Screen against black reduces to the
     // canvas itself, which is why turning it on changed nothing at #000000.
@@ -382,13 +435,16 @@ export class ContactsScreen {
 
     const rs = this.n('rs');
     // the light rides with its section, so scrolling translates it rather than
-    // cutting between two stationary lights
-    const cx = this.scroller.clientWidth / 2;
-    const cy = idx * sectionH + sectionH / 2 - scrollTop;
+    // cutting between two stationary lights. The `sectionH * ICON_Y_FRAC` term
+    // is the offset INSIDE the section, so it rides along untouched.
+    const [fx, fy] = ICON_POS[String(this.v.pos)] ?? ICON_POS.center;
+    const cx = this.scroller.clientWidth * fx;
+    const cy = idx * sectionH + sectionH * fy - scrollTop;
 
     // `freeze` is not just a clock stop: with nothing moving there is no reason
-    // to re-run a 109-fetch-per-pixel shader every frame
-    const key = `${idx}|${Math.round(cy)}|${Math.round(this.pointer.smooth.x)}|${Math.round(this.pointer.smooth.y)}`;
+    // to re-run a 109-fetch-per-pixel shader every frame. `cx` is in the key
+    // only because a resize moves it without moving anything else in here.
+    const key = `${idx}|${Math.round(cx)}|${Math.round(cy)}|${Math.round(this.pointer.smooth.x)}|${Math.round(this.pointer.smooth.y)}`;
     if (this.n('freeze') && key === this.lastKey) return;
     this.lastKey = key;
 
@@ -417,6 +473,9 @@ export class ContactsScreen {
       breathe: this.n('breathe'),
       shimmer: this.n('shimmer'),
       grain: this.n('grain'),
+      lightR: this.tint[0],
+      lightG: this.tint[1],
+      lightB: this.tint[2],
       // Reference px are CSS px here, so `falloffL` and friends keep their HERO
       // MAGNITUDE and the light decays inside the frame exactly as on the main
       // screen. Only the APERTURE grows to make the icon the requested size.

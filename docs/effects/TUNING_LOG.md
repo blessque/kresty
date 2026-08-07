@@ -2915,6 +2915,102 @@ map's first frame — so it costs about one dropped frame at load, not added lat
 `tsc`, `vite build` and `interact-test.mjs` clean. A plain load with no flag and no stored
 set renders the new water; the frame at `scrollTop 0` is unchanged outside the water itself.
 
+## «Контакты» round 13 (2026-08-07) — the light gets a colour
+
+The light had been pure white since the first shader. The «Контакты» panel now carries a
+`light colour` swatch (`?light=56b7e6`), and the tint is a real shader parameter rather than
+a CSS gel, so it works on both backends and on any screen.
+
+### It multiplies BEFORE the filmic shoulder, and that is the whole decision
+
+`col *= vec3(u_lightR, u_lightG, u_lightB)` sits as the last line before
+`col = 1.0 - exp(-col * 1.6)`.
+
+Before the shoulder = a **coloured light source**: each channel tone-maps on its own, so the
+hot core still saturates to white while the falloff and the god-rays carry the hue. Measured
+on the red tint, peak luminance stays **765** (= 255+255+255) — there is still a pure-white
+pixel in the core. After the shoulder it would cap at 255+0+0 and the whole light would
+flatten into **a gel laid over a white lamp**: uniform, plastic, the Photoshop-layer look.
+This is the same reason the existing `dusty`/`tint` register drifts live above that line.
+
+It is also placed last among the tints so the dial *wins* over the warm/cool register drift
+rather than fighting it. On «Контакты» that is moot — `modeMix` and `sceneDim` are both 0
+there — but on the hero it is the behaviour you want from something labelled "the colour".
+
+### Three floats, not a vec3
+
+`RayFieldParams` is deliberately all-`number`: `lerpParams` crossfades variants by walking
+`NUMERIC_KEYS`, and a `[r,g,b]` tuple would snap at t = 0.5 instead of blending. `lightR/G/B`
+inherit that machinery, and the WebGL2 renderer uploads them with **zero** new code because
+it already loops `uniform1f` over its param list. WebGPU needed `p10` — which cost nothing,
+because `FLOATS` was already 72 and only 68 were used, so the spare vec4 was sitting there.
+
+### The swatch is normalised to peak 1
+
+`lightTint()` divides by the brightest channel. The wheel is a **hue** dial; `exposure` stays
+the only brightness dial. Un-normalised, picking a deep blue also dims the page ~60% and the
+designer reaches for the wrong slider. Saturation still costs light in the *other* channels —
+that is what makes a colour a colour, and it is why a strong tint reads dimmer overall.
+`#000000` falls back to white rather than extinguishing the page.
+
+### Icon placement is a switcher: Center (default) or Corner
+
+`ICON_POS` holds the two compositions as fractions of the slide and the panel picks between
+them (`?pos=corner`). **Center — `(1/2, 1/2)` — stays the default**; the shipped look is
+unchanged.
+
+`corner` is `(1/4, 1/3)`: the client's layout divides a slide into **4 columns × 3 rows** and
+puts the icon's centre on the first gridline of each axis — the col-1/col-2 seam and the
+row-1/row-2 seam, i.e. the upper-left third. Fractions, never px: a slide is one viewport and
+every viewport differs.
+
+This is a comparison tool, not a menu of looks. The round-8.2 verdict against pickers is
+about PRODUCT UI; this is debug furniture that never reaches a client demo.
+
+The offset is applied INSIDE the section (`idx * sectionH + sectionH * fy`), so the
+round-12 "the light rides with its section" behaviour is untouched — scrolling still
+translates the light rather than cutting between two stationary ones. One pair of numbers
+feeds both `centerPx` and the DOM overlay, so the crisp icon and its light cannot drift apart.
+
+`cx` joined the `freeze` cache key. It only changes on resize, which moves nothing else the
+key was watching, so a frozen page used to keep a stale frame after a window resize. That was
+true before this round too; it is simply easier to hit now that `cx` is not a fixed half-width.
+
+**Do not measure this placement from pixels.** The obvious check — luminance bbox of the
+lit region — is wrong by ~80px and the error *scales with viewport width*, which reads
+convincingly like a real bug. The god-rays reach the left edge, so `minX` is pinned at 0
+while `maxX` tracks the icon, and the bbox centre therefore grows at half the true rate.
+Measure `.fx-overlay`'s `getBoundingClientRect()` instead: exact at every size.
+
+### Verified
+
+`tsc` clean. Overlay centre measured from the DOM, exact at every size: `corner` lands on
+**(300, 253.3)** at 1200×760 and **(400, 300)** at 1600×900 — both (vw/4, vh/3); `center`
+lands on (600, 380) and (800, 450). Switcher exercised end to end: click both ways, `?pos=`
+override, reload-from-localStorage, Reset, a junk `?pos=banana` (rejected, falls back to
+Center), and Copy URL emitting `?pos=corner#contacts`.
+
+**`<label>` cannot wrap a segmented control.** `button` is a labelable element, so a row built
+as a `<label>` labels its FIRST segment — clicking the row's own text ("position") silently
+activates it. Playwright's accessible-name resolution is what caught it, reporting the Center
+button as named "position Corner". Choice rows are `<div role="group">` for that reason; the
+slider and colour rows stay `<label>`, which is correct for a row owning one control.
+
+Mean lit-pixel RGB sampled from real
+screenshots, **both backends, agreeing to within 0.1/255** — which is the mirrored-twin check, not a formality:
+
+| `?light=` | r | g | b |
+|---|---|---|---|
+| `ffffff` (default) | 41.0 | 45.4 | 51.1 |
+| `ff0000` | 43.6 | 7.2 | 9.0 |
+| `56b7e6` | 22.6 | 40.0 | 51.7 |
+| `ffaa33` | 41.9 | 36.2 | 20.4 |
+| `000000` | 40.4 | 44.8 | 50.6 (= white, guard holds) |
+
+The default row is not neutral grey because the shader's own cool far-field drift is still
+there — correct, and the proof the tint composes with it instead of replacing it. The main
+screen is unchanged: ×(1,1,1) is exact identity, and every variant in `base` ships white.
+
 ## Open issues
 
 

@@ -22,6 +22,7 @@ struct U {
   p7: vec4f, // fiberDrift, angleWarp, ghosting, shadow
   p8: vec4f, // modeMix, slitMix, hasMask, signSize
   p9: vec4f, // godrays, bloom, dissolve, signRot
+  p10: vec4f, // lightR, lightG, lightB, (spare)
 };
 
 @group(0) @binding(0) var<uniform> u: U;
@@ -544,6 +545,13 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   col = col * (1.0 + 0.75 * sceneDim);
   col = mix(col, col * vec3f(1.14, 0.98, 0.80), sceneDim * 0.2);
   col = col * mix(1.0, 0.72, bgMix);
+
+  // colour of the light itself. LAST word before the tone curve, so it is the
+  // dial that wins over the register tints above — and BEFORE the shoulder, so
+  // a hot core still blooms toward white while the falloff keeps the hue. Move
+  // it after the shoulder and it flattens into a gel laid over a white lamp.
+  col = col * u.p10.xyz;
+
   col = 1.0 - exp(-col * 1.6);
 
   let g = hash21(fragPx + fract(u.time) * vec2f(113.1, 271.7));

@@ -253,6 +253,45 @@
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+/* segmented control: no numeric readout to reserve room for, so the segments
+   take the slider column AND the value column. */
+.fx-row-choice {
+  grid-template-columns: 84px 1fr;
+}
+
+.fx-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fx-seg-btn {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.fx-seg-btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.fx-seg-btn.on {
+  background: rgba(255, 255, 255, 0.9);
+  color: #0a1018;
+}
+
 .fx-row input[type='range']::-moz-range-thumb {
   width: 12px;
   height: 12px;
