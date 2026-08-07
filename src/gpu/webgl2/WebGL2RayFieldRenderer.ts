@@ -33,6 +33,9 @@ const PARAM_UNIFORMS = [
   'godrays',
   'bloom',
   'dissolve',
+  'lightR',
+  'lightG',
+  'lightB',
   'hoverMode',
   'compositeMode',
 ] as const;

@@ -57,6 +57,9 @@ uniform float u_bloom;         // emissive halo around the emblem
 uniform float u_slitMix;       // 0 procedural field, 1 logo-slit light
 uniform float u_dissolve;      // 0 crisp logo, 1 dissolved into zoom-blur trails
 uniform float u_signRot;       // slow continuous rotation of the light pattern, rad
+uniform float u_lightR;        // colour of the light itself, per channel;
+uniform float u_lightG;        //   (1,1,1) = white = every shipped variant.
+uniform float u_lightB;        //   Applied before the tone curve — see main().
 
 out vec4 fragColor;
 
@@ -577,6 +580,12 @@ void main() {
 
   // dim a touch over photos so the showreel reads through
   col *= mix(1.0, 0.72, u_bgMix);
+
+  // colour of the light itself. LAST word before the tone curve, so it is the
+  // dial that wins over the register tints above — and BEFORE the shoulder, so
+  // a hot core still blooms toward white while the falloff keeps the hue. Move
+  // it after the shoulder and it flattens into a gel laid over a white lamp.
+  col *= vec3(u_lightR, u_lightG, u_lightB);
 
   // filmic shoulder — soft highlights instead of clipped white
   col = 1.0 - exp(-col * 1.6);
