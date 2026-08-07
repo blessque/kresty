@@ -134,7 +134,11 @@ export class ConceptScreen {
     if (Number.isFinite(vh)) this.stageVh = vh;
     this.buildDom();
     this.buildScene();
-    if (q.get('admin') === '1') void this.openAdmin();
+    // a boolean flag, not a dial: `?admin`, `?admin=1` and `?admin=yes` all open
+    // it. Only an explicit `?admin=0` keeps it shut. (`get` returns '' for the
+    // bare form and null when the key is absent — the two must not be conflated.)
+    const admin = q.get('admin');
+    if (admin !== null && admin !== '0') void this.openAdmin();
   }
 
   /**
