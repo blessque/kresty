@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { connectedComponents, type MeshComponent } from './buildingSplit';
+import { connectedComponents, type MeshComponent, type BuildingPart } from './buildingSplit';
 import type { FlatSurface } from './groundPlan';
+import { infoFor } from './buildingsInfo';
 
 /**
  * Captions for the river and the two streets.
@@ -104,6 +105,53 @@ const STREET_BIAS = 0.3;
  *  isometric view is not a plan, and a plan caption reads as a mistake there */
 const FADE_POWER = 2;
 
+/**
+ * BUILDING captions — the round-13 test set, from the client's own map.
+ *
+ * These are NOT solved. Where a plan caption has a polygon to sit inside and a
+ * whole search to run, a building caption belongs to one volume and the client
+ * placed each one by hand, in a different quadrant per cross so the two do not
+ * collide. So placement is authored here: `at` is an offset from the roof
+ * centre in FRACTIONS OF THE SITE SPAN, which keeps it meaningful at any
+ * framing — a fixed distance would stop meaning the same thing the moment the
+ * fit changes, which is exactly the mistake round 10 removed from the solver.
+ *
+ * `+x` is screen-right, `+z` is screen-DOWN (the plan is square to the screen
+ * since round 12, so the two axes map straight to the page).
+ *
+ * The first line is always the building's own `name` — never duplicated here,
+ * so a rename in buildingsInfo.ts cannot leave the map disagreeing with the
+ * drawer. `sub` is the optional second line.
+ */
+const BUILDING_CAPTIONS: Record<string, { sub?: string; at: [number, number] }> = {
+  /** the screen-LEFT cross — the client puts its caption in the lower-RIGHT
+   *  quadrant between the arms */
+  b02: { sub: 'Отель Cosmos 4*', at: [0.102, 0.081] },
+  /** the screen-RIGHT cross — lower-LEFT quadrant, the mirror choice, which is
+   *  what keeps it clear of the SPA block */
+  b01: { sub: 'Отель Cosmos 5*', at: [-0.125, 0.087] },
+  b04: { at: [-0.02, 0.058] },
+  /** not on the client's map — a test case on purpose: a low flat roof, to show
+   *  the travel is proportional to HEIGHT (this one slides ~8px at full lean
+   *  against the crosses' ~45px, because that is how far its roof goes) */
+  b15: { at: [0, 0] },
+};
+
+/**
+ * The canvas the captions are projected into — round 14's 150vh stage, NOT the
+ * window.
+ *
+ * `restH` is the window's height: the band of the stage that is on screen when
+ * the page is at rest. `scrollTop` is only ever needed to bring the
+ * window-pinned obstacles into the same frame as the caption layer.
+ */
+export interface StageView {
+  w: number;
+  h: number;
+  restH: number;
+  scrollTop: number;
+}
+
 interface Feature {
   /** world-space triangle vertices, 3 per triangle */
   tris: THREE.Vector3[];
@@ -114,9 +162,24 @@ interface Feature {
 
 interface Label {
   el: HTMLElement;
-  feature: Feature;
-  /** how to bias the search within the feature */
-  bias: 'bottom-left' | 'street';
+  /** null for building captions — they are authored, not searched for */
+  feature: Feature | null;
+  /** how to bias the search within the feature; `fixed` skips the solver */
+  bias: 'bottom-left' | 'street' | 'fixed';
+  /**
+   * How far down the stage the solver may place this caption (round 14).
+   *
+   * `rest` = the window-sized band visible before you scroll; `full` = the
+   * whole 150vh stage, including the revealed river.
+   *
+   * The rule is "a caption goes where its feature READS", and after round 14
+   * the two kinds of feature read in different bands. Both streets sweep south
+   * past the resting frame, so `full` let «Арсенальная наб.» settle 28px below
+   * the fold — lettering on a stretch of road nobody sees at rest. The Neva is
+   * the opposite case: it was `unplaced` for want of visible water, and the
+   * band this round reveals is the only place its caption can go.
+   */
+  band: 'rest' | 'full';
   /** solved world-space anchor; null until the first solve */
   at: THREE.Vector3 | null;
   /** Streets are lettered along their own run; the river is NOT. Figma sets
@@ -135,9 +198,16 @@ export class MapLabels {
   /** viewport the current anchors were solved for */
   private solvedFor = { w: 0, h: 0 };
 
-  constructor(container: HTMLElement) {
+  /**
+   * `stage` is the scrolling map stage the caption layer belongs to; `chrome`
+   * is the screen root the pinned UI lives on. Round 14 split the two — before
+   * it they were the same element, and `solve` looked the obstacles up through
+   * `layer.parentElement`, which now finds only the stage and would silently
+   * report NO obstacles at all, letting a caption settle on the logo.
+   */
+  constructor(stage: HTMLElement, private readonly chrome: HTMLElement) {
     this.layer.className = 'map-labels';
-    container.appendChild(this.layer);
+    stage.appendChild(this.layer);
   }
 
   /**
@@ -145,8 +215,14 @@ export class MapLabels {
    * yaw-rotated) frame the GroundPlan meshes use. `modelMatrix` is the root's
    * normalize transform, applied here so anchors land in world space.
    */
-  build(surfaces: FlatSurface[], modelMatrix: THREE.Matrix4, _siteSpan: number) {
+  build(
+    surfaces: FlatSurface[],
+    parts: BuildingPart[],
+    modelMatrix: THREE.Matrix4,
+    siteSpan: number
+  ) {
     this.clear();
+    this.buildBuildings(parts, modelMatrix, siteSpan);
 
     const water = biggest(components(surfaces, WATER_MAT));
     const streets = components(surfaces, STREET_MAT)
@@ -162,12 +238,55 @@ export class MapLabels {
         q.centroid.distanceToSquared(water.centroid)
     );
 
-    this.add(TEXT.river, feature(water, modelMatrix), 'river', 'bottom-left', false);
+    // the river is the one caption allowed into the scrolled band — see Label.band
+    this.add(TEXT.river, feature(water, modelMatrix), 'river', 'bottom-left', false, 'full');
 
     const names = [TEXT.embankment, TEXT.inland];
     streets.forEach((s, i) => {
-      this.add(names[i], feature(s, modelMatrix), 'street', 'street', true);
+      this.add(names[i], feature(s, modelMatrix), 'street', 'street', true, 'rest');
     });
+  }
+
+  /**
+   * Captions welded to the buildings themselves.
+   *
+   * The anchor sits on the ROOF (`bbox.max.y`), and that is the whole trick:
+   * restricted to a horizontal plane at height h the plan-oblique shear
+   * `x' = x + sx·y, z' = z + sz·y` becomes `(x, z) → (x + sx·h, z + sz·h)` —
+   * it has no linear part left, so it is a pure TRANSLATION. A caption anchored
+   * up there therefore slides exactly as far as its roof does and never skews,
+   * with no per-frame correction: `update` already runs every anchor through
+   * the shear, which is simply the identity for the plan captions on y = 0.
+   */
+  private buildBuildings(
+    parts: BuildingPart[],
+    modelMatrix: THREE.Matrix4,
+    siteSpan: number
+  ) {
+    for (const part of parts) {
+      const spec = BUILDING_CAPTIONS[part.id];
+      if (!spec) continue;
+      const c = part.bbox.getCenter(new THREE.Vector3());
+      const at = new THREE.Vector3(
+        c.x + spec.at[0] * siteSpan,
+        part.bbox.max.y,
+        c.z + spec.at[1] * siteSpan
+      ).applyMatrix4(modelMatrix);
+
+      const el = document.createElement('div');
+      el.className = 'map-label map-label--building';
+      // one element per line: a caption is two left-aligned lines whose block is
+      // centred on the anchor, which `white-space: pre-line` could not give
+      for (const line of [infoFor(part.id).name, spec.sub]) {
+        if (!line) continue;
+        const row = document.createElement('div');
+        row.textContent = line;
+        el.appendChild(row);
+      }
+      this.layer.appendChild(el);
+      // `band` is inert for an authored caption — it only constrains the solver
+      this.labels.push({ el, feature: null, bias: 'fixed', at, rotates: false, band: 'full' });
+    }
   }
 
   private add(
@@ -175,17 +294,32 @@ export class MapLabels {
     f: Feature,
     kind: string,
     bias: Label['bias'],
-    rotates: boolean
+    rotates: boolean,
+    band: Label['band']
   ) {
     const el = document.createElement('div');
     el.className = `map-label map-label--${kind}`;
     el.textContent = text;
     this.layer.appendChild(el);
-    this.labels.push({ el, feature: f, bias, at: null, rotates });
+    this.labels.push({ el, feature: f, bias, at: null, rotates, band });
   }
 
-  /** project and place; `focus` is MapCamera.focus */
-  update(camera: THREE.Camera, w: number, h: number, focus: number) {
+  /**
+   * Project and place; `focus` is MapCamera.focus, `shear` is the live
+   * plan-oblique matrix.
+   *
+   * Every anchor goes through `shear` — including the plan captions, for which
+   * it is PROVABLY a no-op, since they sit on y = 0 and that plane is the
+   * shear's fixed point. One code path serves both kinds; the alternative was a
+   * per-label flag guarding a branch that can only ever be false.
+   */
+  update(
+    camera: THREE.Camera,
+    view: StageView,
+    focus: number,
+    shear: THREE.Matrix4
+  ) {
+    const { w, h } = view;
     const vis = Math.max(0, 1 - focus) ** FADE_POWER;
     if (vis <= 0.001) {
       this.layer.style.opacity = '0';
@@ -197,21 +331,28 @@ export class MapLabels {
     // anchor — it is the identity on this geometry — and neither can the focus
     // swing, during which the captions are faded out anyway.
     if (w !== this.solvedFor.w || h !== this.solvedFor.h) {
-      this.solve(camera, w, h);
+      this.solve(camera, view);
       this.solvedFor = { w, h };
     }
 
     for (const l of this.labels) {
+      // A feature can be too far off-frame to hold its own caption — after
+      // round 12 squared the plan to the screen, ул. Комсомола keeps only a
+      // ~33px sliver at the top edge, and no 21px line fits in it. `solve`
+      // leaves such a label unanchored; without this it would render at the
+      // layer origin, i.e. the top-left corner, on top of the logo.
+      l.el.classList.toggle('unplaced', !l.at);
       if (!l.at) continue;
-      this.a.copy(l.at).project(camera);
+      this.a.copy(l.at).applyMatrix4(shear).project(camera);
       const x = (this.a.x * 0.5 + 0.5) * w;
       const y = (-this.a.y * 0.5 + 0.5) * h;
 
       let ang = 0;
-      if (l.rotates) {
+      if (l.rotates && l.feature) {
         this.b
           .copy(l.at)
           .add(axisVector(l.feature.axisAngle))
+          .applyMatrix4(shear)
           .project(camera);
         const bx = (this.b.x * 0.5 + 0.5) * w;
         const by = (-this.b.y * 0.5 + 0.5) * h;
@@ -234,10 +375,13 @@ export class MapLabels {
    * per-frame path stays a pure projection and the caption stays welded to its
    * feature between solves.
    */
-  private solve(camera: THREE.Camera, w: number, h: number) {
-    const blocked = obstacleRects(this.layer.parentElement);
+  private solve(camera: THREE.Camera, view: StageView) {
+    const { w, h } = view;
+    const blocked = obstacleRects(this.chrome, view.scrollTop);
 
     for (const l of this.labels) {
+      // building captions are authored, not searched for
+      if (l.bias === 'fixed' || !l.feature) continue;
       const scr = l.feature.tris.map((p) => project(p, camera, w, h));
       const edges = l.feature.edges.map(
         ([p, q]) => [project(p, camera, w, h), project(q, camera, w, h)] as const
@@ -248,11 +392,12 @@ export class MapLabels {
       // is how «р. Нева» ended up clipped by the right edge on the first pass.
       // Measured from the live element, so it follows the real font metrics.
       const half = halfExtents(l, camera, w, h);
+      const bandH = l.band === 'full' ? h : view.restH;
       const box = {
         x0: SOLVE_MARGIN + half.x,
         y0: SOLVE_MARGIN + half.y,
         x1: w - SOLVE_MARGIN - half.x,
-        y1: h - SOLVE_MARGIN - half.y,
+        y1: bandH - SOLVE_MARGIN - half.y,
       };
 
       // the feature's on-screen extent, intersected with the allowed box
@@ -389,19 +534,23 @@ interface Rect { x0: number; y0: number; x1: number; y1: number }
  * font actually loading, and guessing it is how the previous full-width band
  * came about.
  */
-function obstacleRects(root: HTMLElement | null): Rect[] {
-  const scope: ParentNode = root ?? document;
+function obstacleRects(root: HTMLElement, scrollTop: number): Rect[] {
+  // The obstacles are pinned to the WINDOW and getBoundingClientRect answers in
+  // window coordinates, but the caption layer lives in the scrolled stage since
+  // round 14 — so the two frames differ by exactly the scroll offset. The
+  // caller re-solves at scrollTop 0 (see ConceptScreen.resize), which is the
+  // resting composition the design is judged in.
   const out: Rect[] = [];
   for (const sel of OBSTACLES) {
-    const el = scope.querySelector(sel);
+    const el = root.querySelector(sel);
     if (!el) continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
     out.push({
       x0: r.left - OBSTACLE_PAD,
-      y0: r.top - OBSTACLE_PAD,
+      y0: r.top + scrollTop - OBSTACLE_PAD,
       x1: r.right + OBSTACLE_PAD,
-      y1: r.bottom + OBSTACLE_PAD,
+      y1: r.bottom + scrollTop + OBSTACLE_PAD,
     });
   }
   return out;
@@ -461,7 +610,7 @@ function clearance(edges: readonly (readonly [P2, P2])[], x: number, y: number):
 function halfExtents(l: Label, camera: THREE.Camera, w: number, h: number): P2 {
   const bw = l.el.offsetWidth;
   const bh = l.el.offsetHeight;
-  if (!l.rotates) return { x: bw / 2, y: bh / 2 };
+  if (!l.rotates || !l.feature) return { x: bw / 2, y: bh / 2 };
   const ax = screenAxis(l.feature, camera, w, h); // unit: |x| = |cos|, |y| = |sin|
   const c = Math.abs(ax.x);
   const s = Math.abs(ax.y);

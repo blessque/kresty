@@ -14,6 +14,45 @@
   opacity: 0;
 }
 
+/* ------------------------------------------------------------ the scroller
+
+   Round 14: the map is 150vh tall so the Neva sits below the fold. See
+   mapScroll.ts for why the DOCUMENT still does not scroll — this container
+   does, and it holds only the canvas and the caption layer. Everything pinned
+   (logo, rail, drawer, admin panel) is a sibling of `.map-scroll`, not a child,
+   or it would scroll away with the map. */
+.map-scroll {
+  position: absolute;
+  inset: 0;
+  /* below all the chrome (rail 5, logo 6, drawer 8, panel 9) */
+  z-index: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* body already has `overscroll-behavior: none`; this stops a flick past the
+     end of the map from chaining anywhere at all */
+  overscroll-behavior: contain;
+  /* Suppressed for the same reason `.bld-scroll` suppresses it: on Windows and
+     on a mouse-wheel Mac the platform gutter is permanent, and a grey bar down
+     the right edge of a full-bleed map is not the drawing. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.map-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* focus mode pins the view — see MapScroll.lock */
+.map-scroll.locked {
+  overflow: hidden;
+}
+
+.map-stage {
+  position: relative;
+  width: 100%;
+  /* the custom property is what `?vh=<k>` writes */
+  height: calc(var(--map-vh, 1.5) * 100%);
+}
+
 #screen-concept canvas {
   position: absolute;
   inset: 0;
@@ -406,6 +445,36 @@
   /* transform-origin stays at the element centre; MapLabels writes
      translate(-50%,-50%) first so the anchor is the caption's middle */
   will-change: transform;
+}
+
+/* A caption whose feature has no room for it on screen. Until round 12 an
+   unsolved label simply never got a transform written, which left it sitting at
+   the layer origin — the top-left corner, over the logo. That went unnoticed
+   only because round 10's solver always found a spot; squaring the plan to the
+   screen (round 12) pushed ул. Комсомола off the top of the frame and parked its
+   caption on «КРЕСТЫ».
+
+   `visibility`, NOT `display: none`: the solver measures `el.offsetWidth` to
+   size the label's own box, and a display:none element measures 0 — so it could
+   never earn its place back on the next resize. */
+.map-label.unplaced {
+  visibility: hidden;
+}
+
+/* Building captions (round 13). Two left-aligned lines whose block is centred
+   on the roof anchor — `text-align: left` inside a shrink-to-fit box, so the
+   name and the hotel line share a left edge the way the client's map has them.
+
+   16px at the designer's request, against the 21px site base: these sit ON the
+   volumes and there may be several in view, so they read as annotation rather
+   than as the plan's own lettering. Ink `#5d90ac` is the darkest pixel measured
+   in the client's export — the visible bulk is lighter only because it is
+   antialiased over the near-white field. */
+.map-label--building {
+  color: #5d90ac;
+  font-size: 16px;
+  line-height: 1.35;
+  text-align: left;
 }
 
 /* the streets are lettering ON the plan — quiet, the same family of greys as

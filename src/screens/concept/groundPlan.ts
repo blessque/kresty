@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MAP_BG } from './mapLooks';
 import { applyWater, type WaterHandle } from './water';
+import { WATER_DEFAULTS } from './waterParams';
 
 /**
  * The flat site plan under the buildings — the Neva, the two roads and the
@@ -56,14 +57,26 @@ export interface FlatSurface {
  * `depth` orders coplanar surfaces: every one of these sits on the SAME plane,
  * so without an explicit order they z-fight. Higher = drawn on top.
  */
-const TONES: Record<string, { color: number; depth: number }> = {
+const TONES: Record<string, { color: number; depth: number; hidden?: true }> = {
   /** The Neva — the only surface with real hue, so the water reads as water.
-   *  Round 11 deepened this from #d4eaf5: the water carries a ±4% tonal
-   *  variation now, and against the old near-white that swing was below the
-   *  threshold of visibility. The effect has to have something to move within. */
-  Color_H08: { color: 0xc5e0f0, depth: 0 },
-  /** neighbouring city blocks — solidly present grey, they frame the site */
-  Color_M02: { color: 0xccd7dd, depth: 1 },
+   *  The value itself lives in waterParams.ts, because the admin panel tunes it
+   *  alongside the ripple and two sources of truth for one colour is how they
+   *  drift apart. */
+  Color_H08: { color: WATER_DEFAULTS.color, depth: 0 },
+  /**
+   * Neighbouring city blocks — a solidly present grey that framed the site.
+   *
+   * ROUND 12: HIDDEN at the designer's request. The entry stays, marked rather
+   * than deleted, because this is a composition call and round 9.1 added these
+   * on purpose; dropping `hidden` brings them back exactly as they were.
+   *
+   * Nothing is cut out by removing them. They are their own GLB primitive (57
+   * triangles, material Color_M02) sharing no geometry with the streets or the
+   * river, and what shows through is mapStudio's #dde6e9 ground plate — which
+   * already IS the site's ground, since the GLB carries no surface for the site
+   * itself. So the area falls back to the tone Кресты stands on, not to a hole.
+   */
+  Color_M02: { color: 0xccd7dd, depth: 1, hidden: true },
   /** Арсенальная наб. + ул. Комсомола — lighter than the ground plate, so the
    *  streets read as ribbons cut through it rather than as more blocks */
   Color_M04: { color: 0xf5f5f5, depth: 2 },
@@ -102,13 +115,40 @@ export class GroundPlan {
   private base: THREE.Color[] = [];
   private readonly bg = new THREE.Color(MAP_BG);
   private water?: WaterHandle;
+  private waterIndex = -1;
   private still = false;
+
+  /** the admin panel's live handle on the river; undefined until the GLB loads */
+  get river(): WaterHandle | undefined {
+    return this.water;
+  }
+
+  /**
+   * Retint the Neva.
+   *
+   * `base` too, not just the live colour: `setFocus` lerps the material from
+   * `base` toward the field every frame, so writing only `mat.color` would be
+   * undone on the next frame the focus spring moves.
+   */
+  setWaterColor(hex: number) {
+    if (this.waterIndex < 0) return;
+    this.base[this.waterIndex].setHex(hex);
+    this.mats[this.waterIndex].color.setHex(hex);
+  }
 
   constructor(surfaces: FlatSurface[]) {
     this.still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     for (const s of surfaces) {
       const tone = TONES[s.materialName] ?? FALLBACK;
+      // Suppressed surface classes never become meshes at all. Done here rather
+      // than in ConceptScreen's traverse because this file owns the material →
+      // look mapping, and because MapLabels is handed the same `flats` array
+      // afterwards and must still see every surface to recover its features.
+      // Nothing to dispose: a geometry no mesh ever referenced was never
+      // uploaded, so it holds no GPU resource — only the CPU-side arrays, which
+      // the caller's array still owns.
+      if (tone.hidden) continue;
       const mat = new THREE.MeshBasicMaterial({
         color: tone.color,
         // Unlit on purpose. A lit plane under mapStudio's raking key would take
@@ -134,7 +174,10 @@ export class GroundPlan {
         polygonOffsetUnits: PLAN_PUSH - 4 * tone.depth,
       });
 
-      if (s.materialName === WATER_MATERIAL) this.water = applyWater(mat);
+      if (s.materialName === WATER_MATERIAL) {
+        this.water = applyWater(mat);
+        this.waterIndex = this.mats.length;
+      }
 
       const mesh = new THREE.Mesh(s.geometry, mat);
       // never pickable and never edge-lined: the plan is context, the buildings

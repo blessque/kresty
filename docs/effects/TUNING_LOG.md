@@ -2295,6 +2295,8 @@ frames 4 s apart; `prefers-reduced-motion` freezes; `tsc` and build clean.
 important constant), `WAVES[].len` (scale), `DEEP`/`LIGHT` (contrast), `CALM` (how much of the
 surface goes still). Do not add stages.
 
+---
+
 ## Round 12 (2026-08-06) — «Контакты»: the light applied to arbitrary icons
 
 **TEMPORARY page**, built to shoot presentation stills of the client's own icons wearing the
@@ -2440,7 +2442,481 @@ mode (`compositeMode: 1`), not a blending tweak.
 `normalizeHex()` that accepts `#101820`, `101820` and `#123`. Bare hex matters: a literal `#`
 typed into a query string starts the fragment and swallows the rest of the URL.
 
+## Map round 12 (2026-08-06) — the plan squared to the screen; the neighbours removed
+
+Two designer asks, plus one latent bug the first of them exposed.
+
+### The rotation was a SUBTRACTION, and that is why the number is exact
+
+Round 9 set `MODEL_YAW_DEG = 189` — *a half turn (to put the water south) + 9° for the street
+grid's real bearing* — so geographic north pointed up the screen. That is correct and was
+checked two ways. It is also the reason the embankment arrived on screen slightly tilted: the
+**site grid runs 9° off north**, so north-up necessarily delivers the shoreline off-level.
+
+The designer measured the correction in Figma as **−9.05°**. Removing the 9° returns the model
+to the grid it was drawn on, which is axis-aligned **by construction** — so the answer is not
+"189 − 9.05 = 179.95", it is exactly **180.00°**, and the 0.05 is measurement noise. Measured
+on the GLB, baked through the node quaternion and the yaw, in the frame the top-down camera
+sees:
+
+| yaw | Арсенальная наб. | shoreline |
+|-----|------------------|-----------|
+| 189 | −9.00° | −9.00° |
+| **180** | **−0.00°** | **0.00°** |
+
+**Measure BOUNDARY edges, not all edges.** An edge belongs to the outline only if exactly one
+triangle uses it. A triangulated polygon is full of interior diagonals at arbitrary angles, and
+including them buries the signal — the first pass "found" long edges at 3.77°, 144.97° and
+−120.52° on a river whose actual banks run at −9°.
+
+Geographic north is now **deliberately abandoned**. `?yaw=189` restores it.
+
+### The rotation's one real hazard, and how it was cleared
+
+Building ids `b00…b18` are assigned by sorting components on **triangle count desc, then
+`bbox.min.x`, then `bbox.min.z`** (`buildingSplit.ts`). Rotation cannot change a triangle
+count — but it *does* change `min.x`/`min.z`, so **any two parts with an equal triangle count
+could swap ids and silently mis-key every entry in `buildingsInfo.ts`**. There is exactly one
+such pair on this model: **b13 and b14, both 110 triangles.** They did not swap.
+
+Proved by fingerprinting all 19 parts at `?yaw=189` and at `?yaw=180` and diffing. **Two traps
+in the fingerprint itself:** an AABB's *dimensions* and an AABB *centre's* distance from the
+origin are **not rotation-invariant** — an axis-aligned box around a rotated object is a
+different box. Including them produced a 19-row "mismatch" that was entirely an artefact of the
+probe. Only `triCount`, `centroid.y` and the vertical extent survive a yaw; those are what
+constitutes proof, and they matched row for row.
+
+### What the rotation moved by itself
+
+- **Street captions** derive their angle by projecting a second point along the feature axis,
+  so «Арсенальная наб.» became horizontal with no code change.
+- **Focus azimuth** reads `part.axisAngle`, baked in the same matrix — unchanged in behaviour.
+- **Framing** is fitted, never hardcoded. Buildings' bbox 21.40 × 21.17 → **22.10 × 19.74**, fit
+  scale 14.02 → 13.57, and `overviewHalfH` 161.4 → **147.1 world units (−8.9 %)**. The buildings
+  themselves are framed identically (735 → 729 px tall); it is the *plan around them* that is
+  cropped tighter, because the frame is fit to the buildings and the plan's relationship to them
+  turned.
+
+### The neighbouring blocks were their own primitive — nothing had to be cut
+
+`map-w-river.glb` is one mesh with five primitives, and the three flat classes are cleanly
+separated by material:
+
+| prim | material | tris | what |
+|------|----------|------|------|
+| 2 | `Color_M02` | 57 | **the neighbouring blocks** — the only grey class |
+| 3 | `Color_M04` | 15 | Арсенальная наб. + ул. Комсомола |
+| 4 | `Color_H08` | 10 | the Neva |
+
+So suppressing `Color_M02` **cannot cut a hole in anything** — that is a property of the export,
+not a hope. What shows through is `mapStudio`'s `#dde6e9` ground plate, which already *is* the
+site's ground (the GLB carries no surface for the site itself), so the area falls back to the
+tone Кресты stands on.
+
+The switch is a `hidden?: true` on the `TONES` entry in `groundPlan.ts`; `GroundPlan` skips
+those surfaces. The entry is **marked, not deleted** — round 9.1 added the blocks deliberately
+to frame the site, and this is a composition call. Nothing is disposed there: a geometry no mesh
+ever referenced was never uploaded, and `MapLabels` is handed the same `flats` array afterwards
+and must still see every surface.
+
+### A caption with nowhere to go used to park itself on the logo
+
+Squaring the plan pushed **ул. Комсомола off the top of the frame** — only a ~33 px sliver
+survives, and a 21px caption needs its centre at y ≥ 43 (`SOLVE_MARGIN` 28 + half a line box)
+plus `MIN_CLEARANCE` 13 of clear road, i.e. the street must reach y ≈ 56. It cannot.
+
+`solve` correctly gave up. But an unanchored label had **no transform written at all**, so it
+rendered at the layer origin — the top-left corner, on top of «КРЕСТЫ». This was always true;
+it went unseen only because round 10's solver had always found a spot. Fixed with an
+`.unplaced` class.
+
+**`visibility: hidden`, never `display: none`** — the solver sizes each label's own box from
+`el.offsetWidth`, and a `display:none` element measures 0, so it could never earn its place back
+on the next resize.
+
+**Why this is structural, not bad luck:** a street *parallel* to a screen edge is either fully
+in frame or fully out. A *diagonal* one always cuts a visible wedge across the corner, which is
+what gave the caption room at 189°. Squaring the grid removes that wedge by definition.
+Restoring the caption costs about **6 % of zoom-out** (`FIT_MARGIN` 0.95 → ~1.01) — a designer
+call, not made here.
+
+### Verified
+
+- Building ids **stable** across the rotation, including the b13/b14 110-triangle tie.
+- **Shear invariance holds**: max channel delta **1** on 0.014–0.027 % of a pure-water patch
+  across four cursor positions (the documented ±1 LSB), while a control patch over the west
+  cross moves on ~80 % of pixels at delta up to 148. *A SHA of the region is the wrong test* —
+  round 9's "byte-identical" predates round 11's procedural water, so exact equality can now
+  only ever fail.
+- 19 buildings / 3 flat surfaces still recovered; focus mode swings and frames correctly on both
+  a cross and a small volume; `tsc`, `vite build` and `scripts/interact-test.mjs` clean.
+
+---
+
+## Map round 12.1 (R&D, 2026-08-06) — captions that ride the roofs
+
+Exploratory only; **no code shipped this round.** The question: can captions naming individual
+buildings travel with the buildings as the plan leans, and should they be geometry in the GLB or
+text layers?
+
+### The result that settles it
+
+Restricted to a horizontal plane at height `h`, the plan-oblique shear
+`x' = x + sx·y, z' = z + sz·y` becomes `(x, z) → (x + sx·h, z + sz·h)` — it has **no linear
+part left. It is a pure translation.** Three consequences:
+
+- anything sitting on a roof **moves with that roof and never skews**;
+- therefore **text baked as flat geometry on a roof would also stay undistorted.** The intuition
+  that 3D text would be sheared into a parallelogram is *wrong*, and it matters to say so —
+  the GLB option has to be rejected on other grounds, not on this one;
+- round 10's interiority argument extends unchanged: an anchor solved inside a roof polygon
+  stays inside it at every lean, so the existing **solve-once / project-per-frame** structure
+  carries over with no new machinery.
+
+### Measured travel
+
+Tallest roof = 37.9 of `MODEL_SPAN` 300. At `MAX_SHEAR` 0.55 it travels **20.8 world units ≈
+6.9 % of the plan width ≈ 70 px** at the default framing. Enough to read clearly as attached
+motion; nowhere near enough to throw a caption off screen.
+
+### The three mechanisms
+
+- **DOM, projected — recommended.** Reuses `MapLabels` as it stands. The *only* structural
+  change is that `update()` takes the shear matrix and pre-multiplies the anchor before
+  `project()` — and for the three existing plan captions that is **provably a no-op**, since
+  they live at y = 0 where the shear is the identity. One code path serves both kinds. Crisp at
+  any DPR, real ALS Chromius, inherits the site's type, styleable per state, no new deps.
+- **Baked into the GLB — disqualified.** Added geometry changes the connected-component set and
+  the triangle counts the ids are ordered by, so it **re-keys `buildingsInfo.ts` wholesale**.
+  Also: size baked at export, aliased under an orthographic camera, no webfont, no hover or
+  focus states, and a re-export for every copy edit.
+- **Canvas texture on a plane.** No re-export, but resolution fixed at bake time, the font must
+  be loaded and measured in canvas, one texture per caption, and it still cannot inherit the
+  site's type styles.
+
+### The shape of the implementation, so it need not be re-derived
+
+A `label?: true` flag on **a curated few** entries in `buildingsInfo.ts` — the designer's pick,
+5–7 captions, which is also why no collision solver is needed; anchor = footprint centroid at
+`bbox.max.y`, taken through `root.matrix`; a `.map-label--building` class beside `--river` /
+`--street`; fade with `MapCamera.focus` like the others.
+
+### Open, and deliberately not solved here
+
+- The solver's obstacle rects (`.concept-home`, `.map-info`) are measured at shear 0. A labelled
+  roof can slide **70 px**, so it can travel *under* the left rail or the drawer. Needs a rule —
+  and note round 12 just showed what happens when a label has nowhere to go.
+- **b00/b01 are welded to their courtyards and apses**, so a cross block's bbox centre can land
+  in a courtyard rather than on a roof. The two most important captions are exactly the two that
+  need a better anchor than "centroid".
+- Whether a caption should follow its building's hover state or stay inert.
+
+---
+
+## Map round 13 (2026-08-06) — the framing tightened, and captions that ride the roofs
+
+Built against the client's own map export (2000×1990 PNG), which is now the reference for
+this screen.
+
+### The framing was being set by a slab in the river
+
+The buildings filled 91 % of the frame height already — the cluster only *read* small because
+`b18`, the pier, is a 0.09-tall slab standing out past the embankment and was stretching the
+fitted box by 20 % of its height for no drawing at all. Framing is now measured on the parts
+with **mass** (`massedBox`, `FIT_HEIGHT_FRAC = 0.05`): the cluster went from 57 % to **70 % of
+the width and 91 % of the height**, and nothing clips at full lean because the shear reach is
+still in the fit.
+
+**The test is a height ratio, not a distance from the cluster.** An outlier is not what is
+wrong with the pier — being a ground slab rather than a volume is. On this model the split is
+unambiguous (pier 3.3 % of the tallest part, next-shortest `b17` 7.4 %) and it is scale-free,
+so it survives a re-export in any units.
+
+**The client's export cannot be matched exactly, and the reason is aspect.** It is square; the
+site is 1440×800. In it the cluster fills 90.6 % × 64.3 %; on a 1.8:1 viewport a 1.40-aspect
+cluster is height-bound, so 70 % × 91 % is the tightest crop that still shows every building.
+Reaching the reference's 90 % width fill would cost ~180 px of buildings off the top and bottom.
+
+### Captions: DOM, anchored on the roof, sheared
+
+Round 12.1's R&D shipped as predicted, and the prediction held exactly.
+
+The mechanism is one line: `update()` now runs every anchor through the live shear matrix
+before projecting. **For the three plan captions that is provably a no-op** — they sit on
+y = 0, the shear's fixed point — so one code path serves both kinds rather than a per-label
+flag guarding a branch that can only ever be false. Measured at full lean:
+
+| caption | kind | travel |
+|---------|------|--------|
+| Западный / Восточный крест | building | **62.8 px** |
+| Ротонда | building | 27.9 px |
+| Паркинг | building | 10.7 px |
+| р. Нева · Арсенальная наб. · ул. Комсомола | plan | **0.0 px** |
+
+The building figures are the point: **travel is proportional to roof height**, because on a
+horizontal plane at height h the shear is a pure translation by `(sx·h, sz·h)`. Nobody had to
+implement that; it falls out of anchoring at `bbox.max.y`.
+
+### Building captions are AUTHORED, not solved
+
+The plan captions get a search because a river is a polygon to sit inside. A building caption
+belongs to one volume and the client placed each by hand — the two crosses take *mirrored*
+quadrants (lower-right and lower-left) precisely so they clear each other's arms and the SPA
+block. So `BUILDING_CAPTIONS` carries an explicit offset and `bias: 'fixed'` skips the solver.
+
+Offsets are **fractions of the site span**, never pixels or world units: a fixed distance stops
+meaning the same thing the moment the fit changes — which is exactly the mistake round 10
+removed from the solver, and this round changed the fit.
+
+The first line is always the building's own `name`, never duplicated in the caption table, so a
+rename cannot leave the map disagreeing with the drawer.
+
+### The cross names were swapped, and the client's map is what proved it
+
+The client's export names the screen-LEFT cross «Западный» / Cosmos 4\* and the screen-RIGHT
+one «Восточный» / Cosmos 5\*. The code had the two names the other way round. The compass
+agrees with the client — under round 9's north-up yaw of 189°, screen-right *is* east — so
+round 10.2's empirical assignment was simply wrong on this one point, and round 12 had already
+logged the discrepancy as an open issue without being able to settle it.
+
+**Only the names were wrong.** Star ratings, residents and the SPA all sat on the buildings the
+client's map puts them on, which is the independent check that this is a two-field fix and not
+a wholesale re-keying.
+
+### Ink
+
+`#5d90ac`, the darkest pixel measured in the client's export. The visible bulk of the glyphs
+samples lighter (≈`#6897b2`) only because it is antialiased over the near-white field — sampling
+the modal tone rather than the extreme would have shipped a caption a shade too pale.
+
+### Verified
+
+`tsc`, `vite build` and `scripts/interact-test.mjs` clean; focus mode swings, the drawer reads
+«Западный крест» on the left cross, and all captions fade out with `MapCamera.focus`.
+
+## Map round 14 (2026-08-06) — scroll down to the Neva, and the water becomes tunable
+
+Round 13's tighter framing pushed the river off the bottom of the frame; all that was left at
+rest was a blue triangle in the corner. The water could not be judged because it could not be
+seen. So: 50 vh of scroll to reveal it, and a `?admin=1` panel to tune it with.
+
+### +50 vh was measured, not chosen
+
+Screenshots at `?fit=2.3` (2.4× zoomed out) converted back to shipped-frame pixels:
+
+| | px from frame centre |
+|---|---|
+| bottom of the frame | +400 |
+| shoreline under the site | **+411** |
+| Neva still unbroken at | +968 and beyond |
+
+A 400 px reveal therefore lands on **open water edge to edge**, with the shoreline just at the
+top of the revealed band for context. `STAGE_VH = 1.5`, `?vh=<k>` overrides.
+
+### The document does not scroll — `#screen-concept` does
+
+`global.css` sets `html, body { overflow: hidden }` and `.screen { position: fixed; inset: 0 }`,
+and the main screen's viewport-pinned layout depends on both. So the scroll is internal: a new
+`.map-scroll` inside the screen, holding a 150 %-tall `.map-stage` that owns the canvas and the
+caption layer. The chrome (logo, rail, drawer, panel) stays a **sibling** of the scroller — a
+scroll container's absolutely-positioned children scroll with its content, so leaving the logo
+inside would scroll it off the top. `#grain` and `#white-flash` are fixed on the document and
+never see any of it. `mapScroll.ts` owns this, and is the seam the eventual full-page scroll
+will hang off.
+
+**Scrolling costs nothing to render.** The camera does not move; the already-drawn canvas
+simply slides under the viewport.
+
+### The one thing that would have broken it: the fit is not the canvas
+
+`MapCamera.overviewHalfH()` returns `max(needH, needW / aspect)`, and the current framing is
+**height-bound**. Handing it the taller canvas's aspect (1.80 → 1.20) flips it **width-bound**
+and renders the buildings **~35 % larger** than round 13's signed-off framing — the exact
+opposite of what a scroll added to inspect the water at its shipped scale is for.
+
+So the fit keeps measuring the **window**, and `setOverscan(canvasH / viewportH)` bolts the
+extra height on afterwards, in `applyToCamera` only:
+
+```ts
+this.camera.top = halfH;
+this.camera.bottom = halfH - 2 * halfH * this.overscan;
+```
+
+Two properties fall out, and both are load-bearing: world units per pixel are **bit-for-bit
+unchanged**, because the frustum grows by exactly the factor the canvas does; and the camera
+target stays centred in the top viewport band, so at `scrollTop 0` the composition is the
+pre-scroll one — in the overview *and* in focus mode, where the focused building must still
+land in the middle of the screen. An asymmetric ortho frustum is already how the drawer inset
+works horizontally; same mechanism, other axis.
+
+**Verified**: full-frame diff at `scrollTop 0`, before vs after, max Δ 30 on **0.025 %** of
+pixels — all of it subpixel antialiasing on the fat edge lines, with mean luminance moving
+212.0222 → 212.0213 (0.0004 %) and the dark-pixel count by 6 in 333,871. Nothing moved or
+resized; every caption landed on its old coordinates to 0.1 px.
+
+### Five places measured themselves against the window
+
+`renderer.setSize`, `picker.setResolution`, `picker.setPointer`, `labels.update(w, h)` and the
+caption solver's obstacle rects. `mapCam.setViewport` is the one that must **stay** on the
+window.
+
+The picker was the silent one: it divided by `innerHeight` internally, so without both halves
+of the fix hover drifts by exactly `scrollTop` — the map still highlights buildings, just the
+wrong ones. It now stores the resolution `setResolution` was given, and the caller adds the
+scroll offset. **Verified** on a 16-point grid: `id(x, y)` at scroll 0 must equal
+`id(x, y − 300)` at scroll 300 — 16/16 with `?ob=0`. (With the lean on, 3 probes differ, and
+correctly: the lean is driven by the cursor's position in the **window**, deliberately
+unchanged, so it is genuinely a different lean at a different window height.)
+
+The picker also now reads the cursor **per frame** rather than per `pointermove`, because the
+stage scrolls under a stationary cursor — the same reason the shear already forced per-frame
+picking.
+
+### The caption band: one flag, and it was not optional
+
+The solve domain is the whole stage for the river and the **resting viewport** for everything
+else (`Label.band`). Both are needed, and each was learned by shipping the other:
+
+- **Full stage only:** both streets sweep south past the resting frame, so «Арсенальная наб.»
+  moved from (149, 753) to (474, 828) — lettering on a stretch of road nobody sees at rest.
+- **Resting viewport only:** «р. Нева» was `unplaced` *before this round* for want of visible
+  water, and the band round 14 reveals is the only place its caption can go.
+
+The rule is "a caption goes where its feature reads", and after this round the two kinds of
+feature read in different bands. `obstacleRects` also gained the scroll offset — the obstacles
+are pinned to the window and answer in window coordinates, but the caption layer now lives in
+the scrolled stage. `MapLabels` takes the stage and the chrome root separately; before this it
+found the obstacles through `layer.parentElement`, which would now resolve to the stage and
+silently report **no obstacles at all**.
+
+Focus mode pins the scroller to 0 and locks it: the isometric framing assumes the window, and
+a scroll fighting the swing has no defined meaning.
+
+### The water's dials are uniforms now
+
+Every tunable used to be interpolated into the GLSL source string and folded into the compiled
+program, so changing one meant a recompile — on a slider drag, a recompile per frame plus a
+fresh entry in three's program cache each time. The values moved to `waterParams.ts` and
+arrive as uniforms; the GLSL is fixed text. Per-fragment cost is unchanged (2 texture fetches,
+2 `sin`); headings stay trigonometry on the CPU, so the shader never sees a degree. The carrier
+count stays **2** — a carrier is structural, and `amp: 0` silences one.
+
+`inject()` used to generate `uniform sampler2D <name>;` for every uniform, which was only
+correct while the single uniform *was* a sampler; the declarations are passed in now.
+
+**Verified**: frozen water, before vs after, over the full river band — **max Δ 1 LSB** on
+5.5 % of pixels. That is the ulp tolerance of rewriting `dot(q,d) / len` as `dot(q,d) * invLen`
+and `nA·mixA + nB·(1−mixA)` as `mix(nB, nA, mixA)`; exact equality was never available.
+
+### The panel
+
+`?admin=1`, **dynamically imported** so Vite splits it (8.2 kB JS + 2.1 kB CSS) into a chunk a
+normal load never fetches — "not visible" and "not shipped" are different claims. 36 rows in 6
+sections: warp field, two carriers, surface, noise texture (rebake), view & cost. Labels are
+the code's identifiers in English, deliberately breaking the Russian-UI rule: a dial named
+`mixA` has to be findable in the file you are about to paste into. Auto-persists to
+`localStorage`; a stored set is **merged onto the defaults**, never used raw, or a key added
+later arrives as `undefined` and reaches the shader as NaN.
+
+Only the noise section rebakes; water.ts decides that itself by comparing the bake options, so
+117 slider writes ran in 805 ms with no recompile and no reallocation.
+
+The river now has its own clock (`waterT`, an accumulator) rather than `performance.now`, so
+the time scale can slow or freeze it without the surface jumping phase. Freeze is also how the
+pixel-diff proofs above are taken.
+
+**The panel's proof that it reaches the shader**: dropping both carriers' `warp` to 0.3
+collapses the surface into the evenly-spaced parallel comb «Гравюра» was — the file's own
+documented failure mode, reproduced live, confirming the `W ≳ F/λ` threshold empirically.
+
+### Verified
+
+`tsc`, `vite build` and `scripts/interact-test.mjs` clean (the last byte-identical to its
+pre-change output). Shear invariance re-proved: over a 640×230 water region, max Δ **1 LSB**
+between two cursor positions while a control patch over a cross moves on 80 % of its pixels at
+Δ ≤ 138. Resize resets the scroll and re-fits; `?vh=2.2` gives a 1760 px canvas and 960 px of
+scroll. Without the flag there is no `.water-panel` in the DOM and no request for its chunk;
+the main screen still has `overflow: hidden`, `scrollY 0` and no `.map-scroll`.
+
+## Map round 14.1 (2026-08-07) — the designer's water, and it inverts two of round 11's rules
+
+The first tuning done with the panel, and the first done against a river you can actually
+see. Shipped as `WATER_DEFAULTS`, so it loads for everyone with or without `?admin=1`.
+
+### The river flows now
+
+Round 11 built a surface that **re-forms in place**: warp layers drifting near-opposite (176°
+apart) so their superposition had no coherent translation, and carrier phase speed held near
+zero because a phase advance is a rigid translation of the crest field. It called that
+translation the "obvious scrolling" defect and suppressed it.
+
+Round 14.1 wants it. Headings are now **14° apart** (235° / 249°) and the carriers run at
+**0.275 / 0.39 cycles/s with a shared sign**, so the whole field travels one way. A river
+visibly flows; a lake does not. Both arguments now sit side by side on the dials — the old
+one is still true as physics, it just described a register we no longer want.
+
+### What else moved
+
+| | round 11 | round 14.1 |
+|---|---|---|
+| tiles | 113 / 157 (both prime) | 351 / 151 |
+| drift | 1.1 / 1.05, 176° apart | 3.9 / 2.85, **14° apart** |
+| carriers λ | 10.0 / 6.2 (25 / 15 px) | **3.5 / 24.1** (9 / 60 px) |
+| carrier speed | 0.02 / −0.025 | **0.275 / 0.39** |
+| amplitudes | 0.74 / 0.26 | 0.88 / 0.57 |
+| warp | 2.4 / 1.7 cycles | **1.1 / 1.2** |
+| base tone | `#c5e0f0` | `#99daff` |
+| noise | 256², grid 4, 3 oct, gain 0.5 | **1024², grid 27, 2 oct, gain 0.36** |
+
+**The carrier roles swapped.** The second is now the LONG one — a 60 px swell with 9 px chop
+riding it, instead of two near-neighbours. They still read as one family, and it is the
+HEADING that does that (20° apart), not the wavelength.
+
+**`tileA` 351 is not prime** (3³·13), so round 11's "both prime" shorthand no longer holds.
+The actual requirement never was primality: it is that `lcm(tileA, tileB)` stays far larger
+than the ~581 world units visible across the frame. lcm(351, 151) = **53001, ~90×** — a wider
+margin than round 11's 17741. Check the lcm, not the primality.
+
+**Warp dropped to just past the folding threshold** (1.1 / 1.2 against `W ≳ F/λ`'s ~1). That
+is affordable only because the carriers travel: variety comes from motion and interference
+rather than static folding. The two are coupled — lower the speeds without raising the warp
+and «Гравюра»'s comb comes straight back.
+
+### Measured on screen, not asserted
+
+600×130 patch of open water, sRGB, against round 11's:
+
+| | R | G | B |
+|---|---|---|---|
+| round 11 | 170 → 218 | 207 → 239 | 238 → 248 |
+| round 14.1 | **118 → 173** | 202 → 234 | **pinned at 255** |
+
+**The blue channel is at the ceiling on 87.5 % of the water.** `#99daff` already has blue 255
+and `light[2] = 1.03` pushes past it. This is recorded rather than corrected — the tuning was
+done on screen and this is what was approved — but two things follow and are worth knowing
+before anyone reaches for these dials: `light[2]` is **inert** as shipped, and all the
+surface's variation is carried by R and G, which is why crests read cyan-white rather than as
+brighter blue. Lowering `color`'s blue is what puts the channel back in play.
+
+The ramp is also **asymmetric** now: `light` is barely above unity (1.01/1.03/1.03) while
+`deep` pulls hard (0.57/0.845/0.985), so the base tone sits at the crest end and all the
+modulation happens downward into the troughs.
+
+### The bake got 16× more expensive, and it is fine
+
+`1024²` at 2 octaves measures **31.5 ms / 1 MiB**, against 7.8 ms / 256 KiB at 512 and
+1.9 ms / 64 KiB at 256. It earns it: `baseGrid` 27 × 2 octaves puts the finest lattice at 54
+cells across the tile, which 256 texels would resolve at under 5 texels per cell. It runs
+once, synchronously, inside `new GroundPlan(...)` — after the GLB has loaded and before the
+map's first frame — so it costs about one dropped frame at load, not added latency.
+
+### Verified
+
+`tsc`, `vite build` and `interact-test.mjs` clean. A plain load with no flag and no stored
+set renders the new water; the frame at `scrollTop 0` is unchanged outside the water itself.
+
 ## Open issues
+
 
 - **[OPEN] `bg` is useless above roughly 70% lightness** — screen blending cannot darken, so
   pale page colours wash the light out and `#ffffff` renders a blank white page. If the designer
@@ -2463,14 +2939,45 @@ typed into a query string starts the fragment and swallows the rest of the URL.
 - **[OPEN] «Контакты» is a temporary page on a real nav link.** `layout.ts` now routes
   `kontakty` to it. It is not designed UI and must be reverted or replaced before the client
   sees the nav as finished.
+
+- **[OPEN] `localStorage` shadows the shipped defaults in admin mode.** `?admin=1` restores
+  the last panel session, merged onto the defaults — so after editing `WATER_DEFAULTS` you
+  will still see the old tuning until you press **Reset**. A plain load is never affected.
+- **[OPEN] There is no touch scrolling on the map.** `#screen-concept` keeps
+  `touch-action: none` and touch drag keeps driving the lean, so the river is desktop-only this
+  round. Making vertical drag scroll would silently demote a shipped interaction to
+  horizontal-only, and the map is not yet inside a scrolling document; revisit when the
+  surrounding content lands.
+- **[OPEN] Nothing signals that the map scrolls.** The scrollbar is suppressed (as `.bld-scroll`
+  suppresses its own, and for the same reason: a permanent grey gutter down a full-bleed map is
+  not the drawing). If the reveal ships as a page behaviour rather than a tuning affordance it
+  probably wants an affordance of its own.
+- **[OPEN] The client's map carries three annotations this round does not build.**
+  «SPA-Комплекс» (set vertically) and the white «Отель Cosmos 5\*» are *residents*, not
+  buildings — and SPA sits on the courtyard block that is welded into `b01`, so it cannot be a
+  building caption at all. «Вход 1 / Вход 2» are arrow annotations, a different object. Also
+  the client writes «Бар "Ротонда"» where `buildingsInfo` has «Ротонда»; the caption follows
+  the drawer name by design, so changing it means changing the name.
+- **[OPEN] Caption placement offsets are eyeballed off the client's export** — `at` in
+  `BUILDING_CAPTIONS`, read from a square PNG and re-fitted to a 1.8:1 viewport. They match the
+  reference's composition but are not measured to the pixel, and the two cross offsets are the
+  only ones the client actually specified.
+- ~~**[OPEN] The cross names run opposite to the compass**~~ **RESOLVED (round 13):** the
+  client's map settles it — screen-left is «Западный», screen-right «Восточный». Names swapped.
+- ~~**[OPEN] Which cross is 5★ and which is 4★ is inferred.**~~ **RESOLVED (round 13):** the
+  client's map labels the west cross Cosmos 4\* and the east 5\*, which is what the code
+  already had on those two buildings.
+- **[OPEN] «ул. Комсомола» is no longer labelled.** Round 12 squared the plan to the screen,
+  which pushed that street off the top of the frame — only ~33 px survives, against the ~56 px
+  a caption needs. Its label now correctly hides itself rather than parking on the logo, but
+  the street is unnamed. Restoring it costs roughly **6 % of zoom-out** (`FIT_MARGIN` 0.95 →
+  ~1.01), which shrinks everything else; that is a designer call, and the alternative is to
+  accept a plan that names the embankment and the river only.
 - **[OPEN] The secondary buildings' identities are a reading of the zoning plan, not a
   lit-letter match.** b00/b01/b02/b04/b15/b18 are certain from geometry; the other twelve
   carry plausible functions from the plan's legend, assigned by which side of the site they
   sit on. If the client can supply the lit schedule (Лит. А/Б/В/Д/К/Л/М/О/П/У/Е4/Е5) with
   positions, the remaining twelve can be pinned exactly.
-- **[OPEN] Which cross is 5★ and which is 4★ is inferred.** The press gives the room counts
-  and that the 5★ has the spa; the plan puts the rotunda and one pool on Лит Е1, so Е1 was
-  read as the 5★. Swapping them is a two-field edit if the client says otherwise.
 - ~~**[OPEN] The news block is 20px, not the 22px main text style.**~~ **RESOLVED (round
   10.3):** the site has one base size, 21px, set on `body` and inherited by all body copy.
 - **[OPEN] Only the two hotels have a drawer hero photo.** `hotel.webp` is the single
