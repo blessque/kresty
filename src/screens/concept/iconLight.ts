@@ -27,6 +27,32 @@ import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/
  * live and the mask is swapped on the way past, so section count does not
  * enter the per-frame cost at all and there is never more than one GPU context
  * here. See `IconLight.envelope` for why the swap is invisible.
+ *
+ * SCROLLING COSTS NOTHING (round 16.1)
+ * ------------------------------------
+ * The light does not animate — `timeSec` is 0, `signRot` is 0, and `breathe`
+ * and `shimmer` are inert by construction (see LIGHT below). The only thing
+ * that changes while the reader scrolls is WHERE it sits. So the shader runs
+ * once per icon and the result is MOVED with a compositor transform, instead
+ * of being re-rendered every frame at a new `centerPx`.
+ *
+ * The first shipped version did the latter, and it was the reported "10 fps,
+ * jumping ~20 px" stutter: a full-viewport ~109-fetch-per-pixel shader on the
+ * MAIN thread against text that scrolls on the COMPOSITOR. It is fill-rate
+ * bound, so it fell over exactly where it hurts — measured 16.7 ms/frame at
+ * 1440×800, but 23.4 ms at the same window on a Retina Mac, because
+ * `getPerfTier().renderScale` is `min(devicePixelRatio, 2)` and that is 4× the
+ * pixels. A main thread that misses 16.7 ms cannot help but desync from the
+ * compositor; no amount of tuning inside the shader fixes the shape of that.
+ *
+ * The canvas is therefore 2 viewports tall with the icon baked at its middle,
+ * because an icon travels exactly one viewport while its light is visible
+ * (`envelope` is non-zero only for `y ∈ (0, viewH)`), so anchored on the icon
+ * the viewport sweeps `[−viewH, +viewH]`. `position()` then only writes a
+ * `translate3d`.
+ *
+ * Re-baking is free of visible cost because it can only happen at
+ * `envelope() === 0` — the same property that makes the mask swap invisible.
  */
 
 /** the «Сияние» preset, read back out of the shipped variants so it cannot drift */
@@ -78,6 +104,20 @@ interface IconMask {
   exposure: number;
 }
 
+/**
+ * Canvas height in viewports. 2 is not a safety margin — it is the exact
+ * requirement, see the header: the icon sweeps `[−viewH, +viewH]` of viewport
+ * relative to itself over the range where its light is visible at all.
+ */
+const CANVAS_VH = 2;
+
+/** what a bake was asked to draw, kept so a late mask upload can repeat it */
+interface BakeArgs {
+  idx: number;
+  anchorX: number;
+  pointer: [number, number];
+}
+
 export class IconLight {
   readonly canvas = document.createElement('canvas');
 
@@ -88,6 +128,15 @@ export class IconLight {
   private exposure = 1;
   private renderScale = 1;
   private lastKey = '';
+  private viewW = 0;
+  private viewH = 0;
+  /** last transform/opacity written, so a still page writes no style at all */
+  private lastTransform = '';
+  private lastOpacity = '';
+  private lastBake: BakeArgs | null = null;
+  private prewarmed = false;
+  /** shader runs since load — the per-frame-cost assertion reads this */
+  renderCount = 0;
 
   constructor(private icons: string[]) {
     this.canvas.className = 'res-light';
@@ -122,11 +171,37 @@ export class IconLight {
         this.renderer = r;
       }
       console.info(`[kresty] sections backend: ${this.renderer.backend}`);
-      this.resize();
+      this.applySize();
       this.activeIdx = -1; // force the first mask upload
+      this.prewarm();
     } finally {
       this.pending = false;
     }
+  }
+
+  /**
+   * Rasterize every mask while the browser is idle, one at a time.
+   *
+   * Each one costs a 70–90 ms main-thread frame (SVG decode plus
+   * `maskCoverage`'s `getImageData`), and doing it lazily meant the reader paid
+   * one on entering each section — measured as 4 stalls in 219 frames, one per
+   * newly-entered section. They are cached by `maskFor`, so this only moves the
+   * cost; `requestIdleCallback` is what makes it free, and chaining one at a
+   * time is what stops it becoming a single 600 ms block.
+   */
+  private prewarm() {
+    if (this.prewarmed) return;
+    this.prewarmed = true;
+    const idle = (cb: () => void) =>
+      typeof requestIdleCallback === 'function'
+        ? requestIdleCallback(() => cb())
+        : setTimeout(cb, 200);
+    let i = 0;
+    const next = () => {
+      if (i >= this.icons.length) return;
+      void this.maskFor(i++).then(() => idle(next));
+    };
+    idle(next);
   }
 
   get ready(): boolean {
@@ -137,11 +212,29 @@ export class IconLight {
     return this.renderer?.backend ?? 'none';
   }
 
-  resize = () => {
+  /**
+   * The viewport this light lives in. Takes the SCROLLER's box, never
+   * `innerWidth/innerHeight` — round 16's own rule, and the canvas is 2
+   * viewports tall so an error here is doubled.
+   */
+  setViewport(w: number, h: number) {
+    if (w === this.viewW && h === this.viewH) return;
+    this.viewW = w;
+    this.viewH = h;
+    this.applySize();
+  }
+
+  private applySize() {
+    if (!this.renderer || !this.viewW || !this.viewH) return;
     const rs = this.renderScale;
-    this.renderer?.resize(Math.round(innerWidth * rs), Math.round(innerHeight * rs));
+    this.renderer.resize(
+      Math.round(this.viewW * rs),
+      Math.round(this.viewH * CANVAS_VH * rs)
+    );
     this.lastKey = '';
-  };
+    // the canvas just lost its contents; redraw what was on it
+    if (this.lastBake) this.render(this.lastBake);
+  }
 
   /** rasterized once, then cached — the upload only happens on a section change */
   private async maskFor(i: number): Promise<IconMask | null> {
@@ -192,22 +285,41 @@ export class IconLight {
   }
 
   /**
-   * Draw one frame. `centerPx` is the icon's centre in CSS px within the
-   * viewport; `opacity` comes from `envelope`.
+   * Put the (already drawn) light where its icon is. Runs every frame and
+   * touches NO GPU: `iconY` is the icon's centre in CSS px within the viewport,
+   * and the canvas is anchored on the icon at its own middle, so the offset is
+   * simply `iconY − viewH`.
    *
-   * Redundant draws are skipped on a state signature rather than on a clock —
-   * with nothing animating there is no reason to re-run a ~109-fetch-per-pixel
-   * shader while the reader holds still.
+   * Both writes are guarded on the string actually changing, so a reader
+   * holding still writes no style at all and cannot dirty the compositor.
    */
-  draw(
-    idx: number,
-    centerPx: [number, number],
-    pointerPx: [number, number],
-    opacity: number
-  ) {
+  position(iconY: number, opacity: number) {
+    const transform = `translate3d(0, ${(iconY - this.viewH).toFixed(2)}px, 0)`;
+    if (transform !== this.lastTransform) {
+      this.lastTransform = transform;
+      this.canvas.style.transform = transform;
+    }
+    const op = opacity.toFixed(3);
+    if (op !== this.lastOpacity) {
+      this.lastOpacity = op;
+      this.canvas.style.opacity = op;
+    }
+  }
+
+  /**
+   * Run the shader. Called on a section change, a resize, or a cursor move —
+   * NEVER on scroll, which is the whole point (see the header).
+   *
+   * `anchorX` is the icon's x in CSS px; y is always the canvas's middle.
+   * `pointer` is in CANVAS-LOCAL px, because `u_parallax` deforms the field
+   * toward the cursor (`q * 0.06 + hoverDir * 26.0`, plus swirl, wind and
+   * arm-length terms) — it is a relationship between the two points, not a
+   * translation, which is why it cannot be faked with a transform.
+   */
+  bake(idx: number, anchorX: number, pointer: [number, number]) {
     if (!this.renderer) return;
-    this.canvas.style.opacity = String(opacity);
-    if (opacity <= 0.002) return;
+    const args: BakeArgs = { idx, anchorX, pointer };
+    this.lastBake = args;
 
     if (idx !== this.activeIdx) {
       this.activeIdx = idx;
@@ -217,14 +329,25 @@ export class IconLight {
         this.renderer?.setSignMask(m.canvas);
         this.exposure = m.exposure;
         this.lastKey = '';
+        // the bake below this ran against the PREVIOUS mask; repeat it now that
+        // the right one is uploaded. Nothing did that before, because a draw
+        // ran every frame anyway and the next one simply picked it up.
+        if (this.lastBake?.idx === idx) this.render(this.lastBake);
       });
     }
+    this.render(args);
+  }
 
-    const key = `${idx}|${Math.round(centerPx[0])}|${Math.round(centerPx[1])}|${Math.round(
-      pointerPx[0]
-    )}|${Math.round(pointerPx[1])}|${opacity.toFixed(3)}`;
+  private render({ idx, anchorX, pointer }: BakeArgs) {
+    if (!this.renderer || !this.viewH) return;
+    const centerPx: [number, number] = [anchorX, this.viewH];
+
+    const key = `${idx}|${Math.round(anchorX)}|${Math.round(pointer[0])}|${Math.round(
+      pointer[1]
+    )}`;
     if (key === this.lastKey) return;
     this.lastKey = key;
+    this.renderCount++;
 
     const rs = this.renderScale;
     const gain = this.exposure * LIGHT.exposure;
@@ -249,7 +372,7 @@ export class IconLight {
     const state: RayFieldState = {
       timeSec: 0,
       centerPx: [centerPx[0] * rs, centerPx[1] * rs],
-      pointerPx: [pointerPx[0] * rs, pointerPx[1] * rs],
+      pointerPx: [pointer[0] * rs, pointer[1] * rs],
       scale: rs,
       // the cross's ~0.6°/s rotation reads as a bug on a bed or a cup
       signRot: 0,
@@ -273,6 +396,8 @@ export class IconLight {
 
   /** hide without tearing the context down — the reader may scroll back */
   hide() {
+    if (this.lastOpacity === '0') return;
+    this.lastOpacity = '0';
     this.canvas.style.opacity = '0';
   }
 

@@ -3356,8 +3356,125 @@ One honest note on the probes: the 8-point pick fingerprint is mildly nondetermi
 because the lean is still settling at 120 ms, and one run in four disagreed with itself. The
 `?ob=0` proof above is the deterministic one and is what the claim rests on.
 
+## Map round 16.1 (2026-08-10) — the icon light is drawn once and MOVED
+
+The reported defect: scrolling the resident sections, the light "lags, jumps by about
+20 px, like 10 fps". It did, and the cause was structural rather than a tuning miss.
+
+### The light re-rendered every frame only to move
+
+`IconLight.draw()` took the icon's position as `centerPx`, a SHADER UNIFORM, on a canvas
+pinned to the viewport. So one pixel of scroll re-ran a full-viewport ~109-fetch-per-pixel
+shader on the **main thread**, while the section text scrolls on the **compositor**. Two
+threads, and only one of them was being asked to do work proportional to nothing.
+
+**Nothing in this light animates** — `timeSec: 0`, `signRot: 0`, and the file's own header
+already recorded `breathe`/`shimmer` as inert by construction. Every one of those frames
+redrew an identical image at a new offset.
+
+It is fill-rate bound, which is why it failed where it hurts (measured on the live site,
+scrolling inside one section):
+
+| viewport | canvas px | median frame |
+|---|---|---|
+| 1440×800 @1x | 1.15 M | 16.7 ms |
+| 1920×1080 @1x | 2.07 M | 16.7 ms |
+| 2560×1400 @1x | 3.58 M | 18.6 ms |
+| **1440×800 @2x** | **4.61 M** | **23.4 ms → 43 fps** |
+
+`getPerfTier().renderScale` is `min(devicePixelRatio, 2)`, so a Retina Mac renders 4× the
+pixels — and a main thread that cannot hold 16.7 ms *must* desync from a compositor that
+does. The reporter was on Retina.
+
+### Bake once, translate for free
+
+The canvas is now **2 viewports tall** with the icon baked at its middle, moved by
+`translate3d`. Two viewports is the exact requirement, not a margin: `envelope()` is
+non-zero only for `y ∈ (0, viewH)`, so anchored on the icon the viewport sweeps
+`[−viewH, +viewH]`.
+
+Re-bakes are free of visible cost because they can only land at `envelope() === 0` — the
+same property round 16 established to hide the mask swap. Icons are one viewport apart, so
+`idx` flips exactly when the outgoing icon hits the bottom edge and the incoming one the
+top.
+
+**Measured, @2x: 23.9 ms → 16.7 ms median, p95 30 ms → 17.6 ms.** And the assertion that
+actually matters, counting `GPUQueue.submit`:
+
+| | before | after |
+|---|---|---|
+| 60 frames inside one section | **60** submissions | **0** |
+| 120 frames across 4 boundaries | **118** | **4** (one per boundary) |
+
+### Three things this turned up, none of them guessable
+
+**`#screen-concept canvas` outranks `.res-light`.** The first attempt set `height: 200%`
+and the light vanished. An ID-scoped rule pins every canvas in the screen to `inset: 0;
+height: 100%`, so the class rule never applied — the canvas stayed one viewport tall with
+a 1600 px render squashed into it. The rule carries the id now and undoes `inset`'s
+`bottom` explicitly.
+
+**Parallax is not a translation, and WHICH scroll position it is baked against is a real
+decision.** `u_parallax` scales `q·0.06 + hoverDir·26`, the swirl, the wind alignment and
+`armLen *= 1 + 1.4·toward·pd·u_parallax` — it drives god-ray ARM LENGTH. Baked at the swap
+moment (icon at a frame edge) the rays came out visibly short. It is now measured against
+the icon's **resting** position, the state the reader actually reads the section in, so the
+light is exactly today's at rest and simply stops responding to scroll. `restY` must come
+from the section's OWN measured height: `.res-section` is `min-height` and two of the seven
+outgrow the viewport (839 and 890 against 800), where `viewH · ICON_FY` is wrong by 30 px.
+
+**The residual pixel difference is the anti-banding dither, and it cannot be avoided.**
+`jit = hash21(fragPx)` seeds the god-ray march start and the bloom spiral rotation from the
+ABSOLUTE fragment position. Baking-and-translating moves the content within the canvas, so
+every pixel draws a different seed. Verified this is all it is: the march itself runs in
+mask-UV space off `p = (fragPx − u_center)/u_scale`, identical for the same visual point at
+any canvas size, and the saturated icon core measures **dy = 0** at every section (section 0
+is bit-identical, 4360 saturated px both). What moves is ~1.5 % of pixels across the
+saturation threshold. The dither's documented job is to be noise; a different instance of
+it is still noise.
+
+### The render scale is capped at 1, and that is a trade, not a free win
+
+At full tier the canvas is 2880×3200 and a bake measured **70–117 ms** — deterministic, at
+the boundary, every time. It lands where the light is invisible, but it blocks the main
+thread *inside the colour crossfade band* (0.6 vh centred on the very boundary that
+triggers it), so the background transition stutters instead.
+
+Three measured options, and none is clean:
+
+| cap | bake hitch | sharpness retained |
+|---|---|---|
+| 2 (full tier) | 70–117 ms | 100 % |
+| 1.5 | 57 ms | 63 % |
+| **1 (shipped)** | **none >30 ms** | **53 %** |
+
+1.5 is the worst of both. Shipped at 1 because the complaint was motion, and this is a
+`dissolve: 0.36` glow with no crisp overlay — but the softening IS visible on Retina when
+the icon is compared at 2×, so this is a designer's call and is logged as an open issue.
+
+Also: all seven masks now pre-rasterize during `requestIdleCallback`. Each costs a 70–90 ms
+frame (SVG decode + `maskCoverage`'s `getImageData`) and round 16 paid one on entering each
+section — measured as 4 stalls in 219 frames, one per newly-entered section.
+
+### Verified
+
+- Map at `scrollTop 0`: **0 differing pixels of 1,152,000**, all seven captions on identical
+  coordinates.
+- Both backends: WebGPU and WebGL2 (forced by shadowing `Navigator.prototype.gpu`) both
+  render the light at the right size, offset and opacity, with no console errors.
+- `npm run build` clean.
+
 ## Open issues
 
+- **[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**
+  Shipped in round 16.1 to remove a 70–117 ms bake hitch at every section boundary. Measured
+  sharpness (mean |∇luminance| over lit pixels) retains **53 %** of the full-tier render, and
+  the difference is visible on the icon silhouette at 2×. `LIGHT_RENDER_SCALE_MAX` in
+  `ConceptScreen.ts` is the single dial; 1.5 was measured and is the worst of both (57 ms
+  hitch AND 63 % sharpness). Wants a designer's eye on a real Retina screen — the honest
+  alternative is full sharpness with a hitch in the background crossfade once per section.
+  **`?ls=<k>` overrides it live** (`?ls=2` is the full tier), so the comparison needs no
+  rebuild.
 - **[OPEN] Round 16's `.res-bg` plate re-antialiases the two ROTATED street captions.**
   Found when rounds 15 and 16 were merged: the map at `scrollTop 0` differs from round 15
   alone by **3,704 px of 1,152,000**, and removing `.res-bg` at runtime makes the two trees

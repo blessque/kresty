@@ -91,16 +91,29 @@
    drops out and the section colour shows through. It is also exactly why the
    section colours had to go deep — screen cannot darken, so a bright field
    would swallow the light entirely. */
-.res-light {
+/* Two viewports tall, with the icon baked at the middle, and moved by a
+   transform rather than re-rendered — see iconLight.ts's header. The height is
+   the exact requirement, not a margin: an icon travels one full viewport while
+   its light is visible, so anchored on the icon the viewport sweeps
+   [-viewH, +viewH]. `top: 0` keeps translate3d's origin at the frame top. */
+/* `#screen-concept canvas` above is an ID-scoped rule pinning every canvas to
+   `inset: 0; height: 100%`, which outranks a bare `.res-light` — so this one
+   has to carry the id too, and must undo `inset`'s `bottom` explicitly or the
+   200% height is fought by a bottom edge nailed to the frame. */
+#screen-concept canvas.res-light {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  right: auto;
+  bottom: auto;
   z-index: 2;
   display: block;
   width: 100%;
-  height: 100%;
+  height: 200%;
   pointer-events: none;
   mix-blend-mode: screen;
   opacity: 0;
+  will-change: transform;
 }
 
 /* Breathing room between the map and the first section. Deliberately has NO

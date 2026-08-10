@@ -89,6 +89,35 @@ const SMOOTH_TAU = 0.12;
  * and Арсенальная наб. back inside the resting frame at y ≈ 779.
  */
 const FIT_MARGIN = 1.03;
+
+/**
+ * Cursor-parallax re-bake gates for the resident-section light.
+ *
+ * The light is drawn once and then MOVED (see `iconLight.ts`), so scrolling is
+ * free — but `u_parallax` deforms the field toward the cursor and can only be
+ * updated by re-running the shader, which costs about two of the old frames.
+ * So: a real move, and at most ten a second. Below ~8 px the deformation is
+ * not resolvable anyway (`parallax` is 2).
+ */
+const BAKE_POINTER_PX = 8;
+const BAKE_POINTER_MS = 100;
+
+/**
+ * Render-scale cap for the resident-section light.
+ *
+ * `getPerfTier().renderScale` is `min(devicePixelRatio, 2)`, which on a Retina
+ * Mac makes this canvas 2880×3200 — and since the canvas is 2 viewports tall,
+ * a bake there measured **70–117 ms**. That lands at `envelope() ≈ 0`, so the
+ * light itself is invisible, but it blocks the main thread inside the colour
+ * crossfade band (0.6 vh centred on the very boundary that triggers it), which
+ * reads as a stutter in the background transition.
+ *
+ * The map keeps the full tier — it draws architecture with 1 px white edges.
+ * This is a dissolved glow with `dissolve: 0.36` and no crisp overlay, so the
+ * device pixels buy far less here than they cost.
+ */
+const LIGHT_RENDER_SCALE_MAX = 1;
+
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max horizontal dimension
 const GROUND_SIZE = MODEL_SPAN * 5;
@@ -110,6 +139,10 @@ export class ConceptScreen {
   private model?: THREE.Object3D;
   private scroll!: MapScroll;
   private sections!: ResidentSections;
+  /** what the icon light was last baked FOR — see updateSections */
+  private bakedIdx = -1;
+  private bakedPointer: [number, number] = [0, 0];
+  private bakedAt = 0;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
   private labels!: MapLabels;
@@ -119,6 +152,7 @@ export class ConceptScreen {
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
+  private lightScaleMax = LIGHT_RENDER_SCALE_MAX;
   private yawDeg = MODEL_YAW_DEG;
   private stageVh = STAGE_VH;
   private raf = 0;
@@ -151,6 +185,11 @@ export class ConceptScreen {
     if (Number.isFinite(yaw)) this.yawDeg = yaw;
     const vh = parseFloat(q.get('vh') ?? '');
     if (Number.isFinite(vh)) this.stageVh = vh;
+    // `?ls=<k>` — the section light's render-scale cap, so the sharpness/hitch
+    // trade can be judged on a real Retina screen without a rebuild. `?ls=2`
+    // is the full tier. See LIGHT_RENDER_SCALE_MAX.
+    const ls = parseFloat(q.get('ls') ?? '');
+    if (Number.isFinite(ls) && ls > 0) this.lightScaleMax = ls;
     this.buildDom();
     this.buildScene();
     // a boolean flag, not a dial: `?admin`, `?admin=1` and `?admin=yes` all open
@@ -472,7 +511,9 @@ export class ConceptScreen {
     this.mapCam.snap();
     // section geometry is measured, not assumed 100vh — see residentSections.ts
     this.sections.measure();
-    this.sections.light.resize();
+    // the scroller's box, never the window: the light canvas is 2 viewports
+    // tall, so an error here is doubled
+    this.sections.light.setViewport(this.scroll.stageW, this.scroll.viewH);
   };
 
   /** the canvas the captions and the picker work in — never the window */
@@ -598,13 +639,60 @@ export class ConceptScreen {
     // stays a purely map interaction — and still leaves ~670 px of runway
     // before the first icon's envelope lifts off zero at 1306.
     if (this.scroll.scrollTop + this.scroll.viewH * 1.5 > this.sections.firstTop) {
-      void this.sections.light.ensure(getPerfTier().renderScale);
+      void this.sections.light.ensure(
+        Math.min(getPerfTier().renderScale, this.lightScaleMax)
+      );
     }
-    if (s.opacity <= 0) {
-      this.sections.light.hide();
-      return;
+
+    const light = this.sections.light;
+    light.setViewport(this.scroll.stageW, this.scroll.viewH);
+    // per frame, and this is ALL that happens per frame: a transform write the
+    // compositor carries, so the light rides with the text instead of chasing
+    // it from the main thread. See iconLight.ts's header for the measurements.
+    light.position(s.center[1], s.opacity);
+
+    // A bake is a full shader run, so it is gated to the three things that can
+    // actually change the IMAGE. Scroll is not one of them.
+    //
+    // The section change is free by construction: `idx` flips exactly when the
+    // outgoing icon hits the bottom frame edge and the incoming one the top,
+    // which is `envelope() === 0` — the same property that hides the mask swap.
+    const idxChanged = s.idx !== this.bakedIdx;
+    // Parallax is a real deformation toward the cursor, so it can only be had
+    // by re-rendering. Gated on a visible light, a real move and a rate limit,
+    // because one bake costs about two of the old frames.
+    const now = performance.now();
+    const moved = Math.hypot(
+      this.cursor.x - this.bakedPointer[0],
+      this.cursor.y - this.bakedPointer[1]
+    );
+    const parallaxDue =
+      moved >= BAKE_POINTER_PX &&
+      s.opacity > 0.002 &&
+      now - this.bakedAt >= BAKE_POINTER_MS;
+
+    if (idxChanged || parallaxDue) {
+      // The pointer goes in CANVAS-LOCAL px, and which scroll position it is
+      // measured against is a real decision, because `u_parallax` drives the
+      // god-ray ARM LENGTH (`armLen *= 1 + 1.4·toward·pd·u_parallax`), not just
+      // a couple of px of drift. Measured at the bake moment it would freeze
+      // the relationship at `envelope() === 0`, i.e. with the icon at a frame
+      // edge — visibly shorter rays than the page has ever shown.
+      //
+      // So it is measured against the icon's RESTING position — the state the
+      // reader actually reads the section in. The light is then exactly today's
+      // at rest, and stops responding to scroll, which is the whole point,
+      // since responding to scroll is what cost the frame. `restY` comes from
+      // the section's own measured height, not `viewH·ICON_FY`: two of the
+      // seven sections outgrow the viewport.
+      light.bake(s.idx, s.center[0], [
+        this.cursor.x,
+        this.scroll.viewH + this.cursor.y - s.restY,
+      ]);
+      this.bakedIdx = s.idx;
+      this.bakedPointer = [this.cursor.x, this.cursor.y];
+      this.bakedAt = now;
     }
-    this.sections.light.draw(s.idx, s.center, [this.cursor.x, this.cursor.y], s.opacity);
   }
 
   private updateShear() {

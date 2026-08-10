@@ -81,6 +81,16 @@ export interface TrackState {
   /** 0…1 — the light's envelope; 0 exactly at a mask swap */
   opacity: number;
   /**
+   * Where the live icon sits when its section is at rest, CSS px down the
+   * viewport — i.e. `center[1]` at `scrollTop === tops[idx]`.
+   *
+   * This is the reference the light's cursor-parallax is baked against, so it
+   * must use the section's OWN measured height: `res-section` is `min-height`,
+   * and two of the seven outgrow the viewport (839 and 890 against 800), where
+   * `viewH · ICON_FY` is wrong by up to 30 px.
+   */
+  restY: number;
+  /**
    * Is the page currently dark enough that the chrome has to invert?
    *
    * The logo is authored `#123a5c` for the near-white map and disappears on a
@@ -227,7 +237,14 @@ export class ResidentSections {
     // this gate never cuts a visible light — see GAP_VH.
     const opacity = mapVisible ? 0 : IconLight.envelope(bestY / viewH);
 
-    return { bg, idx, center: [viewW * ICON_FX, bestY], opacity, dark };
+    return {
+      bg,
+      idx,
+      center: [viewW * ICON_FX, bestY],
+      opacity,
+      dark,
+      restY: (this.heights[idx] ?? viewH) * ICON_FY,
+    };
   }
 
   private colorOf(i: number): string {
