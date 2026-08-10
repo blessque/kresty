@@ -15,6 +15,7 @@ import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
 import { MapInfo } from './MapInfo';
 import { MapScroll, STAGE_VH } from './mapScroll';
+import { ResidentSections } from './residentSections';
 
 /**
  * Plan-oblique («military») projection: the camera is PERMANENTLY straight
@@ -108,6 +109,7 @@ export class ConceptScreen {
 
   private model?: THREE.Object3D;
   private scroll!: MapScroll;
+  private sections!: ResidentSections;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
   private labels!: MapLabels;
@@ -206,6 +208,9 @@ export class ConceptScreen {
     // pinned. See mapScroll.ts.
     this.scroll = new MapScroll(this.el, this.stageVh);
     this.scroll.stage.appendChild(this.renderer.domElement);
+    // the resident sections go INTO the scroller, after the map stage; their
+    // background plate and their light canvas go outside it, pinned. Round 16.
+    this.sections = new ResidentSections(this.el, this.scroll.scroller);
 
     const add = (tag: string, cls: string, html: string) => {
       const n = document.createElement(tag);
@@ -250,10 +255,13 @@ export class ConceptScreen {
       if (this.drawer.hovered) return;
       if (e.pointerType === 'touch') {
         if (!this.dragging) return;
+        // ROUND 16: HORIZONTAL ONLY on touch. The scroller now owns vertical
+        // drag (`touch-action: pan-y`) because the resident sections are below
+        // the map and were otherwise unreachable on a phone. Keeping the
+        // vertical term here would lean the plan while the reader scrolls past
+        // it, which reads as the map fighting the page.
         this.inputX += (e.clientX - this.lastDrag.x) / 240;
-        this.inputY += (e.clientY - this.lastDrag.y) / 240;
         this.inputX = Math.max(-1, Math.min(1, this.inputX));
-        this.inputY = Math.max(-1, Math.min(1, this.inputY));
         this.lastDrag = { x: e.clientX, y: e.clientY };
       } else {
         this.inputX = (e.clientX / innerWidth) * 2 - 1;
@@ -462,6 +470,9 @@ export class ConceptScreen {
     this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
     this.mapCam.setOverscan(this.scroll.overscan);
     this.mapCam.snap();
+    // section geometry is measured, not assumed 100vh — see residentSections.ts
+    this.sections.measure();
+    this.sections.light.resize();
   };
 
   /** the canvas the captions and the picker work in — never the window */
@@ -470,7 +481,9 @@ export class ConceptScreen {
       w: this.scroll.stageW,
       h: this.scroll.stageH,
       restH: innerHeight,
-      scrollTop: this.scroll.scrollTop,
+      // the MAP's own scroll, clamped to the stage — past the map this stops
+      // advancing rather than dragging the caption domain into the sections
+      scrollTop: this.scroll.mapScrollTop,
     };
   }
 
@@ -489,20 +502,28 @@ export class ConceptScreen {
       const k = 1 - Math.exp(-dt / SMOOTH_TAU);
       this.smX += (this.inputX - this.smX) * k;
       this.smY += (this.inputY - this.smY) * k;
-      this.mapCam.update(dt);
-      this.ground?.setFocus(this.mapCam.focus);
-      this.waterT += dt * this.timeScale;
-      this.ground?.update(this.waterT);
-      this.updateShear();
-      this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.scrollTop);
-      this.picker.update(this.scene, this.mapCam.camera);
-      this.labels.update(
-        this.mapCam.camera,
-        this.view,
-        this.mapCam.focus,
-        this.shearGroup.matrix
-      );
-      this.renderer.render(this.scene, this.mapCam.camera);
+      // ROUND 16. The map is above the sections, so the two renderers are never
+      // both wanted; each is gated on whether the map stage is still on screen.
+      // The page therefore never pays for Three.js and the ray field in the
+      // same frame, however long the document gets.
+      const mapVisible = this.scroll.mapVisible;
+      if (mapVisible) {
+        this.mapCam.update(dt);
+        this.ground?.setFocus(this.mapCam.focus);
+        this.waterT += dt * this.timeScale;
+        this.ground?.update(this.waterT);
+        this.updateShear();
+        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.mapScrollTop);
+        this.picker.update(this.scene, this.mapCam.camera);
+        this.labels.update(
+          this.mapCam.camera,
+          this.view,
+          this.mapCam.focus,
+          this.shearGroup.matrix
+        );
+        this.renderer.render(this.scene, this.mapCam.camera);
+      }
+      this.updateSections(mapVisible);
       if (this.panel) this.reportStats(now);
       this.raf = requestAnimationFrame(loop);
     };
@@ -541,6 +562,49 @@ export class ConceptScreen {
     this.panel?.setStats((this.fpsFrames * 1000) / span, span / this.fpsFrames);
     this.fpsFrames = 0;
     this.fpsSince = now;
+  }
+
+  /**
+   * The resident sections: background colour, and the light on the live icon.
+   *
+   * Everything here is a pure function of the scroll position — there is no
+   * scroll-driven state to fall out of sync, and no scroll listener either,
+   * since the loop is already running.
+   */
+  private updateSections(mapVisible: boolean) {
+    const s = this.sections.track(
+      this.scroll.scrollTop,
+      this.scroll.stageW,
+      this.scroll.viewH,
+      mapVisible
+    );
+    this.sections.apply(s);
+    // Two different triggers on purpose. The logo follows the BACKGROUND's
+    // luminance, because it has to survive both the white gap and a deep
+    // section. The hover rail follows the MAP, because what it says stops being
+    // true the moment there is nothing left to hover.
+    this.el.classList.toggle('on-dark', s.dark);
+    this.el.classList.toggle('past-map', !mapVisible);
+
+    // Warm the second GPU context up before the sections arrive, without ever
+    // creating it for a reader who stays on the map.
+    //
+    // Measured against the first section's OWN top, not the map's bottom:
+    // `stageH − 2·viewH` is NEGATIVE at the shipped 1.5 stage, so that form
+    // fired on frame one and quietly gave every visitor a second context.
+    //
+    // 1.5 viewports is what separates the two readers. At 800 px it warms at
+    // scrollTop 640, which is past the river hint's 400 — so «посмотреть Неву»
+    // stays a purely map interaction — and still leaves ~670 px of runway
+    // before the first icon's envelope lifts off zero at 1306.
+    if (this.scroll.scrollTop + this.scroll.viewH * 1.5 > this.sections.firstTop) {
+      void this.sections.light.ensure(getPerfTier().renderScale);
+    }
+    if (s.opacity <= 0) {
+      this.sections.light.hide();
+      return;
+    }
+    this.sections.light.draw(s.idx, s.center, [this.cursor.x, this.cursor.y], s.opacity);
   }
 
   private updateShear() {
