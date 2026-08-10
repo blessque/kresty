@@ -16,7 +16,15 @@ import * as THREE from 'three';
  *
  * IDs must be STABLE — buildingsInfo.ts is keyed by them — so components are
  * sorted deterministically (triangle count desc, then min x, then min z).
- * Replacing the GLB invalidates the mapping.
+ *
+ * Replacing the GLB THEREFORE RISKS invalidating the mapping — but it is the
+ * sort key that decides, not the file. Round 15 swapped the whole model to fix
+ * the roads and all 19 ids survived unmoved, because the volumes were untouched
+ * and the key reads nothing else. What actually breaks it is re-modelling a
+ * building (its triangle count moves it in the sort) or re-orienting the model
+ * (min x / min z are not rotation-invariant, and b13/b14 are tied at 110 tris).
+ * So: re-run the split and diff the ids against the old file. Do not assume
+ * either way.
  */
 
 export interface BuildingPart {

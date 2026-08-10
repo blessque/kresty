@@ -33,6 +33,24 @@ export function makeEdgeMaterial(
     // lines are the drawing — they must not be occluded away by the hazy
     // alpha-blended fill they sit on
     depthWrite: false,
+    // …and they must not LOSE THE TIE to it either. An edge line is exactly
+    // coplanar with the two faces that produce it, so whether it survives the
+    // depth test is decided by float error in the rasteriser's interpolation —
+    // which means it is decided by how the exporter happened to triangulate
+    // that face. Round 15's model re-triangulated the Ротонда's roof and its
+    // two ribs silently lost the coin toss and vanished; the drum went flat.
+    //
+    // A tiny bias toward the camera settles the tie the way the drawing wants
+    // it settled, everywhere, and it is the SAME tool groundPlan.ts uses for
+    // the same class of problem (PLAN_PUSH, the pier-vs-river flicker). It
+    // biases only the depth VALUE written, never the vertex, so nothing moves
+    // on screen. Small on purpose: this must win coplanar ties and nothing
+    // else — disabling depthTest instead over-reveals, drawing edges that a
+    // taller building in front should legitimately hide (measured: brighter
+    // than the pre-round-15 model, not equal to it).
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
   });
 }
 

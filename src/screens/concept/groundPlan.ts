@@ -4,9 +4,8 @@ import { applyWater, type WaterHandle } from './water';
 import { WATER_DEFAULTS } from './waterParams';
 
 /**
- * The flat site plan under the buildings — the Neva, the two roads and the
- * neighbouring city blocks that `map-w-river.glb` carries as zero-thickness
- * surfaces.
+ * The flat site plan under the buildings — the Neva and the two roads, which
+ * `map-fixed-roads.glb` carries as zero-thickness surfaces.
  *
  * WHY THIS NEEDS NO ANTI-DISTORTION MACHINERY AT ALL
  * --------------------------------------------------
@@ -19,10 +18,17 @@ import { WATER_DEFAULTS } from './waterParams';
  * undistorted plan under any lean — not because anything special is done to
  * it, but because it lies on the one plane the shear cannot touch.
  *
- * The GLB cooperates exactly: all three flat primitives sit on a single plane
- * (local z ≡ 614.914) which, after the node's Z-up→Y-up rotation, IS the
- * model's minimum world y — and ConceptScreen's normalize already puts the
- * model's minimum at y = 0. There is no baseline to fudge.
+ * The GLB cooperates: both flat primitives sit on one plane (local z ≈ 128.128)
+ * which, after the node's Z-up→Y-up rotation, IS the model's minimum world y —
+ * and ConceptScreen's normalize already puts the model's minimum at y = 0.
+ * There is no baseline to fudge.
+ *
+ * "One plane" is now approximate rather than exact: round 15's export scatters
+ * those vertices over 3.4e-3 local units, ≈1e-4 once the model is normalized to
+ * its 300-unit span. That is three orders below what `PLAN_PUSH` resolves, and
+ * it buys the shear ~1e-4 px of travel at full lean — i.e. the invariance is
+ * numerically intact, just no longer algebraically exact. Worth knowing before
+ * anyone re-derives the argument from an equality that no longer holds.
  *
  * The same geometry becomes a real ground surface the moment a building is
  * selected, because focus mode rotates the CAMERA (mapCamera.ts) and no plane
@@ -66,15 +72,20 @@ const TONES: Record<string, { color: number; depth: number; hidden?: true }> = {
   /**
    * Neighbouring city blocks — a solidly present grey that framed the site.
    *
-   * ROUND 12: HIDDEN at the designer's request. The entry stays, marked rather
-   * than deleted, because this is a composition call and round 9.1 added these
-   * on purpose; dropping `hidden` brings them back exactly as they were.
+   * ROUND 12 hid them at the designer's request; ROUND 15's export DELETED the
+   * primitive outright, so this entry no longer matches anything the GLB ships.
    *
-   * Nothing is cut out by removing them. They are their own GLB primitive (57
-   * triangles, material Color_M02) sharing no geometry with the streets or the
-   * river, and what shows through is mapStudio's #dde6e9 ground plate — which
-   * already IS the site's ground, since the GLB carries no surface for the site
-   * itself. So the area falls back to the tone Кресты stands on, not to a hole.
+   * It is kept anyway, and not out of sentiment: without it a re-export that
+   * brings `Color_M02` back would fall through to FALLBACK — which is
+   * `0xccd7dd` at depth 1, i.e. EXACTLY the tone these were drawn in before
+   * round 12. The blocks would silently reappear, correctly styled, and look
+   * like they had never been removed. Three lines of guard against un-deciding
+   * a composition call by accident.
+   *
+   * (Nothing was ever cut out by hiding them: they were their own primitive
+   * sharing no geometry with the streets or the river, and what shows through
+   * is mapStudio's #dde6e9 ground plate — which already IS the site's ground,
+   * since the GLB carries no surface for the site itself.)
    */
   Color_M02: { color: 0xccd7dd, depth: 1, hidden: true },
   /** Арсенальная наб. + ул. Комсомола — lighter than the ground plate, so the

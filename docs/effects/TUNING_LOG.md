@@ -3011,8 +3011,165 @@ The default row is not neutral grey because the shader's own cool far-field drif
 there — correct, and the proof the tint composes with it instead of replacing it. The main
 screen is unchanged: ×(1,1,1) is exact identity, and every variant in `base` ships white.
 
-## Open issues
+---
 
+## Map round 15 — the straight-roads GLB (2026-08-07)
+
+The designer re-exported the site model: both roads **straightened** (they were kinked
+ribbons wandering several degrees across the frame, and the shoreline followed the
+embankment's far edge, so it was kinked too), and the neighbouring city blocks **deleted at
+source** rather than hidden. `map-w-river.glb` → `map-fixed-roads.glb`.
+
+### The swap itself is a no-op. That was measured, not assumed.
+
+`buildingSplit.ts` carried the warning *"replacing the GLB invalidates the mapping"*, so the
+first job was to find out whether it applied. It does not:
+
+| | result |
+|---|---|
+| **Building ids** | **19 parts, `b00`…`b18` — identical order, triangle counts, bboxes and centroids to 3 dp** |
+| b13/b14 (tied at 110 tris) | b13 is still the `min.x = −10.68` one |
+| Connected components | 27 (19 + 8) in both, before and after absorption |
+| `overviewHalfH` | 119.54242695 → 119.54243826 (1.1e-8 relative) |
+| Silhouettes at rest | **pointwise identical** — 5 scanned rows, every edge transition on the same pixel |
+| Picking | 5 probes → same building, same drawer copy |
+| Water | untouched: the shader reads world XZ (`vFlow`), not UV, so a bigger river polygon does not rescale the waves |
+
+The warning is about the **sort key**, not the file. What moves an id is re-modelling a
+building (its triangle count moves it in the sort) or re-orienting the model (`min.x`/`min.z`
+are not rotation-invariant). A roads-only edit touches neither. The header now says that
+instead, plus: re-run the split and diff, do not assume either way.
+
+**How this was measured without editing anything.** Both GLBs were loaded through the real
+pipeline by importing `buildingSplit.ts` from the Vite dev server inside a Playwright page —
+Vite transpiles the project's TypeScript on demand, so the comparison runs the shipping code,
+not a reimplementation of it. And the new model was driven through the **live app** with
+`page.route('**/map-w-river.glb', …)` serving the new bytes, so the whole screen could be
+exercised before a single file changed on disk. Worth reaching for again: it turns "will this
+break?" into a measurement.
+
+### What actually broke: `triCount >= 4`
+
+`mapLabels.ts` filtered street components on triangle count. The old kinked ribbons were 9
+and 6 triangles; **the straightened ones are 3 and 2**, so both were filtered out. And the
+guard below read `if (!water || streets.length === 0) return;` — one early return shared by
+all three plan captions — so the river caption went with them.
+
+**Result: «р. Нева», «Арсенальная наб.» and «ул. Комсомола» all vanished because the roads
+got SIMPLER.** Nothing logged, nothing threw; the map just quietly lost its place names.
+
+Two separate lessons, both already learned once in this codebase:
+
+- **Triangle count measures modelling detail, not size.** `buildingSplit.ts` says so in its
+  own header, and its `MIN_FOOTPRINT_FRAC` exists because a church column has 44 triangles.
+  The street filter is now `horizontalRun(c) >= siteSpan * 0.25` — a road crosses the site by
+  definition, and the two real ones measure 2.4× and 4.8× the span, so the threshold is a
+  wide moat rather than a tuned number. The `.slice(0, 2)` sorts by run for the same reason.
+- **Do not share an early return between independent features.** The river's caption has no
+  business depending on whether the streets parsed. Each has its own guard now.
+
+### «Арсенальная наб.» follows its road below the fold
+
+Straightening the embankment dropped it from a diagonal crossing the resting frame to a level
+band **~48 px below it**. Round 14 had given the streets `band: 'rest'` precisely because
+`full` let this caption settle 28 px below the fold — lettering road nobody saw at rest. That
+premise is now gone: at rest there is no road to letter at all, so a `rest` solve returns
+`unplaced`.
+
+Same rule, opposite answer — *a caption goes where its feature reads*. Both streets get
+`'full'`; it places at (388, 809), horizontal, on the white band. For «ул. Комсомола» the flag
+is inert either way: that one sits **above** the frame, and the stage only extends downward.
+
+A composition consequence worth noting: **at rest the map is now pure land.** The old kinked
+shoreline poked a blue triangle into the bottom-left corner — the very artefact that prompted
+round 14's scroll — and the straight one clears the frame entirely.
+
+### `Color_M02` is gone from the export, and the entry stays anyway
+
+The blocks were hidden in round 12 and are now deleted upstream, so `TONES.Color_M02` matches
+nothing. It is kept regardless: without it, a re-export that brings the material back would
+fall through to `FALLBACK`, which is `0xccd7dd` at depth 1 — **exactly** the tone they were
+drawn in before round 12. They would reappear, correctly styled, looking like they had never
+been removed. Three lines of guard against un-deciding a composition call by accident.
+
+### The Ротонда went flat, and the model was not to blame
+
+Deleting a few roof triangles on b04 in Blender cost the drum its two white ribs in plan
+view — it dissolved into the roof of the block it stands on. The obvious reading is "the
+geometry is gone". It is not:
+
+| | base rib | mid rib | top rib |
+|---|---|---|---|
+| before | 55 segments | 50 | 50 |
+| after | 55 segments | 50 | 48 |
+
+Same ribs, same heights, and the drum renders perfectly in focus view. What changed is who
+won a **coplanar depth tie**. An edge line is exactly coplanar with the two faces that
+generate it, so whether it survives `depthTest` is decided by float error in the rasteriser's
+depth interpolation — which depends on how the face was triangulated. Re-tessellating the cap
+changed the interpolation and the ribs started losing a toss they had been winning by luck.
+Measured on row y=655: 119/106/121 → 89/91/91 against an 89,176,230 fill.
+
+**Fix: `polygonOffset` on the edge material** (`-1` factor, `-4` units) — the same tool
+`groundPlan.ts` uses for the pier-vs-river flicker, biasing the depth VALUE and never the
+vertex, so nothing moves on screen. It reproduces the pre-round-15 render **exactly** at all
+three rib pixels, and cuts the whole-frame difference from the old model over building area
+from 8,103 px to 3,123 px — a lot of interior lines model-wide had been losing the same tie
+unnoticed. The drawing is crisper than it was.
+
+**Disabling `depthTest` is the wrong fix and the measurement says so**: it over-reveals
+(137/115/138 — *brighter* than the old model), because it also draws edges that a building in
+front should legitimately hide. The bias must win coplanar ties and nothing else.
+
+The general lesson is worth keeping: **an exporter's triangulation is not a cosmetic detail
+once anything in the pipeline depends on coplanar depth ordering.** Nothing about "delete 4
+triangles" predicts "a building loses its drawing", and no amount of reading the diff would
+have found it — the answer came from toggling `depthTest` and watching the pixels.
+
+### Naming ул. Комсомола cost 8 % of zoom, and round 12 had already priced it
+
+Straightening the roads narrowed the upper street from a tilted wedge dipping 58 px into the
+frame to a level band showing 36 px. Its caption had been `unplaced` since round 12 either
+way, and instrumenting the solver says exactly why: the box needs its centre at
+`SOLVE_MARGIN (28) + half.y (14.9) = 42.9` from the top **and** `MIN_CLEARANCE (13)` clear of
+the road's near edge at 36.1 — a contradiction by ~20 px. It needs the road's near edge at
+≥ 55.9 px.
+
+`FIT_MARGIN` 0.95 → **1.03** buys exactly that, and the value is measured: 1.00 still leaves
+it unplaced, 1.03 is the first that places it (at 563, 28). Round 12's open issue had priced
+this at "~33 px vs ~56 px, roughly 6 % of zoom-out" — an independent re-measurement three
+rounds later landed on 36 vs 55.9 and 8 %. Good sign for the method.
+
+Also gained: Арсенальная наб. rises back inside the resting frame, so both roads read as
+ribbons top and bottom with both streets named, and **all seven captions place — a first for
+this screen.**
+
+### A `full`-band caption may not straddle the fold
+
+That widening immediately produced a new defect: with the embankment's road back in the
+resting frame, the solver placed its caption at y 778.9 with a box reaching 808.7 — 9 px
+amputated by the 800 px viewport until you scrolled.
+
+Demoting it to `band: 'rest'` does not work, and the reason is worth stating: that road's near
+edge is now *below* the rest band's ceiling, so the constraint makes the caption unplaceable
+again. The legal domain is genuinely **two regions**, above the fold and below it, not one
+shifted region — so the seam itself is rejected (`straddles()`, applied in both the general
+search and `solveStreet`) and the search takes whichever side has room. It moved 10 px up and
+sits whole.
+
+### Smaller things the new export changed
+
+- The node **translation is gone** (`[0, 1.0923, 0]`), with the geometry shifted to
+  compensate. Invisible downstream only because `mesh.matrixWorld` is baked wholesale and the
+  model is re-seated on `massedBox` + `groundY`. That is the reason not to reach into the node
+  for its quaternion.
+- The flat primitives are **no longer exactly coplanar** — 3.4e-3 local units of scatter,
+  ≈1e-4 after normalizing to the 300-unit span. Three orders below what `PLAN_PUSH` resolves,
+  and ~1e-4 px of shear travel at full lean. The plan's invariance is numerically intact but
+  no longer algebraically exact; `groundPlan.ts` says so, so nobody re-derives it from an
+  equality that has stopped holding.
+
+## Open issues
 
 - **[OPEN] `bg` is useless above roughly 70% lightness** — screen blending cannot darken, so
   pale page colours wash the light out and `#ffffff` renders a blank white page. If the designer
@@ -3063,12 +3220,11 @@ screen is unchanged: ×(1,1,1) is exact identity, and every variant in `base` sh
 - ~~**[OPEN] Which cross is 5★ and which is 4★ is inferred.**~~ **RESOLVED (round 13):** the
   client's map labels the west cross Cosmos 4\* and the east 5\*, which is what the code
   already had on those two buildings.
-- **[OPEN] «ул. Комсомола» is no longer labelled.** Round 12 squared the plan to the screen,
-  which pushed that street off the top of the frame — only ~33 px survives, against the ~56 px
-  a caption needs. Its label now correctly hides itself rather than parking on the logo, but
-  the street is unnamed. Restoring it costs roughly **6 % of zoom-out** (`FIT_MARGIN` 0.95 →
-  ~1.01), which shrinks everything else; that is a designer call, and the alternative is to
-  accept a plan that names the embankment and the river only.
+- ~~**[OPEN] «ул. Комсомола» is no longer labelled.**~~ **RESOLVED in map round 15** — the
+  designer took the zoom-out. Round 12's diagnosis was exact and held for three rounds:
+  ~33 px of street against the ~56 px a caption needs, ~6 % of zoom-out to fix. Re-measured
+  independently on the new model at 36 px vs 55.9 px, and the first `FIT_MARGIN` that places
+  it is **1.03** (1.00 is still short), for ~8 % of size. All seven captions now place.
 - **[OPEN] The secondary buildings' identities are a reading of the zoning plan, not a
   lit-letter match.** b00/b01/b02/b04/b15/b18 are certain from geometry; the other twelve
   carry plausible functions from the plan's legend, assigned by which side of the site they

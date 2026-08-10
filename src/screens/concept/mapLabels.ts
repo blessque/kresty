@@ -101,6 +101,14 @@ const GRID_STEP = 5;
  */
 const STREET_BIAS = 0.3;
 
+/**
+ * A `Color_M04` component counts as a street once it runs at least this much of
+ * the site's own span. Both real roads cross the whole site and then bleed off
+ * both edges — they measure 2.4× and 4.8× the span — so this is a wide moat
+ * around the only two things that can pass, not a tuned threshold.
+ */
+const MIN_STREET_RUN_FRAC = 0.25;
+
 /** captions fade out as the camera swings to a focused building — the
  *  isometric view is not a plan, and a plan caption reads as a mistake there */
 const FADE_POWER = 2;
@@ -172,12 +180,19 @@ interface Label {
    * `rest` = the window-sized band visible before you scroll; `full` = the
    * whole 150vh stage, including the revealed river.
    *
-   * The rule is "a caption goes where its feature READS", and after round 14
-   * the two kinds of feature read in different bands. Both streets sweep south
-   * past the resting frame, so `full` let «Арсенальная наб.» settle 28px below
-   * the fold — lettering on a stretch of road nobody sees at rest. The Neva is
-   * the opposite case: it was `unplaced` for want of visible water, and the
-   * band this round reveals is the only place its caption can go.
+   * The rule is "a caption goes where its feature READS". Round 14 read that as
+   * `rest` for the streets and `full` for the river: the embankment then still
+   * crossed the resting frame diagonally, so `full` let it settle 28px below
+   * the fold — lettering a stretch of road nobody saw at rest — while the Neva
+   * was `unplaced` for want of visible water.
+   *
+   * ROUND 15 MOVED THE ROAD, so the same rule now gives the opposite answer.
+   * Straightening Арсенальная наб. dropped it to a level band ~48px BELOW the
+   * resting frame; it is not partly visible any more, it is not visible at all.
+   * A `rest` solve therefore has no road to letter and comes out `unplaced`,
+   * and the caption follows its road down. `full` for everything is now one
+   * code path, and for ул. Комсомола it is inert either way — that one sits
+   * ABOVE the frame, and the stage only extends downward.
    */
   band: 'rest' | 'full';
   /** solved world-space anchor; null until the first solve */
@@ -225,9 +240,26 @@ export class MapLabels {
     this.buildBuildings(parts, modelMatrix, siteSpan);
 
     const water = biggest(components(surfaces, WATER_MAT));
+    if (water) {
+      this.add(TEXT.river, feature(water, modelMatrix), 'river', 'bottom-left', false, 'full');
+    }
+
+    // A street is told from a scrap by its RUN, not by its triangle count.
+    //
+    // This was `triCount >= 4`, and round 15's export broke it: straightening
+    // the two roads took them from 9 and 6 triangles to 3 and 2, so both were
+    // filtered out — and since the guard here used to be shared with the river,
+    // the early return took «р. Нева» down with them. All three plan captions
+    // vanished because the roads got SIMPLER.
+    //
+    // `buildingSplit.ts` already learned this and says so in its own header:
+    // triangle count measures modelling detail, and modelling detail is not
+    // what makes something a street. A road crosses the whole site by
+    // definition, so measure that instead and the filter survives the next
+    // re-export.
     const streets = components(surfaces, STREET_MAT)
-      .filter((c) => c.triCount >= 4)
-      .sort((p, q) => q.triCount - p.triCount)
+      .filter((c) => horizontalRun(c) >= siteSpan * MIN_STREET_RUN_FRAC)
+      .sort((p, q) => horizontalRun(q) - horizontalRun(p))
       .slice(0, 2);
     if (!water || streets.length === 0) return;
 
@@ -238,12 +270,9 @@ export class MapLabels {
         q.centroid.distanceToSquared(water.centroid)
     );
 
-    // the river is the one caption allowed into the scrolled band — see Label.band
-    this.add(TEXT.river, feature(water, modelMatrix), 'river', 'bottom-left', false, 'full');
-
     const names = [TEXT.embankment, TEXT.inland];
     streets.forEach((s, i) => {
-      this.add(names[i], feature(s, modelMatrix), 'street', 'street', true, 'rest');
+      this.add(names[i], feature(s, modelMatrix), 'street', 'street', true, 'full');
     });
   }
 
@@ -412,6 +441,8 @@ export class MapLabels {
 
       // on-screen axis direction, pointing screen-rightward, for the street bias
       const axis = screenAxis(l.feature, camera, w, h);
+      // the resting fold, for captions allowed past it — see `straddles`
+      const fold = l.band === 'full' ? view.restH : Infinity;
 
       let best: { x: number; y: number } | null = null;
       let bestScore = -Infinity;
@@ -420,6 +451,7 @@ export class MapLabels {
         for (let x = x0; x <= x1; x += GRID_STEP) {
           if (!insideAny(scr, x, y)) continue;
           if (overlaps(blocked, x, y, half)) continue;
+          if (straddles(y, half, fold)) continue;
           const clear = clearance(edges, x, y);
           if (clear < MIN_CLEARANCE) continue;
 
@@ -448,7 +480,7 @@ export class MapLabels {
       }
 
       if (l.bias === 'street') {
-        best = solveStreet(scr, edges, x0, y0, x1, y1, axis, blocked, half) ?? best;
+        best = solveStreet(scr, edges, x0, y0, x1, y1, axis, blocked, half, fold) ?? best;
       }
       if (!best) continue;
 
@@ -465,6 +497,33 @@ export class MapLabels {
 }
 
 // ---------------------------------------------------------------- internals
+
+/**
+ * Would a caption centred at `y` be cut in half by the resting fold?
+ *
+ * A `full`-band caption may sit above the fold or below it — but never ACROSS
+ * it, because the resting viewport clips whatever hangs past and the caption
+ * ships as a row of severed letters until you scroll. Round 15 hit this the
+ * moment the wider fit brought Арсенальная наб.'s road back into the resting
+ * frame: the solver placed it at y 778.9 with a box reaching 808.7, so 9 px of
+ * it were amputated at rest.
+ *
+ * Demoting the caption to `band: 'rest'` is NOT the fix — that road's near edge
+ * now sits below the rest band's ceiling, so the constraint makes it
+ * unplaceable again. The domain is genuinely two legal regions, not one shifted
+ * one, and this is the cheapest way to say so: reject the seam, let the search
+ * find whichever side has room. `Infinity` for `rest`-band captions, which can
+ * never reach the fold anyway.
+ */
+function straddles(y: number, half: P2, fold: number): boolean {
+  return y - half.y < fold && y + half.y > fold;
+}
+
+/** longest horizontal extent of a flat component — its run across the site */
+function horizontalRun(c: MeshComponent): number {
+  const s = c.bbox.getSize(new THREE.Vector3());
+  return Math.max(s.x, s.z);
+}
 
 function components(surfaces: FlatSurface[], material: string): MeshComponent[] {
   const out: MeshComponent[] = [];
@@ -643,13 +702,15 @@ function solveStreet(
   x0: number, y0: number, x1: number, y1: number,
   axis: P2,
   blocked: Rect[],
-  half: P2
+  half: P2,
+  fold: number
 ): P2 | null {
   const valid: { p: P2; t: number; clear: number }[] = [];
   for (let y = y0; y <= y1; y += GRID_STEP) {
     for (let x = x0; x <= x1; x += GRID_STEP) {
       if (!insideAny(scr, x, y)) continue;
       if (overlaps(blocked, x, y, half)) continue;
+      if (straddles(y, half, fold)) continue;
       const clear = clearance(edges, x, y);
       if (clear < MIN_CLEARANCE) continue;
       valid.push({ p: { x, y }, t: x * axis.x + y * axis.y, clear });

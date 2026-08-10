@@ -32,7 +32,7 @@ import { MapScroll, STAGE_VH } from './mapScroll';
  * Materials in mapLooks.ts, studio in mapStudio.ts; TUNING_LOG map rounds 4–7.
  */
 
-const MODEL_GLB = asset('/resources/map-w-river.glb');
+const MODEL_GLB = asset('/resources/map-fixed-roads.glb');
 /**
  * Yaw applied to the whole model, so the SITE GRID is square to the screen.
  *
@@ -69,8 +69,25 @@ const DEADZONE = 0;
 const RESPONSE_GAIN = 5;
 /** cursor smoothing time constant (s) — small = snappy follow */
 const SMOOTH_TAU = 0.12;
-/** breathing room around the worst-case (fully sheared) extent; ?fit=<k> */
-const FIT_MARGIN = 0.95;
+/**
+ * Breathing room around the worst-case (fully sheared) extent; `?fit=<k>`.
+ * Higher = a bigger frustum = the model reads SMALLER. (Round 13 tightened this
+ * the other way, so the direction is worth stating.)
+ *
+ * ROUND 15 widened 0.95 → 1.03 to buy ~20 px at the top edge, which is what it
+ * takes to letter ул. Комсомола. Straightening the roads narrowed that street
+ * from a tilted wedge dipping 58 px into the frame to a level 36 px band, and
+ * the caption solver needs `SOLVE_MARGIN (28) + half the caption height (14.9)`
+ * of room plus `MIN_CLEARANCE (13)` off the road's near edge — 56 px of road
+ * where there were 36. It had been `unplaced` since round 12 for the same
+ * reason; the fit is simply the first dial that ever addressed it.
+ *
+ * The number is measured, not chosen: 1.00 is not enough (still unplaced), 1.03
+ * is the first value that places it. It costs ~8 % of building size, and buys
+ * both roads reading as full ribbons top and bottom with both streets named —
+ * and Арсенальная наб. back inside the resting frame at y ≈ 779.
+ */
+const FIT_MARGIN = 1.03;
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max horizontal dimension
 const GROUND_SIZE = MODEL_SPAN * 5;
@@ -285,12 +302,19 @@ export class ConceptScreen {
   }
 
   private onModelLoaded(root: THREE.Object3D) {
-    // The node transform must be BAKED, not discarded. map-w-river.glb is a
-    // Blender Z-up export whose entire orientation lives in the node quaternion
-    // ([0.5,−0.5,0.5,0.5], i.e. local +Z → world −Y) while everything below
-    // this point works in one flat local space — without this the model loads
-    // on its side. (The previous map.glb happened to ship Y-up geometry, which
-    // is the only reason nothing needed it before.)
+    // The node transform must be BAKED, not discarded. map-fixed-roads.glb is
+    // a Blender Z-up export whose entire orientation lives in the node
+    // quaternion ([0.5,−0.5,0.5,0.5], i.e. local +Z → world −Y) while everything
+    // below this point works in one flat local space — without this the model
+    // loads on its side. (The original map.glb happened to ship Y-up geometry,
+    // which is the only reason nothing needed it before.)
+    //
+    // The WHOLE node matrix, not just its rotation: round 15's export dropped
+    // the translation its predecessor carried ([0, 1.0923, 0]) and shifted the
+    // geometry down to compensate. Nothing downstream noticed, because the
+    // model is re-seated on `massedBox` + `groundY` a few lines below — but
+    // that is the reason to keep baking `mesh.matrixWorld` wholesale rather
+    // than reaching in for the quaternion.
     //
     // The north yaw rides in the SAME matrix on purpose: baking it means every
     // bbox, centroid and BuildingPart.axisAngle downstream is already in the
