@@ -3577,6 +3577,133 @@ should happen to it. Shipped 1:1 pending a decision; the two candidates are drop
 wordmark on this screen (it is a home link, so probably not) or moving the metro block clear
 of it.
 
+## Map round 18 (2026-08-11) — the captions re-seat, and «Концепция» becomes a page
+
+Client review of round 17 in the dev build, plus Figma `616:188` — the first frame showing
+the concept page whole.
+
+### The captions were measured against the wrong thing, and the wrong thing was defensible
+
+Round 17 measured every offset against the building's roof **as drawn in the reference
+screenshot**. That screenshot was taken under a plan-oblique lean, so each roof was already
+displaced from its own footprint by `h·(sx, sz)` — (−47, −42) px at h = 2.52. The offsets
+therefore reproduced the design **exactly at that lean**, which is not a state anyone looks
+at. At rest the lean is zero, the walls collapse, the drawn silhouette shrinks back to the
+plan, and the caption keeps the entire gap. Every mark read too far out, by an amount
+proportional to its building's height: ~47 px on the two crosses, ~2 px on the pier.
+
+The fix is one line of reasoning. **The footprint is the shear's fixed point**, so it is drawn
+in the same place in the reference and at rest — which makes it the only anchor for which
+"the design" and "the resting composition" are the same statement. A roof is drawn in two
+places across those two frames; a footprint in one.
+
+`at_new = at_old − (47, 42)·h / (2.52 · 1145)`.
+
+Three things are worth keeping:
+
+- **The anchor did not change.** Marks still ride `bbox.max.y`, so travel is still
+  proportional to height — the round-16 behaviour, which the client confirmed they want. What
+  moved is where the offset is measured FROM, which is a separate question from what it is
+  measured relative to at runtime. Those two were conflated in round 17 and that is the whole
+  bug.
+- **The correction scales with h, and that is what makes one uniform rule safe.** The only two
+  marks lying ON a roof rather than beside a building — «Паркинг» (h 0.43) and «Причал
+  «Кресты»» (h 0.09) — sit on the LOWEST volumes, so they move 8 px and 2 px while the crosses
+  move the full 47. No special case was needed, and one nearly got written.
+- **The verification is a prediction, not a comparison.** With footprint-relative offsets the
+  resting composition should equal the design's ABSOLUTE pixel positions, because the two
+  frames now agree on where the building is. It does: every mark lands within 2 px of its
+  reference ink box and several land exactly. That is a much stronger check than "looks
+  closer", and it is available only because the reading is principled.
+
+Round 13's hand-authored `b02` x-offset was 0.102; the footprint reading re-derives it as
+0.098 where the roof reading gave 0.139. The corrected numbers land back on the value that was
+already signed off. **The roof reading never did — and that was visible in round 17 and was
+not read as a warning.**
+
+### The solver is gone
+
+Cutting «р. Нева» removed the last SOLVED caption, so the round-10 search has no remaining
+input. Deleted: `solve`, `feature`, `boundaryEdges`, `insideAny`, `clearance`, `unproject`,
+`components`, `biggest`, `straddles`, `obstacleRects`, `overlaps`, `project`, the `Feature`
+interface, and `WATER_MAT` / `SOLVE_MARGIN` / `OBSTACLES` / `OBSTACLE_PAD` / `MIN_CLEARANCE` /
+`GRID_STEP`. `mapLabels.ts` is **553 → 163 lines**; `build()` no longer takes the flat
+surfaces at all.
+
+Worth stating plainly because it took four rounds to arrive at: the solver was correct, and
+what killed it was that its inputs kept disappearing. Round 12 pushed ул. Комсомола off the
+top of the frame, round 15 straightened Арсенальная наб. below it, round 17 authored both into
+the margin band, and round 18 cut the river. A search is the right tool for placing a caption
+inside a polygon you can see; none of these captions has one any more.
+
+### The page
+
+`616:188` gives «Концепция» a wordmark, an intro block and then the map, with **nothing after
+the water** — so round 16's seven resident sections are deleted, along with
+`residentSections` / `residentGroups` / `iconLight` / `residentLogos` and ~200 lines of CSS.
+
+**The intro block is the only structurally risky part of this round.** It is the first child of
+the scroller, so it scrolls away — and three accessors in `mapScroll.ts` were implicitly
+assuming the map stage starts at scroll offset 0: `mapScrollTop`, `mapVisible` and
+`toBottom`. They now take an `introH`. `overscan` deliberately does NOT, because `.map-stage`'s
+percentage height resolves against the scroller's content box rather than its `scrollHeight`,
+so siblings do not change it.
+
+That failure mode is SILENT — `buildingPicker.ts` records the round-14 version: the map still
+highlights buildings, just the wrong ones. So it was tested differentially rather than looked
+at: pick a point over the west cross, then scroll by D and move the cursor up by D — the same
+world point — and assert the same building opens. Passes at D = 0, 200, 420. **A screenshot
+would have shown nothing.**
+
+### The headline that came back
+
+Reported as: after a nav hover the heading re-appears word by word and then disappears again on
+mouse movement.
+
+`PhotoSlider.idleElapsed` survived the hover. The idle watcher kept running while the pointer
+rested on a link, set the latch and called `tryActivate`, which refused only because
+`hoverBlocked` was true — so the instant `pointerleave` fired, un-blocking re-activated
+**synchronously**, threw a slide, and revealed at `FADE_DONE` (950 ms). The next `pointermove`
+then reset the watcher and retired it.
+
+The code named the assumption it rested on: *"in practice leaving a link also fires
+`pointermove`, which resets the idle timer"*. It does, usually — and not when the pointer
+leaves the window, when the boundary crossing is the last input of a flick, or when the leave
+came from layout rather than motion. **A behaviour that is correct only under an event ordering
+is a race, and retiming it only moves the window.** So the rule changed: leaving a link IS
+activity, and the latch is cleared when the gate closes.
+
+The probe is the interesting part. It dispatches `pointerleave` with no `pointermove` behind
+it — the ordering the old code did not survive — and samples the **`.word` spans**, per the
+rounds 8–10 note that the words are the only thing moving in the closing beat. It was then run
+against a temporarily reverted fix to prove it detects the bug: peak word opacity **1.000 at
+1750 ms** with the bug, **0.000** without. A regression test that has never failed is a
+decoration.
+
+One measurement trap inside that probe, worth recording: the first version read
+`max(parent.opacity, ...words)`, and `.slider-headline` sits at opacity 1 with no `.show`
+class and no word spans at all — so it reported a confident 1.000 baseline before anything had
+happened. The words are the signal; the parent is not.
+
+### Smaller decisions
+
+- **The wordmark is one BOX sitewide (251.2×40 at 32/32) but NOT one ink.** Brand blue
+  `#36AFFF` on «Концепция» (white field) and «Контакты» (`#070618`); **white on the main
+  screen, whose field IS the brand blue `#56b7e6`** — a blue mark on it is blue on blue and the
+  wordmark all but vanishes. The svg viewBox is `0 0 314 50`, so 40 tall is 251.2 wide; the
+  aspect is the asset's.
+- The concept page background is `#fff` now — it is only ever seen above the map, since the
+  canvas is opaque and still clears to `MAP_BG`.
+- The drawer is three sizes: 34/1.15 title, 24 prose, 16 residents (`#6D9BB5`) and floor
+  (`#B2CAD1`). The grey `kind` line, the per-resident CTAs and «Сайт отеля» are gone, and with
+  the links went the branded/plain row distinction — one row shape again. `Brand.url` /
+  `Brand.cta` remain in `buildingsInfo.ts` with no reader.
+- «Контакты»'s `ControlPanel` is gated behind `?admin`. **`this.v` must be seeded from
+  `defaults` before the gate** — it is the sole source for `n()`, which the whole of `update()`
+  reads every frame, so seeding it from `panel.values` made the screen depend on a dev tool
+  existing. `STORE_KEY` bumped with the `bg` default: stored values outrank defaults, so anyone
+  who had opened the panel would have kept seeing black and reported the change as not landing.
+
 ## Open issues
 
 - **[CLOSED by map round 17] Round 16's `.res-bg` plate re-antialiased the two ROTATED street
