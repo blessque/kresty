@@ -3704,6 +3704,68 @@ happened. The words are the signal; the parent is not.
   existing. `STORE_KEY` bumped with the `bg` default: stored values outrank defaults, so anyone
   who had opened the panel would have kept seeing black and reported the change as not landing.
 
+## Map round 18.1 (2026-08-11) — two coordinate bugs from one conflation
+
+Both found by the client within minutes of the round-18 build going up, both in code I had
+just written, and both the same mistake in different accessors. Worth its own entry because
+the lesson is about a CLASS, not about two lines.
+
+### The conflation
+
+Putting the intro block above the map split one number into two:
+
+| | | may be negative? |
+|---|---|---|
+| how far the MAP has been scrolled | `scrollTop − introH`, clamped to ≥ 0 | no |
+| where the WINDOW sits relative to the STAGE | `scrollTop − introH`, unclamped | **yes** |
+
+They are the same subtraction and different quantities. I shipped one accessor,
+`mapScrollTop`, clamped — correct for the first reading — and then used it for the second.
+
+**Bug 1: clicking the white intro selected buildings.** `picker.setPointer` converts window
+y to stage y. With the offset clamped away, the whole pick zone stayed pinned to the top of
+the window while the map sat 454 px lower — so clicking the standfirst opened «Западный
+крест», and clicking the actual map picked whatever was 454 px above the cursor.
+
+**Bug 2: opening a building showed the intro and half a map.** `lock()` pins the view during
+the focus swing, because the isometric framing assumes the map fills the viewport. It pinned
+with `reset()`, i.e. `scrollTop = 0`. "The top" is two places now, and focus mode wants the
+top of the MAP.
+
+`stageOffset` (unclamped) and `toMapTop()` are the two fixes. `mapScrollTop` is deleted rather
+than kept alongside them: a clamped scroll value with no honest reader is a trap standing by.
+
+### The verification lesson, which is the expensive one
+
+**The round-18 picker probe passed while bug 1 was live.** It stepped DOWN the map from
+`scrollTop = introH` — so every case it tested was in the range where the clamp is inert. The
+bug lived entirely below that. A probe that only exercises the half of the domain where your
+change does nothing is not a test of your change.
+
+Re-run with the fix deliberately re-clamped, the corrected probe reports: intro y 120 →
+«Кафе на Комсомола», y 400 → «Западный крест», map at scrollTop 0 → «Навес» instead of
+«Западный крест» — **and the three original scrolled cases still pass.** That last clause is
+the whole finding.
+
+So: after fixing a boundary, test the side of the boundary the bug was on FIRST, and re-run
+the probe against a deliberately broken build before believing it. Round 18's headline race
+was proved that way and round 18's picker was not.
+
+### The sweep
+
+Two of a kind means look for the third rather than wait for it. Every site coupled to scroll
+or viewport on this screen, audited: `picker.setPointer` (fixed), `lock()` (fixed), `resize()`
+→ `reset()` (**removed** — its stated reason was the caption solver measuring window-pinned
+obstacles, and round 18 deleted the solver), `start()` → `reset()` (correct, arriving should
+land on the intro), `toBottom` / `mapVisible` (already offset), `setResolution(stageW, stageH)`
+(stage-based, correct), camera fit and lean (window-relative by documented design, unchanged).
+
+`StageView` also lost `restH` and `scrollTop`: with the solver gone nothing read them, and a
+stale `scrollTop` riding on a view object is the same near-miss that let this hide.
+`buildingPicker.setPointer`'s contract comment used to say the caller adds "the scroll
+offset" — the exact phrasing that produced the bug — and now names `stageOffset` and says
+what it is not.
+
 ## Open issues
 
 - **[CLOSED by map round 17] Round 16's `.res-bg` plate re-antialiased the two ROTATED street
