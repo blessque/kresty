@@ -82,10 +82,15 @@ export class BuildingPicker {
    * Pointer position in CANVAS pixels, not window pixels.
    *
    * Round 14: the canvas is 1.5x the window's height and scrolls under it, so
-   * `innerHeight` stopped being the NDC divisor and the caller has to add the
-   * scroll offset. Without both halves of that the hover silently drifts by
-   * however far you have scrolled — the map still highlights buildings, just
-   * the wrong ones.
+   * `innerHeight` stopped being the NDC divisor and the caller has to convert.
+   * Without both halves of that the hover silently drifts — the map still
+   * highlights buildings, just the wrong ones.
+   *
+   * The converting term is `MapScroll.stageOffset`, and it is NOT the map's
+   * scroll position: round 18 used the clamped scroll value here and the whole
+   * pick zone stayed pinned to the top of the window while the map sat 454 px
+   * lower. `stageOffset` goes negative while the intro block is on screen, which
+   * is what puts a cursor up there off the top of the map.
    */
   setPointer(canvasX: number, canvasY: number) {
     this.ndc.set((canvasX / this.resW) * 2 - 1, -(canvasY / this.resH) * 2 + 1);
