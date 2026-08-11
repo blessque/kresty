@@ -35,7 +35,7 @@ export interface NavLinkSpec {
  */
 export const NAV_LINKS: NavLinkSpec[] = [
   { id: 'istoria', label: 'История', x: 480, y: 167, rot: 45.29, route: null },
-  { id: 'kontseptsia', label: 'Концепция', x: 955, y: 175, rot: -44.71, route: 'concept' },
+  { id: 'kontseptsia', label: 'О «Крестах»', x: 955, y: 175, rot: -44.71, route: 'concept' },
   { id: 'arenda', label: 'Аренда', x: 465, y: 645, rot: -44.71, route: null },
   // TEMPORARY: «Контакты» hosts the icon-showcase page used to shoot the
   // presentation stills. Not a designed screen — see screens/contacts/.
@@ -44,20 +44,21 @@ export const NAV_LINKS: NavLinkSpec[] = [
 
 /**
  * News ticker items (Figma node 338:48 + the loose headlines at 349:715..717).
- * The block is three rows — date, headline, «Все новости» — and the date row
- * swaps together with its headline. Dates ascend; the KVS purchase keeps the
- * one date the mockup supplied, the rest are placeholder 2026.
+ *
+ * ROUND 18 dropped the date row: the block is two rows now, a headline and
+ * «Все новости». The dates were placeholder 2026 anyway apart from the KVS
+ * purchase, and a made-up date reads as a claim in a client demo in a way a
+ * made-up headline does not.
  */
 export interface NewsItem {
-  date: string;
   text: string;
 }
 
 export const NEWS_ITEMS: NewsItem[] = [
-  { date: '1 ноября 2025', text: 'Застройщик KVS выкупил территорию бывшей тюрьмы «Кресты»' },
-  { date: '12 февраля 2026', text: 'Застройщик начал работы по демонтажу аварийных конструкций' },
-  { date: '28 апреля 2026', text: 'Прошла презентация концепции отельного комплекса Cosmos' },
-  { date: '16 июля 2026', text: 'Подписаны последние акты для начала строительства' },
+  { text: 'Застройщик KVS выкупил территорию бывшей тюрьмы «Кресты»' },
+  { text: 'Застройщик начал работы по демонтажу аварийных конструкций' },
+  { text: 'Прошла презентация концепции отельного комплекса Cosmos' },
+  { text: 'Подписаны последние акты для начала строительства' },
 ];
 
 export const SHOWREEL_IMAGES = [
@@ -106,10 +107,6 @@ export const SLIDER_SLIDES: SliderSlide[] = [
   {
     photo: '/resources/table.webp',
     headline: 'Уютные кафе вместо холодных стен',
-  },
-  {
-    photo: '/resources/glass-roof.webp',
-    headline: 'Атмосфера сотрудничества вместо принуждения',
   },
   {
     photo: '/resources/pool.webp',

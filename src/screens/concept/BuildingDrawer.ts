@@ -32,10 +32,6 @@ const ICON_CLOSE = `<svg viewBox="0 0 20 20" fill="none" aria-hidden="true" focu
   <path d="M4 16L10 10M10 10L16 4M10 10L16 16M10 10L4 4" stroke="currentColor" stroke-width="1.84615"/>
 </svg>`;
 
-const ICON_CHEVRON = `<svg viewBox="0 0 19 19" fill="none" aria-hidden="true" focusable="false">
-  <path d="M10.059 9.5L5 2L7.06956 2L14.3927 9.5L7.06956 17H5L10.059 9.5Z" fill="currentColor"/>
-</svg>`;
-
 export class BuildingDrawer {
   /** currently open building id, or null */
   id: string | null = null;
@@ -81,12 +77,12 @@ export class BuildingDrawer {
       ? info.residents.map(row).join('')
       : `<li class="bld-row bld-empty">${t('Список резидентов уточняется')}</li>`;
 
-    // The wordmark replaces `kind` when a building has an operator — the Figma
-    // shows the Cosmos mark and no lit line. Buildings without one keep `kind`,
-    // which is the only thing identifying them.
+    // ROUND 18 cut the grey `kind` line that used to stand above the heading.
+    // The operator wordmark stays — it is a brand mark rather than a caption,
+    // and it is the only thing that distinguishes the two hotels at a glance.
     const mark = info.logo
       ? `<img class="bld-logo" src="${escapeHtml(asset(info.logo))}" alt="" aria-hidden="true">`
-      : `<div class="bld-kind">${t(info.kind)}</div>`;
+      : '';
 
     this.el.innerHTML = `
       <div class="bld-scroll">
@@ -95,7 +91,6 @@ export class BuildingDrawer {
           ${mark}
           <h2 class="bld-name">${t(info.name)}</h2>
           <p class="bld-brief">${t(info.brief)}</p>
-          ${link(info)}
           <ul class="bld-list">${rows}</ul>
         </div>
       </div>
@@ -135,23 +130,14 @@ function hero(info: BuildingInfo): string {
   </div>`;
 }
 
-/** the building's own outbound link — «Сайт отеля ›», under the brief */
-function link(info: BuildingInfo): string {
-  if (!info.link) return '';
-  return `<a class="bld-site" href="${escapeHtml(info.link.url)}" target="_blank" rel="noopener noreferrer">${t(
-    info.link.label
-  )}<span class="bld-chevron">${ICON_CHEVRON}</span></a>`;
-}
-
 /**
- * One resident row. A BRANDED resident (a hotel, restaurant, café or shop) gets
- * its outbound link with a chevron; a plain programme entry stays a name and a
- * floor, so the branded ones actually stand out instead of everything looking
- * equally important.
+ * One resident row: a name and the floor it is on, and nothing else.
  *
- * `target="_blank"` + `rel="noopener noreferrer"`: the drawer lives over a
- * WebGL canvas with a running render loop, and navigating the tab away from it
- * mid-pitch would tear down the whole scene.
+ * ROUND 18 removed the outbound links — the per-resident CTA («Купить билет»,
+ * «Забронировать стол») and the building's own «Сайт отеля». With them went the
+ * branded/plain distinction, so there is one row shape again rather than two.
+ * `Brand.url` / `Brand.cta` in `buildingsInfo.ts` are left in place but now have
+ * no reader.
  */
 function row(r: Resident): string {
   // The hotel IS the building — it occupies every storey, so a floor number
@@ -164,18 +150,7 @@ function row(r: Resident): string {
   // a resident that stands for many units («Номера», count 126) says so —
   // otherwise the drawer would flatten 126 rooms into one anonymous line
   const label = r.count && r.count > 1 ? t(`${r.label} · ${r.count}`) : t(r.label);
-  if (!r.brand) {
-    return `<li class="bld-row"><span>${label}</span>${floor}</li>`;
-  }
-  return `<li class="bld-row bld-row--brand">
-    <span class="bld-brand">
-      <span class="bld-label">${label}</span>
-      <a class="bld-link" href="${escapeHtml(r.brand.url)}" target="_blank" rel="noopener noreferrer">${t(
-        r.brand.cta
-      )}<span class="bld-chevron">${ICON_CHEVRON}</span></a>
-    </span>
-    ${floor}
-  </li>`;
+  return `<li class="bld-row"><span class="bld-resident">${label}</span>${floor}</li>`;
 }
 
 /** bind short words, then escape — every string the drawer renders goes through

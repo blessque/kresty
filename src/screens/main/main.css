@@ -248,20 +248,28 @@
   pointer-events: none;
 }
 
-/* Figma node 308:230: 301.44×48. The svg viewBox is 0 0 314 50 — same
-   6.28 aspect, so it just rescales into the smaller box. */
+/* ROUND 18: one wordmark BOX sitewide — 251.2×40 at (32, 32) on all three
+   screens. The svg viewBox is 0 0 314 50, so 40px tall is 251.2 wide; the
+   aspect is the asset's, not a chosen number.
+
+   The INK is not shared, and deliberately. The mark is brand blue #36AFFF on
+   «Концепция» (white field) and «Контакты» (#070618 field). Here the field IS
+   the brand blue — #56b7e6 — so a blue mark on it is blue on blue and the
+   wordmark all but vanishes. It stays white, which is what the svg ships and
+   what the main-screen mockup draws. */
 .logo {
   position: absolute;
   left: 32px;
-  top: 40px;
-  width: 301.44px;
-  height: 48px;
+  top: 32px;
+  width: 251.2px;
+  height: 40px;
 }
 .logo svg {
   display: block;
   width: 100%;
   height: 100%;
 }
+
 
 .nav-link {
   position: absolute;
@@ -346,8 +354,10 @@
 
    VERTICALLY CENTRED ON y=400, not pinned to a top edge: the mockup boxes are
    192px at top 304 for 3-line headlines and 256px at top 272 for the 4-line
-   «Атмосфера сотрудничества» — both centred on 400. So the centre is the
-   invariant, and the exit translate has to carry the -50% with it. */
+   case — both centred on 400. So the centre is the invariant, and the exit
+   translate has to carry the -50% with it. (Round 18 deleted the slide that
+   supplied the 4-line example, «Атмосфера сотрудничества»; the argument is
+   unchanged, it just no longer has a shipped instance.) */
 .slider-headline {
   position: absolute;
   left: 32px;
@@ -413,8 +423,13 @@
 }
 
 /* news block (Figma node 338:48): 32/40 from the bottom-left corner, 270 wide,
-   ALS Chromius Regular 20/1.35, rows gapped 8. The block measures 27+8+81+8+27
-   = 151 — the headline row reserves 3 lines so «Все новости» never shifts. */
+   ALS Chromius Regular, rows gapped 8.
+
+   ROUND 18: the date row is gone and the type stepped down to 16. The block is
+   now headline + link and measures 65 + 8 + 22 = 95. The 65 is three lines at
+   16/1.35 (21.6 each) — the headline row still RESERVES three lines so that
+   «Все новости» never shifts as the items cycle, which is the only reason
+   min-height exists. Recompute it if either number moves. */
 .news {
   position: absolute;
   left: 32px;
@@ -425,22 +440,17 @@
   flex-direction: column;
   gap: 8px;
   font-family: 'ALS Chromius', sans-serif;
-  /* size inherits the 21px base (global.css). Figma 338:48 specified 20; round
-     10.3 gave the site one base size and the news block is body copy, so it
-     follows the base rather than holding a private value one pixel away. */
   /* Chromius Regular = wght 120 on this font's axis — see fonts.css */
   font-weight: 120;
+  font-size: 16px;
   line-height: 1.35;
 }
-.news .news-date,
 .news .headline {
   color: rgba(255, 255, 255, 0.65);
   transition: opacity 0.4s ease;
+  /* three lines at 16/1.35, so the link below never moves — see the note above */
+  min-height: 65px;
 }
-.news .headline {
-  min-height: 81px;
-}
-.news .news-date.fading,
 .news .headline.fading {
   opacity: 0;
 }

@@ -13,9 +13,8 @@ import { MapLabels } from './mapLabels';
 import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
-import { MapInfo } from './MapInfo';
 import { MapScroll, STAGE_VH } from './mapScroll';
-import { ResidentSections } from './residentSections';
+import { buildIntro } from './conceptIntro';
 
 /**
  * Plan-oblique («military») projection: the camera is PERMANENTLY straight
@@ -90,34 +89,6 @@ const SMOOTH_TAU = 0.12;
  */
 const FIT_MARGIN = 1.03;
 
-/**
- * Cursor-parallax re-bake gates for the resident-section light.
- *
- * The light is drawn once and then MOVED (see `iconLight.ts`), so scrolling is
- * free — but `u_parallax` deforms the field toward the cursor and can only be
- * updated by re-running the shader, which costs about two of the old frames.
- * So: a real move, and at most ten a second. Below ~8 px the deformation is
- * not resolvable anyway (`parallax` is 2).
- */
-const BAKE_POINTER_PX = 8;
-const BAKE_POINTER_MS = 100;
-
-/**
- * Render-scale cap for the resident-section light.
- *
- * `getPerfTier().renderScale` is `min(devicePixelRatio, 2)`, which on a Retina
- * Mac makes this canvas 2880×3200 — and since the canvas is 2 viewports tall,
- * a bake there measured **70–117 ms**. That lands at `envelope() ≈ 0`, so the
- * light itself is invisible, but it blocks the main thread inside the colour
- * crossfade band (0.6 vh centred on the very boundary that triggers it), which
- * reads as a stutter in the background transition.
- *
- * The map keeps the full tier — it draws architecture with 1 px white edges.
- * This is a dissolved glow with `dissolve: 0.36` and no crisp overlay, so the
- * device pixels buy far less here than they cost.
- */
-const LIGHT_RENDER_SCALE_MAX = 1;
-
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max horizontal dimension
 const GROUND_SIZE = MODEL_SPAN * 5;
@@ -138,21 +109,14 @@ export class ConceptScreen {
 
   private model?: THREE.Object3D;
   private scroll!: MapScroll;
-  private sections!: ResidentSections;
-  /** what the icon light was last baked FOR — see updateSections */
-  private bakedIdx = -1;
-  private bakedPointer: [number, number] = [0, 0];
-  private bakedAt = 0;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
   private labels!: MapLabels;
   private drawer!: BuildingDrawer;
-  private mapInfo!: MapInfo;
   private panel?: import('./WaterPanel').WaterPanel;
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
-  private lightScaleMax = LIGHT_RENDER_SCALE_MAX;
   private yawDeg = MODEL_YAW_DEG;
   private stageVh = STAGE_VH;
   private raf = 0;
@@ -185,11 +149,6 @@ export class ConceptScreen {
     if (Number.isFinite(yaw)) this.yawDeg = yaw;
     const vh = parseFloat(q.get('vh') ?? '');
     if (Number.isFinite(vh)) this.stageVh = vh;
-    // `?ls=<k>` — the section light's render-scale cap, so the sharpness/hitch
-    // trade can be judged on a real Retina screen without a rebuild. `?ls=2`
-    // is the full tier. See LIGHT_RENDER_SCALE_MAX.
-    const ls = parseFloat(q.get('ls') ?? '');
-    if (Number.isFinite(ls) && ls > 0) this.lightScaleMax = ls;
     this.buildDom();
     this.buildScene();
     // a boolean flag, not a dial: `?admin`, `?admin=1` and `?admin=yes` all open
@@ -247,9 +206,7 @@ export class ConceptScreen {
     // pinned. See mapScroll.ts.
     this.scroll = new MapScroll(this.el, this.stageVh);
     this.scroll.stage.appendChild(this.renderer.domElement);
-    // the resident sections go INTO the scroller, after the map stage; their
-    // background plate and their light canvas go outside it, pinned. Round 16.
-    this.sections = new ResidentSections(this.el, this.scroll.scroller);
+    this.scroll.setIntro(buildIntro());
 
     const add = (tag: string, cls: string, html: string) => {
       const n = document.createElement(tag);
@@ -266,19 +223,13 @@ export class ConceptScreen {
       e.preventDefault();
       this.onNavigate('main');
     });
-    // round 10: the «Концепция» corner title is gone at the designer's request,
-    // and the standing hint moved into the left rail under the logo, where it
-    // doubles as the hover read-out.
-    this.mapInfo = new MapInfo(this.el);
-
     // in the STAGE, not the screen: a caption is welded to the map and has to
     // scroll with it
-    this.labels = new MapLabels(this.scroll.stage, this.el);
+    this.labels = new MapLabels(this.scroll.stage);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
     this.picker.onHoverChange = (id) => {
       this.el.classList.toggle('picking', id !== null);
-      this.mapInfo.setHovered(id);
     };
 
     this.el.addEventListener('pointermove', (e) => {
@@ -460,7 +411,7 @@ export class ConceptScreen {
     this.mapCam.setModelMatrix(root.matrix);
     // after root.updateMatrix(): the captions project world-space anchors, so
     // they need the normalize transform that is only final at this point
-    this.labels.build(flats, parts, root.matrix, Math.max(bsize.x, bsize.z));
+    this.labels.build(parts, root.matrix, Math.max(bsize.x, bsize.z));
 
     this.model = root;
     this.shearGroup.add(root);
@@ -476,9 +427,6 @@ export class ConceptScreen {
     this.picker.select(id);
     if (id) this.drawer.open(id);
     else this.drawer.close();
-    // the drawer takes over the read-out while focused, and it occupies the
-    // same left column — the rail would sit underneath it
-    this.mapInfo.setMuted(id !== null);
     // the isometric framing assumes the window, so pin the view to the top for
     // as long as a building is focused
     this.scroll.lock(id !== null);
@@ -494,10 +442,15 @@ export class ConceptScreen {
   // ------------------------------------------------------------------ frame
 
   resize = () => {
-    // Back to the top FIRST: the caption solve that follows measures the
-    // window-pinned chrome as obstacles, and the resting composition is the one
-    // the design is judged in.
-    this.scroll.reset();
+    // The intro is wrapped type, so its height moves with the width and the map
+    // moves with it. Measure it BEFORE anything reads a stage coordinate.
+    //
+    // This used to scroll back to the top first, because the caption solver
+    // measured the window-pinned chrome as obstacles and had to do it in the
+    // resting composition. Round 18 deleted the solver, so that reason is gone —
+    // and teleporting the reader to the top of the page on every resize is not a
+    // behaviour worth keeping on its own.
+    this.scroll.measureIntro();
     // The canvas is the STAGE, 1.5x the window's height (mapScroll.ts) — but
     // the camera's FIT stays measured against the window, or the taller aspect
     // would silently re-zoom the map. setOverscan carries the difference.
@@ -509,23 +462,11 @@ export class ConceptScreen {
     this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
     this.mapCam.setOverscan(this.scroll.overscan);
     this.mapCam.snap();
-    // section geometry is measured, not assumed 100vh — see residentSections.ts
-    this.sections.measure();
-    // the scroller's box, never the window: the light canvas is 2 viewports
-    // tall, so an error here is doubled
-    this.sections.light.setViewport(this.scroll.stageW, this.scroll.viewH);
   };
 
   /** the canvas the captions and the picker work in — never the window */
   private get view() {
-    return {
-      w: this.scroll.stageW,
-      h: this.scroll.stageH,
-      restH: innerHeight,
-      // the MAP's own scroll, clamped to the stage — past the map this stops
-      // advancing rather than dragging the caption domain into the sections
-      scrollTop: this.scroll.mapScrollTop,
-    };
+    return { w: this.scroll.stageW, h: this.scroll.stageH };
   }
 
   start() {
@@ -543,18 +484,24 @@ export class ConceptScreen {
       const k = 1 - Math.exp(-dt / SMOOTH_TAU);
       this.smX += (this.inputX - this.smX) * k;
       this.smY += (this.inputY - this.smY) * k;
-      // ROUND 16. The map is above the sections, so the two renderers are never
-      // both wanted; each is gated on whether the map stage is still on screen.
-      // The page therefore never pays for Three.js and the ray field in the
-      // same frame, however long the document gets.
+      // The map stage is not the whole scroller any more — round 18 put an
+      // intro block above it — so the Three.js frame is gated on whether the
+      // stage is still on screen rather than run unconditionally.
       const mapVisible = this.scroll.mapVisible;
+      // The wordmark belongs to the intro, not to the map. It is pinned (a
+      // scroller's absolutely-positioned children scroll away with the content),
+      // so it has to be told when the intro has gone.
+      this.el.classList.toggle('past-intro', this.scroll.pastIntro);
       if (mapVisible) {
         this.mapCam.update(dt);
         this.ground?.setFocus(this.mapCam.focus);
         this.waterT += dt * this.timeScale;
         this.ground?.update(this.waterT);
         this.updateShear();
-        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.mapScrollTop);
+        // WINDOW → STAGE. `stageOffset` is negative while the intro is still on
+        // screen, which puts a cursor in the intro above the map's top edge and
+        // makes the picker miss — which is correct. See mapScroll.stageOffset.
+        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.stageOffset);
         this.picker.update(this.scene, this.mapCam.camera);
         this.labels.update(
           this.mapCam.camera,
@@ -564,7 +511,6 @@ export class ConceptScreen {
         );
         this.renderer.render(this.scene, this.mapCam.camera);
       }
-      this.updateSections(mapVisible);
       if (this.panel) this.reportStats(now);
       this.raf = requestAnimationFrame(loop);
     };
@@ -603,96 +549,6 @@ export class ConceptScreen {
     this.panel?.setStats((this.fpsFrames * 1000) / span, span / this.fpsFrames);
     this.fpsFrames = 0;
     this.fpsSince = now;
-  }
-
-  /**
-   * The resident sections: background colour, and the light on the live icon.
-   *
-   * Everything here is a pure function of the scroll position — there is no
-   * scroll-driven state to fall out of sync, and no scroll listener either,
-   * since the loop is already running.
-   */
-  private updateSections(mapVisible: boolean) {
-    const s = this.sections.track(
-      this.scroll.scrollTop,
-      this.scroll.stageW,
-      this.scroll.viewH,
-      mapVisible
-    );
-    this.sections.apply(s);
-    // Two different triggers on purpose. The logo follows the BACKGROUND's
-    // luminance, because it has to survive both the white gap and a deep
-    // section. The hover rail follows the MAP, because what it says stops being
-    // true the moment there is nothing left to hover.
-    this.el.classList.toggle('on-dark', s.dark);
-    this.el.classList.toggle('past-map', !mapVisible);
-
-    // Warm the second GPU context up before the sections arrive, without ever
-    // creating it for a reader who stays on the map.
-    //
-    // Measured against the first section's OWN top, not the map's bottom:
-    // `stageH − 2·viewH` is NEGATIVE at the shipped 1.5 stage, so that form
-    // fired on frame one and quietly gave every visitor a second context.
-    //
-    // 1.5 viewports is what separates the two readers. At 800 px it warms at
-    // scrollTop 640, which is past the river hint's 400 — so «посмотреть Неву»
-    // stays a purely map interaction — and still leaves ~670 px of runway
-    // before the first icon's envelope lifts off zero at 1306.
-    if (this.scroll.scrollTop + this.scroll.viewH * 1.5 > this.sections.firstTop) {
-      void this.sections.light.ensure(
-        Math.min(getPerfTier().renderScale, this.lightScaleMax)
-      );
-    }
-
-    const light = this.sections.light;
-    light.setViewport(this.scroll.stageW, this.scroll.viewH);
-    // per frame, and this is ALL that happens per frame: a transform write the
-    // compositor carries, so the light rides with the text instead of chasing
-    // it from the main thread. See iconLight.ts's header for the measurements.
-    light.position(s.center[1], s.opacity);
-
-    // A bake is a full shader run, so it is gated to the three things that can
-    // actually change the IMAGE. Scroll is not one of them.
-    //
-    // The section change is free by construction: `idx` flips exactly when the
-    // outgoing icon hits the bottom frame edge and the incoming one the top,
-    // which is `envelope() === 0` — the same property that hides the mask swap.
-    const idxChanged = s.idx !== this.bakedIdx;
-    // Parallax is a real deformation toward the cursor, so it can only be had
-    // by re-rendering. Gated on a visible light, a real move and a rate limit,
-    // because one bake costs about two of the old frames.
-    const now = performance.now();
-    const moved = Math.hypot(
-      this.cursor.x - this.bakedPointer[0],
-      this.cursor.y - this.bakedPointer[1]
-    );
-    const parallaxDue =
-      moved >= BAKE_POINTER_PX &&
-      s.opacity > 0.002 &&
-      now - this.bakedAt >= BAKE_POINTER_MS;
-
-    if (idxChanged || parallaxDue) {
-      // The pointer goes in CANVAS-LOCAL px, and which scroll position it is
-      // measured against is a real decision, because `u_parallax` drives the
-      // god-ray ARM LENGTH (`armLen *= 1 + 1.4·toward·pd·u_parallax`), not just
-      // a couple of px of drift. Measured at the bake moment it would freeze
-      // the relationship at `envelope() === 0`, i.e. with the icon at a frame
-      // edge — visibly shorter rays than the page has ever shown.
-      //
-      // So it is measured against the icon's RESTING position — the state the
-      // reader actually reads the section in. The light is then exactly today's
-      // at rest, and stops responding to scroll, which is the whole point,
-      // since responding to scroll is what cost the frame. `restY` comes from
-      // the section's own measured height, not `viewH·ICON_FY`: two of the
-      // seven sections outgrow the viewport.
-      light.bake(s.idx, s.center[0], [
-        this.cursor.x,
-        this.scroll.viewH + this.cursor.y - s.restY,
-      ]);
-      this.bakedIdx = s.idx;
-      this.bakedPointer = [this.cursor.x, this.cursor.y];
-      this.bakedAt = now;
-    }
   }
 
   private updateShear() {

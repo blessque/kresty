@@ -205,7 +205,8 @@ export class ContactsScreen {
 
   private pointer = new SmoothPointer();
   private tier = getPerfTier();
-  private panel!: ControlPanel;
+  /** the dev panel — only built under `?admin`, so every reader must guard */
+  private panel?: ControlPanel;
   private v: ControlValues;
 
   private running = false;
@@ -243,9 +244,23 @@ export class ContactsScreen {
       shimmer: 0.6,
       freeze: 1,
       light: '#ffffff',
-      bg: '#000000',
+      bg: '#070618',
       rs: this.tier.renderScale,
     };
+
+    // ROUND 18 GATED THE PANEL behind `?admin`, matching «Концепция»'s water
+    // panel. It is a dev tool and it was shipping visible to every visitor.
+    //
+    // `this.v` must be assigned FIRST and unconditionally: it is the sole source
+    // for `n()`, which the whole of `update()` and `applySideEffects()` read
+    // every frame. Seeding it from `panel.values` — as this used to — makes the
+    // screen depend on a dev tool existing.
+    this.v = { ...defaults };
+    // a boolean flag, not a dial: `?admin`, `?admin=1` and `?admin=yes` all open
+    // it, only an explicit `?admin=0` keeps it shut. (`get` returns '' for the
+    // bare form and null when the key is absent — the two must not be conflated.)
+    const admin = new URLSearchParams(location.search).get('admin');
+    if (admin === null || admin === '0') return;
 
     this.panel = new ControlPanel(this.el, CONTROLS, defaults);
     this.v = this.panel.values;

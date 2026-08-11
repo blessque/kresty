@@ -1,7 +1,9 @@
-/* Must match MAP_BG in mapLooks.ts — the renderer clears to the same value,
-   but the CSS avoids a flash of the wrong colour before the JS runs. */
+/* White, because round 18 put the intro block above the map and the page shows
+   through there. The MAP's own field is still MAP_BG — the canvas is opaque and
+   clears to it, so the two never meet; this colour is only ever seen above the
+   stage. (It was #f2f6fa to match MAP_BG when the map was the whole page.) */
 #screen-concept {
-  background: #f2f6fa;
+  background: #fff;
   /* overlay UI sits on a near-white studio field, so it is dark, not white */
   color: #123a5c;
 }
@@ -16,22 +18,22 @@
 /* ------------------------------------------------------------ the scroller
 
    Round 14 made the map 150vh so the Neva sat below the fold. Round 16 turned
-   the same container into the PAGE scroller: it now holds the map stage and the
-   resident sections after it. See mapScroll.ts for why the DOCUMENT still does
-   not scroll. Everything pinned (logo, rail, drawer, admin panel) is a sibling
-   of `.concept-scroll`, not a child, or it would scroll away with the map. */
+   the same container into the PAGE scroller; round 18 emptied it again and put
+   the intro block ABOVE the stage, so it now reads [intro] [map]. See
+   mapScroll.ts for why the DOCUMENT still does not scroll, and for the offset
+   the intro's height introduces. Everything pinned (logo, drawer, admin panel)
+   is a sibling of `.concept-scroll`, not a child, or it would scroll away. */
 .concept-scroll {
   position: absolute;
   inset: 0;
-  /* above the flat background plate (0), below the light (2) and all the
-     chrome (rail 5, logo 6, drawer 8, panel 9) */
+  /* below all the chrome (logo 6, drawer 8, panel 9) */
   z-index: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  /* Round 16: `touch-action: none` used to sit on the screen so touch drag drove
-     the map lean. With seven sections below the map that made the whole lower
-     page unreachable on a phone, so scrolling wins: vertical drag scrolls, and
-     the lean reads horizontal drag only on touch. Unchanged with a mouse. */
+  /* `touch-action: none` used to sit on the screen so touch drag drove the map
+     lean, which made the rest of the page unreachable on a phone. Scrolling
+     wins: vertical drag scrolls, and the lean reads horizontal drag only on
+     touch. Unchanged with a mouse. */
   touch-action: pan-y;
   /* body already has `overscroll-behavior: none`; this stops a flick past the
      end of the page from chaining anywhere at all */
@@ -65,359 +67,90 @@
   height: 100%;
 }
 
-/* ------------------------------------------------- resident sections (r16)
-
-   One full viewport per group of residents, below the map. NO scroll-snap:
-   «Контакты» snaps because every presentation still must frame identically,
-   and this is a page you read instead. See residentSections.ts. */
-
-/* The flat page colour, crossfaded from JS. It sits BEHIND the scroller and is
-   only ever seen through the gap and the sections — the map's own canvas is
-   opaque and covers its whole stage. One element painting one flat colour, so
-   a scroll repaints a single rect rather than seven. */
-.res-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+#screen-concept.picking canvas {
+  cursor: pointer;
 }
 
-/* The hero light. A SIBLING of the scroller, pinned to the viewport, exactly as
-   the «Контакты» canvas is — a `position: fixed` canvas nested in a scroller
-   works today but breaks the moment any ancestor gains a transform or filter.
+/* ------------------------------------------------- the intro block (r18)
 
-   `mix-blend-mode: screen` is the project's compositing model: the shader
-   writes light-on-black and screen is `1 − (1−a)(1−b)`, so the black field
-   drops out and the section colour shows through. It is also exactly why the
-   section colours had to go deep — screen cannot darken, so a bright field
-   would swallow the light entirely. */
-/* Two viewports tall, with the icon baked at the middle, and moved by a
-   transform rather than re-rendered — see iconLight.ts's header. The height is
-   the exact requirement, not a margin: an icon travels one full viewport while
-   its light is visible, so anchored on the icon the viewport sweeps
-   [-viewH, +viewH]. `top: 0` keeps translate3d's origin at the frame top. */
-/* `#screen-concept canvas` above is an ID-scoped rule pinning every canvas to
-   `inset: 0; height: 100%`, which outranks a bare `.res-light` — so this one
-   has to carry the id too, and must undo `inset`'s `bottom` explicitly or the
-   200% height is fought by a bottom edge nailed to the frame. */
-#screen-concept canvas.res-light {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: auto;
-  bottom: auto;
-  z-index: 2;
-  display: block;
-  width: 100%;
-  height: 200%;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  opacity: 0;
-  will-change: transform;
-}
+   Figma 616:188 / 616:260. Sits ABOVE the map inside the scroller, so it
+   scrolls away — it is the page's opening, not chrome.
 
-/* Breathing room between the map and the first section. Deliberately has NO
-   background of its own: `.res-bg` is the single source of the page colour, and
-   a hard-coded white here would sit as an unfading band across the crossfade
-   the plate is busy running underneath it. It is white because the colour track
-   says white here — see LEAD_COLOR. */
-.res-gap {
-  position: relative;
-  width: 100%;
-  height: calc(var(--gap-vh, 0.8) * 100%);
-}
-
-/* `min-height`, not `height`: a group whose list outgrows the viewport must grow
-   rather than clip, and residentSections.ts measures the real geometry off the
-   DOM so the colour track follows it.
-
-   The text is anchored BELOW the icon zone rather than to the bottom of the
-   frame. Bottom-aligned, the block climbs as the list gets longer and a 5-row
-   group («Культура») drives its title straight up into the icon, while a 3-row
-   one sits far below it — the two never agree. The icon's ink ends at
-   `ICON_FY + halfIcon` ≈ 47 % of the frame, so the text starts just under it and
-   long lists grow downward, which is the direction there is room in. */
-.res-section {
+   Placed in the RIGHT half of the measure, which is the design's choice and a
+   sound one: the map below is full-bleed and its own margin captions («м.
+   Площадь Ленина», the metro chip) live at the left edge, so a left-aligned
+   title would stack into the same column. */
+.concept-intro {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  min-height: 100%;
-  padding: 46vh 0 8vh;
-  /* transparent — .res-bg is the colour */
-  color: #fff;
+  justify-content: center;
+  padding: 184px 32px 96px;
 }
 
-/* the lower two thirds of the frame; the icon's light lands above and spills
-   down across this, which is the reason they share a frame at all */
-.res-body {
-  width: min(560px, 46vw);
-  margin-left: 32px;
+.concept-intro__body {
+  /* the design's 1440-wide frame starts the block at x=720, i.e. the centre,
+     and runs the text to a 478px measure. Expressed as a centred row with the
+     body in the right half so it holds at any width rather than at 1440. */
+  width: min(478px, 100%);
+  margin-left: auto;
+  margin-right: max(0px, calc(50% - 478px - 32px));
 }
 
-.res-title {
+.concept-intro__title {
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css. NEVER add
      `font-variation-settings` here: it overrides `font-weight`, and this axis
      (min 50 / default 120 / max 232) has already caused this bug three times. */
   font-family: 'ALS Chromius', sans-serif;
   font-weight: 150;
   font-size: 48px;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-  margin: 0 0 12px;
+  line-height: 1.1;
+  color: #44abde;
+  margin: 0 0 20px;
 }
 
-.res-lead {
+.concept-intro__lead {
   font-weight: 120;
-  font-size: 20px;
-  line-height: 1.45;
-  margin: 0 0 26px;
-  color: rgba(255, 255, 255, 0.72);
-  max-width: 36em;
-}
-
-.res-list {
-  list-style: none;
+  font-size: 24px;
+  line-height: 1.4;
+  color: #030d25;
   margin: 0;
-  padding: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.res-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 9px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-  font-weight: 120;
-  font-size: 18px;
-}
+/* ------------------------------------------------------------ the wordmark
 
-.res-name,
-.res-link {
-  color: #fff;
-}
+   One box sitewide: 251.2×40 at (32, 32), ink #36AFFF. The svg's viewBox is
+   0 0 314 50, so 40px tall is 251.2 wide — the aspect is the asset's, not a
+   guess. The logo ships a hard-coded `fill="white"` as a PRESENTATION
+   attribute, which any CSS rule outranks.
 
-.res-link {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  text-decoration: none;
-  transition: opacity 0.2s ease;
-}
-
-.res-link:hover {
-  opacity: 0.66;
-}
-
-/* the resident's own call to action, e.g. «Забронировать номер» */
-.res-cta {
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.res-cta::after {
-  content: ' ›';
-}
-
-.res-count {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-/* Invented top-ups, where the map's own data leaves a group too thin to read
-   as a section. Marked so a placeholder cannot reach a client deck looking
-   like a signed tenant — the same discipline residentLogos.ts applies. */
-.res-row--placeholder .res-name {
-  color: rgba(255, 255, 255, 0.62);
-}
-
-/* ---- the chrome over a dark page
-
-   The logo is authored for the near-white map (`#123a5c`) and vanishes on a
-   deep section; white would in turn vanish against the white gap. So the flip
-   is driven by the BACKGROUND'S OWN LUMINANCE (ResidentSections.track → `dark`),
-   not by "are we past the map" — which would fire in the middle of the gap.
-   The transition covers the crossing, so it changes while the colour is
-   changing rather than as a step of its own.
-
-   The hover rail leaves on a DIFFERENT trigger — `past-map`, not `on-dark`. It
-   reads «Наведите на здание, чтобы узнать о резидентах», and the moment the map
-   is gone there is nothing to hover; tying it to darkness instead would leave
-   that instruction standing over the white gap, addressed to a map that has
-   already scrolled away. */
-#screen-concept .concept-home svg path,
-#screen-concept .map-info {
-  transition:
-    fill 0.4s ease,
-    opacity 0.4s ease;
-}
-
-#screen-concept.on-dark .concept-home svg path {
-  fill: #fff;
-}
-
-#screen-concept.past-map .map-info {
-  opacity: 0;
-  pointer-events: none;
-}
-
-@media (max-width: 900px) {
-  .res-body {
-    width: auto;
-    margin: 0 24px;
-  }
-  .res-title {
-    font-size: 34px;
-  }
-  .res-lead {
-    font-size: 17px;
-  }
-}
-
+   PINNED, not in the scroller: a scroll container's absolutely-positioned
+   children scroll with its content. So it is told to leave once the intro it
+   belongs to has gone — it is the page's masthead, and the map underneath has
+   its own top-left furniture (the metro chip) that it would otherwise sit on. */
 .concept-home {
   position: absolute;
   left: 32px;
-  top: 40px;
-  width: 220px;
-  /* ABOVE the rail (z:5). The rail's hover glow reaches up into this corner,
-     and being a later sibling at the same z-index it would paint over the
-     wordmark and wash it out. The glow is there to lift the MAP behind the
-     hover text, never the site's own logo. */
+  top: 32px;
+  width: 251.2px;
+  height: 40px;
   z-index: 6;
   cursor: pointer;
+  transition: opacity 0.35s ease;
 }
+
 .concept-home svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
-/* the logo ships with a hard-coded fill="white"; CSS overrides the
-   presentation attribute so it reads on the light field */
+
 .concept-home svg path {
-  fill: #123a5c;
+  fill: #36afff;
 }
 
-/* ------------------------------------------------------- left info rail
-
-   Round 10. The «Концепция» corner title is gone, and the standing hint moved
-   out of the bottom centre into this column, directly under the logo — the
-   same left rail the main screen puts its news block in. It is also the hover
-   read-out, so it had to sit somewhere the eye already returns to rather than
-   float under the plan as a caption.
-
-   Body copy INHERITS the site's base size (21px, global.css) — it deliberately
-   states no font-size of its own. */
-.map-info {
-  position: absolute;
-  left: 32px;
-  /* clears the 220px-wide logo, whose svg is ~35px tall at that width */
-  top: 104px;
-  width: 320px;
-  max-width: 42vw;
-  /* Reserves the taller (hovered) state's height in BOTH states. Two reasons,
-     and the second is the load-bearing one:
-       - the rail must not reflow under the cursor as you sweep across
-         buildings, which a content-sized box would do on every hover;
-       - MapLabels treats this element as an obstacle and re-solves only on
-         resize, so a box that changed height between solves would reserve the
-         wrong area and let «ул. Комсомола» drift under the text. */
-  min-height: 224px;
-  z-index: 5;
-  color: #123a5c;
-  /* inert: the rail sits over the map and must never eat a building click */
+#screen-concept.past-intro .concept-home {
+  opacity: 0;
   pointer-events: none;
-  transition: opacity 0.32s cubic-bezier(0.3, 0, 0.12, 1);
-}
-
-/* The soft lift behind the rail's text.
-
-   A radial gradient, NOT `filter: blur()` on a shape — a gradient is already
-   smooth, costs no extra raster pass, and cannot bleed edge artifacts the way a
-   blurred box does. It hangs off the left edge of the screen so the falloff is
-   asymmetric: dense under the text, gone by the middle of the plan.
-
-   z-index -1 puts it behind the rail's own text while staying inside
-   `.map-info`'s stacking context — so it lifts the map, never the type. It is
-   present only on hover: the standing hint sits on the pale field near the logo
-   and needs no help. */
-.map-info::before {
-  content: '';
-  position: absolute;
-  left: -300px;
-  top: 50%;
-  width: 760px;
-  height: 580px;
-  transform: translateY(-50%);
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    rgba(255, 255, 255, 0.85) 0%,
-    rgba(255, 255, 255, 0.62) 40%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  opacity: 0;
-  transition: opacity var(--mi-swap) ease;
-}
-.map-info.building::before {
-  opacity: 1;
-}
-
-/* ── the hover swap ───────────────────────────────────────────────────────
-   0.2s out, 0.2s in. Mirrored in MapInfo.ts's SWAP_MS, which fires the content
-   swap at the bottom of the fade; the two must agree or the text changes while
-   still visible. Rapid target changes do NOT queue — see MapInfo.setHovered. */
-.map-info {
-  --mi-swap: 0.2s;
-}
-.map-info .mi-name,
-.map-info .mi-brief,
-.map-info .mi-summary,
-.map-info .mi-hint {
-  transition: opacity var(--mi-swap) ease;
-}
-.map-info.swapping .mi-name,
-.map-info.swapping .mi-brief,
-.map-info.swapping .mi-summary,
-.map-info.swapping .mi-hint,
-.map-info.swapping::before {
-  opacity: 0;
-}
-
-/* a building is focused — the drawer occupies this column and does this job */
-.map-info.muted {
-  opacity: 0;
-}
-
-.map-info .mi-hint {
-  opacity: 0.55;
-}
-
-.map-info .mi-name {
-  margin: 0 0 8px;
-  font-size: 30px;
-  /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
-  font-weight: 150;
-  line-height: 1.12;
-}
-
-.map-info .mi-brief {
-  opacity: 0.75;
-}
-
-/* what the building holds — «126 номеров · 2 ресторана · спа-комплекс».
-   Carries the hue the rest of the rail doesn't, so the eye lands on it last
-   and it reads as the answer rather than as more description. */
-.map-info .mi-summary {
-  margin-top: 14px;
-  color: #2f86c4;
-}
-
-/* a building is under the cursor */
-#screen-concept.picking canvas {
-  cursor: pointer;
 }
 
 /* ---------------------------------------------------- building drawer */
@@ -503,52 +236,23 @@
   margin-bottom: 19px;
 }
 
-/* only for buildings with no operator mark — otherwise the Figma shows nothing
-   between the hero and the name */
-.bld-kind {
-  font-size: 18px;
-  opacity: 0.45;
-  margin-bottom: 6px;
-}
-
+/* ROUND 18: THREE SIZES IN THE WHOLE DRAWER — 34 for the title, 24 for prose,
+   16 for the resident list. The client asked for the scale to be cut down, and
+   what went with it was the grey kind-line above the heading («Панорамный
+   ресторан»), the per-resident CTA links («Купить билет») and the building's
+   own «Сайт отеля» link. Do not reintroduce a fourth size here without one. */
 .bld-name {
   margin: 0 0 18px;
-  font-size: 30px;
+  font-size: 34px;
   /* Chromius Medium = wght 150 on this font's axis - see fonts.css */
   font-weight: 150;
-  line-height: 1.12;
+  line-height: 1.15;
 }
 
-/* the same sentence the hover rail shows, so opening the drawer continues the
-   thought rather than restarting it */
 .bld-brief {
   margin-bottom: 22px;
+  font-size: 24px;
   line-height: 1.42;
-}
-
-/* «Сайт отеля ›» - the building's own link, directly under the brief */
-.bld-site {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: fit-content;
-  color: #36a0ff;
-  font-weight: 150;
-}
-.bld-site:hover {
-  text-decoration: underline;
-}
-
-.bld-chevron {
-  display: inline-block;
-  width: 0.5em;
-  height: 0.72em;
-  flex: none;
-}
-.bld-chevron svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 /* `margin-top: auto` is what pins the list to the foot of the panel. When the
@@ -568,41 +272,26 @@
   align-items: baseline;
   gap: 14px;
   padding: 11px 0;
+  font-size: 16px;
+}
+
+/* The resident's own name, and the floor it is on. Both 16px; the name carries
+   the plan's caption ink so the drawer and the map agree, and the floor steps
+   back to the margin tint the streets use. */
+.bld-resident {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #6d9bb5;
 }
 
 .bld-floor {
   flex: none;
-  color: #a7c2ca;
+  color: #b2cad1;
 }
 
 .bld-empty {
   opacity: 0.5;
   font-style: italic;
-}
-
-/* branded residents keep their own outbound link under the label */
-.bld-row--brand {
-  align-items: flex-start;
-}
-
-.bld-brand {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.bld-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 18px;
-  color: #36a0ff;
-  width: fit-content;
-}
-.bld-link:hover {
-  text-decoration: underline;
 }
 
 /* OUTSIDE the panel, floating on the map - that is where the Figma puts it,

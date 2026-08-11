@@ -154,16 +154,39 @@ export class PhotoSlider {
    * screen while the pointer is parked on one, however long it rests there.
    * Called from MainScreen's pointerenter/leave handlers.
    *
-   * The `idleElapsed` latch keeps the whole activation decision in one place
-   * (`tryActivate`) instead of half here and half inside `activate`. In practice
-   * leaving a link also fires `pointermove`, which resets the idle timer, so the
-   * countdown restarts — that is correct, moving the cursor IS activity.
+   * ROUND 18 FIXED A RACE HERE. `idleElapsed` used to survive the hover: the
+   * watcher kept running while the pointer rested on a link, set the latch, and
+   * called `tryActivate`, which refused only because `hoverBlocked` was true.
+   * So the instant `pointerleave` fired, un-blocking re-activated SYNCHRONOUSLY
+   * — a slide was thrown, and 950 ms later the headline rose word by word on a
+   * screen the reader had just moved the cursor across. The next `pointermove`
+   * then reset the watcher, which retired it again. That is exactly the
+   * reported symptom: it appears word by word and then melts away.
+   *
+   * The old code named the assumption it rested on — "in practice leaving a link
+   * also fires pointermove, which resets the idle timer". It does, usually. It
+   * does not when the pointer leaves the window entirely, when the boundary
+   * crossing is the last input of a flick, or when the leave came from layout
+   * rather than motion. A behaviour that correct only under an event ordering is
+   * a race, and retiming it would only move the window.
+   *
+   * So: leaving a link IS activity, and the latch is cleared when the gate
+   * closes. The countdown then has to elapse again from scratch, which is the
+   * same rule that governs every other kind of activity, and un-blocking can no
+   * longer activate anything by itself.
+   *
+   * This also closes a side-effect leak. Even in the benign ordering, the old
+   * path ran `activate()` → `showSlide()` BEFORE `deactivate()` could cancel it,
+   * so it fired `onSlideStart` (a 1.1 s light dip on the ray field), set
+   * `incoming.src` and warmed the next photo, all for a slide that never showed.
    */
   setHoverBlocked(blocked: boolean) {
     if (blocked === this.hoverBlocked) return;
     this.hoverBlocked = blocked;
-    if (blocked) this.deactivate();
-    else this.tryActivate();
+    if (blocked) {
+      this.idleElapsed = false;
+      this.deactivate();
+    }
   }
 
   private tryActivate() {
@@ -182,6 +205,11 @@ export class PhotoSlider {
   detach() {
     this.idle.detach();
     this.deactivate();
+    // AFTER deactivate, not inside `clearTimers`: deactivate's whole job is to
+    // schedule this one, so clearing it earlier in the same call would be undone
+    // a few lines later. Without this it outlives the screen and strips `.out`
+    // off a headline nobody is watching.
+    clearTimeout(this.cleanupTimer);
   }
 
   private warm(i: number) {
