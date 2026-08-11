@@ -49,6 +49,8 @@
  * re-tuning it — see TUNING_LOG map round 17.
  */
 
+import { asset } from '../../shared/assetUrl';
+
 /** where an icon sits relative to the text */
 export type IconAt = 'above' | 'before';
 
@@ -229,7 +231,7 @@ export function createMark(mark: Mark): HTMLElement {
   if (mark.icon) {
     const img = document.createElement('img');
     img.className = 'map-mark__icon';
-    img.src = `/resources/${mark.icon.src}.svg`;
+    img.src = asset(`/resources/${mark.icon.src}.svg`);
     img.width = mark.icon.w;
     img.height = mark.icon.h;
     img.alt = '';
