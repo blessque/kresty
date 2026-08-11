@@ -20,14 +20,17 @@
  *
  * THE OFFSET
  * ----------
- * Three things measure themselves against the map's OWN scroll: the picker (the
- * stage moves under a stationary cursor), the caption layer, and the camera.
- * While the map was the first thing in the scroller, `scrollTop` was that value.
- * With the intro above it the two differ by the intro's height, and getting that
- * wrong is a SILENT failure — `buildingPicker.ts` records the round-14 version
- * of it: the map still highlights buildings, just the wrong ones. So the offset
- * lives in one place, `introH`, and `mapScrollTop` / `mapVisible` / `toBottom`
- * are the only readers.
+ * Things that measure themselves against the map rather than against the page:
+ * the picker (the stage moves under a stationary cursor), and `toBottom`. While
+ * the map was the first thing in the scroller, `scrollTop` served both. With the
+ * intro above it they differ by the intro's height, and getting that wrong is a
+ * SILENT failure — `buildingPicker.ts` records the round-14 version: the map
+ * still highlights buildings, just the wrong ones.
+ *
+ * TWO QUANTITIES, and round 18 shipped a bug by treating them as one. How far
+ * the map has been SCROLLED cannot be negative. Where the window sits relative
+ * to the STAGE can, and is, for the whole time the intro is on screen. Only
+ * `stageOffset` — unclamped — may be used to convert a coordinate.
  *
  * `overscan` deliberately does NOT take the offset: `.map-stage`'s percentage
  * height resolves against the scroller's content box, not its `scrollHeight`,
@@ -80,15 +83,25 @@ export class MapScroll {
   }
 
   /**
-   * The map's OWN scroll: the page scroll less the intro, clamped to the stage.
+   * WINDOW → STAGE, on the y axis. Add it to a window-space y to get the same
+   * point in the stage's own coordinates.
    *
-   * Zero for the whole time the intro is on screen, so the map behaves exactly
-   * as it did before it had anything above it; and past the bottom of the map it
-   * stops advancing rather than being driven somewhere undefined.
+   * **It is deliberately unclamped and goes NEGATIVE**, and that is the whole
+   * reason it exists separately. While the intro is on screen the stage's top
+   * edge sits `introH − scrollTop` px BELOW the window's, so a cursor in the
+   * intro is at a negative stage y — off the top of the map, which is exactly
+   * what the picker should conclude.
+   *
+   * This used to be `mapScrollTop`, a value clamped at 0 because a scroll
+   * position cannot be negative. That conflated two different things: how far
+   * the map has been scrolled, and where the window is relative to the stage.
+   * Clamping is right for the first and wrong for the second, and using the
+   * clamped value as a coordinate transform pinned the whole pick zone to the
+   * top of the window while the map itself sat 454 px lower — so clicking the
+   * white intro selected buildings.
    */
-  get mapScrollTop(): number {
-    const own = this.scroller.scrollTop - this.introH;
-    return Math.min(Math.max(0, own), Math.max(0, this.stageH - this.viewH));
+  get stageOffset(): number {
+    return this.scroller.scrollTop - this.introH;
   }
 
   /** does the map stage still intersect the viewport? */

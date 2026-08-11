@@ -462,14 +462,7 @@ export class ConceptScreen {
 
   /** the canvas the captions and the picker work in — never the window */
   private get view() {
-    return {
-      w: this.scroll.stageW,
-      h: this.scroll.stageH,
-      restH: innerHeight,
-      // the MAP's own scroll, clamped to the stage — past the map this stops
-      // advancing rather than dragging the caption domain into the sections
-      scrollTop: this.scroll.mapScrollTop,
-    };
+    return { w: this.scroll.stageW, h: this.scroll.stageH };
   }
 
   start() {
@@ -501,7 +494,10 @@ export class ConceptScreen {
         this.waterT += dt * this.timeScale;
         this.ground?.update(this.waterT);
         this.updateShear();
-        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.mapScrollTop);
+        // WINDOW → STAGE. `stageOffset` is negative while the intro is still on
+        // screen, which puts a cursor in the intro above the map's top edge and
+        // makes the picker miss — which is correct. See mapScroll.stageOffset.
+        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.stageOffset);
         this.picker.update(this.scene, this.mapCam.camera);
         this.labels.update(
           this.mapCam.camera,

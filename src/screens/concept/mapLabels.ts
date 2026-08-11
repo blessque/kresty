@@ -44,14 +44,16 @@ const FADE_POWER = 2;
 
 /**
  * The canvas the captions are projected into — the 150vh map stage, NOT the
- * window. `restH` and `scrollTop` are the resting viewport and the map's own
- * scroll; they are part of the view the caller measures.
+ * window.
+ *
+ * Round 18 trimmed this to the two fields that are read. It also carried
+ * `restH` and `scrollTop` for the solver's benefit, and with the solver gone
+ * they were dead — a stale `scrollTop` on a view object is exactly the kind of
+ * near-miss that let the picker's own offset bug hide.
  */
 export interface StageView {
   w: number;
   h: number;
-  restH: number;
-  scrollTop: number;
 }
 
 interface Label {
