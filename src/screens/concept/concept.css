@@ -677,31 +677,109 @@
   visibility: hidden;
 }
 
-/* Building captions (round 13). Two left-aligned lines whose block is centred
-   on the roof anchor — `text-align: left` inside a shrink-to-fit box, so the
-   name and the hotel line share a left edge the way the client's map has them.
-
-   16px at the designer's request, against the 21px site base: these sit ON the
-   volumes and there may be several in view, so they read as annotation rather
-   than as the plan's own lettering. Ink `#5d90ac` is the darkest pixel measured
-   in the client's export — the visible bulk is lighter only because it is
-   antialiased over the near-white field. */
-.map-label--building {
-  color: #5d90ac;
-  font-size: 16px;
-  line-height: 1.35;
-  text-align: left;
-}
-
-/* the streets are lettering ON the plan — quiet, the same family of greys as
-   the surfaces they sit on (Figma #a8bac1) */
-.map-label--street {
-  color: #a8bac1;
-}
-
 /* the river carries the only hue on the plan, so its caption does too, and it
-   sits a good deal darker than the streets — it has more tone to read against
+   sits a good deal darker than the marks — it has more tone to read against
    (Figma #5992ab) */
 .map-label--river {
   color: #5992ab;
+}
+
+/* ---------------------------------------------------------------- map marks
+   The authored annotation layer, Figma 591:194 (round 17). Positioned by
+   `MapLabels.update`, which writes only a translate — a mark's own turn and its
+   internal layout are settled here, so the per-frame path stays one transform
+   write per mark.
+
+   16px against the 21px site base: these sit ON the volumes and eighteen of
+   them are in view at once, so they read as annotation rather than as the
+   plan's own lettering. Chromius Regular is weight 120 and Medium is 150 — the
+   axis runs 50/120/232, so `400`/`500` would clamp to Black. Never add
+   `font-variation-settings` here; it overrides `font-weight`. */
+.map-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* row-gap for an `above` icon: the design stacks the chip and its word 1.3px
+     apart, which is a hair of air rather than a measured space */
+  gap: 1px;
+  white-space: nowrap;
+  font-family: 'ALS Chromius', sans-serif;
+  font-weight: 120;
+  font-size: 16px;
+  /* one number, referenced by the icon's own centring calc below */
+  --mark-lh: 1.2;
+  line-height: var(--mark-lh);
+  color: #6d9bb5;
+  will-change: transform;
+}
+
+/* Aligned blocks. The two cross captions are mirrored in the design — the west
+   one left-aligned in its lower-right quadrant, the east one right-aligned in
+   its lower-left — so that neither runs back at its own cross. `MapLabels`
+   pins the matching edge of the box; these keep the LINES on that edge too. */
+.map-mark--left {
+  align-items: flex-start;
+}
+.map-mark--left .map-mark__text {
+  text-align: left;
+}
+.map-mark--right {
+  align-items: flex-end;
+}
+.map-mark--right .map-mark__text {
+  text-align: right;
+}
+
+/* An icon set BEFORE the text centres on the FIRST line, not on the block.
+   «Вход / с набережной» is the case that decides it: centred on the block the
+   arrow drops half a line and stops pointing at anything.
+
+   The margin is on BOTH sides, and that is the load-bearing half. Negative
+   margin-top alone centres the icon correctly but leaves it overhanging the
+   row, so the block's box grows upward and its centre stops being the text's
+   centre — which put both entrance marks 5px high, by an amount that depended
+   on the icon's height. Bleeding the same amount off the bottom makes the icon
+   contribute exactly one line box to layout, so the block's box IS the text's
+   box and the anchor addresses what it appears to. */
+.map-mark--icon-before {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 5px;
+}
+.map-mark--icon-before .map-mark__icon {
+  margin-block: calc((var(--mark-lh) * 1em - var(--icon-h)) / 2);
+}
+
+.map-mark__icon {
+  display: block;
+  flex: none;
+  max-width: none;
+}
+
+/* One element per line: a mark is a column of lines, which `white-space:
+   pre-line` could not give inside a nowrap box. The 2px matches the design's
+   `gap-[2px]` on both cross captions. */
+.map-mark__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* White ink for a mark lying on a filled roof — the parking deck and the pier.
+   The design steps the weight up with it: at 120 the white breaks up over the
+   roof's own edge lines, and Chromius Medium is 150. */
+.map-mark--white {
+  color: #fff;
+  font-weight: 150;
+}
+
+/* The margin tint, for features that run off the sheet: both streets and the
+   metro. They are lettered in the white band outside the plate, so they carry
+   less weight than anything standing on the site itself. */
+.map-mark--muted {
+  color: #b2cad1;
+  --mark-lh: 1.4;
 }

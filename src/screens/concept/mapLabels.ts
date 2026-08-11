@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { connectedComponents, type MeshComponent, type BuildingPart } from './buildingSplit';
 import type { FlatSurface } from './groundPlan';
-import { infoFor } from './buildingsInfo';
+import { BUILDING_MARKS, SITE_MARKS, alignShift, createMark } from './mapMarks';
 
 /**
- * Captions for the river and the two streets.
+ * The map's caption layer: one solved caption, and the authored marks.
  *
  * DOM, not 3D text: three has no text primitive without pulling in a font
  * loader and a glyph mesh per caption, and the project's type is already the
@@ -12,12 +12,24 @@ import { infoFor } from './buildingsInfo';
  * costs one `matrix` write per frame, and inherits the site's typography for
  * free.
  *
- * ANCHORS ARE DERIVED, NOT AUTHORED. The GLB has no named nodes, so a caption
- * cannot be attached to "the embankment" by name. Each labelled feature is
- * recovered as a connected component of its material's primitive; `Color_M04`
- * holds BOTH streets as one primitive, which is why this module needs the
- * component split at all, and the embankment is told apart from ул. Комсомола
- * by which of the two lies nearer the river.
+ * ---------------------------------------------------------------------------
+ * ROUND 17 RETIRED THE STREET SOLVER, and left the river's standing.
+ *
+ * Rounds 9–15 recovered «Арсенальная наб.» and «ул. Комсомола» as connected
+ * components of `Color_M04` and searched each road for an interior point. That
+ * machinery was sound and it kept losing anyway, because the thing it solved
+ * for stopped existing: round 12 squared the plan to the screen and pushed
+ * ул. Комсомола off the top, round 15 straightened Арсенальная наб. clean below
+ * the frame, and by then neither road was drawn at all in the resting
+ * composition. The solver's answers were being clamped into the margin band by
+ * `SOLVE_MARGIN` — that is to say, the right answer was already the margin, and
+ * the search was an expensive way to arrive there.
+ *
+ * The designer's frame (591:194) says so outright: both street names are set
+ * upright in the white band outside the plate, in a lighter tint, the way a map
+ * letters a feature that runs off the sheet. They are authored in `mapMarks.ts`
+ * now. What is left here is the search, serving the one caption that still has
+ * a visible feature to sit inside — the Neva.
  *
  * ---------------------------------------------------------------------------
  * ROUND 10: the anchor is an INTERIOR POINT, solved once — not a point plus
@@ -46,17 +58,10 @@ import { infoFor } from './buildingsInfo';
  * write. There is no pixel clamp anywhere in the per-frame path.
  */
 
-/** the material each caption is recovered from */
+/** the material the river caption is recovered from */
 const WATER_MAT = 'Color_H08';
-const STREET_MAT = 'Color_M04';
 
-const TEXT = {
-  river: 'р. Нева',
-  /** the street nearer the river */
-  embankment: 'Арсенальная наб.',
-  /** the other one */
-  inland: 'ул. Комсомола',
-};
+const RIVER = 'р. Нева';
 
 /**
  * Margin from the window edge the solver keeps clear, in px.
@@ -81,10 +86,8 @@ const OBSTACLES = ['.concept-home', '.map-info'];
 const OBSTACLE_PAD = 12;
 
 /**
- * How much clear feature the caption needs around its anchor, in px. Roughly
- * half a line box, so a 22px caption sits on its road rather than straddling
- * the kerb. The streets measure ~55px across at the default framing, so a
- * centreline anchor clears this comfortably.
+ * How much clear water the caption needs around its anchor, in px. Roughly half
+ * a line box, so the caption sits on the river rather than straddling its bank.
  */
 const MIN_CLEARANCE = 13;
 
@@ -92,58 +95,9 @@ const MIN_CLEARANCE = 13;
  *  resize only, so this can afford to be fine. */
 const GRID_STEP = 5;
 
-/**
- * Street captions sit LEFT of centre along their own run — Figma 477:440 places
- * both there, and the design is the spec. Expressed as a fraction of the
- * caption's own valid span along the street, so it stays left-of-centre at any
- * framing instead of encoding a fixed distance that stops meaning the same
- * thing when the visible stretch changes length.
- */
-const STREET_BIAS = 0.3;
-
-/**
- * A `Color_M04` component counts as a street once it runs at least this much of
- * the site's own span. Both real roads cross the whole site and then bleed off
- * both edges — they measure 2.4× and 4.8× the span — so this is a wide moat
- * around the only two things that can pass, not a tuned threshold.
- */
-const MIN_STREET_RUN_FRAC = 0.25;
-
 /** captions fade out as the camera swings to a focused building — the
  *  isometric view is not a plan, and a plan caption reads as a mistake there */
 const FADE_POWER = 2;
-
-/**
- * BUILDING captions — the round-13 test set, from the client's own map.
- *
- * These are NOT solved. Where a plan caption has a polygon to sit inside and a
- * whole search to run, a building caption belongs to one volume and the client
- * placed each one by hand, in a different quadrant per cross so the two do not
- * collide. So placement is authored here: `at` is an offset from the roof
- * centre in FRACTIONS OF THE SITE SPAN, which keeps it meaningful at any
- * framing — a fixed distance would stop meaning the same thing the moment the
- * fit changes, which is exactly the mistake round 10 removed from the solver.
- *
- * `+x` is screen-right, `+z` is screen-DOWN (the plan is square to the screen
- * since round 12, so the two axes map straight to the page).
- *
- * The first line is always the building's own `name` — never duplicated here,
- * so a rename in buildingsInfo.ts cannot leave the map disagreeing with the
- * drawer. `sub` is the optional second line.
- */
-const BUILDING_CAPTIONS: Record<string, { sub?: string; at: [number, number] }> = {
-  /** the screen-LEFT cross — the client puts its caption in the lower-RIGHT
-   *  quadrant between the arms */
-  b02: { sub: 'Отель Cosmos 4*', at: [0.102, 0.081] },
-  /** the screen-RIGHT cross — lower-LEFT quadrant, the mirror choice, which is
-   *  what keeps it clear of the SPA block */
-  b01: { sub: 'Отель Cosmos 5*', at: [-0.125, 0.087] },
-  b04: { at: [-0.02, 0.058] },
-  /** not on the client's map — a test case on purpose: a low flat roof, to show
-   *  the travel is proportional to HEIGHT (this one slides ~8px at full lean
-   *  against the crosses' ~45px, because that is how far its roof goes) */
-  b15: { at: [0, 0] },
-};
 
 /**
  * The canvas the captions are projected into — round 14's 150vh stage, NOT the
@@ -165,43 +119,20 @@ interface Feature {
   tris: THREE.Vector3[];
   /** world-space boundary segments, as [a, b] pairs */
   edges: [THREE.Vector3, THREE.Vector3][];
-  axisAngle: number;
 }
 
 interface Label {
   el: HTMLElement;
-  /** null for building captions — they are authored, not searched for */
+  /** null for the authored marks — they are placed, not searched for */
   feature: Feature | null;
-  /** how to bias the search within the feature; `fixed` skips the solver */
-  bias: 'bottom-left' | 'street' | 'fixed';
-  /**
-   * How far down the stage the solver may place this caption (round 14).
-   *
-   * `rest` = the window-sized band visible before you scroll; `full` = the
-   * whole 150vh stage, including the revealed river.
-   *
-   * The rule is "a caption goes where its feature READS". Round 14 read that as
-   * `rest` for the streets and `full` for the river: the embankment then still
-   * crossed the resting frame diagonally, so `full` let it settle 28px below
-   * the fold — lettering a stretch of road nobody saw at rest — while the Neva
-   * was `unplaced` for want of visible water.
-   *
-   * ROUND 15 MOVED THE ROAD, so the same rule now gives the opposite answer.
-   * Straightening Арсенальная наб. dropped it to a level band ~48px BELOW the
-   * resting frame; it is not partly visible any more, it is not visible at all.
-   * A `rest` solve therefore has no road to letter and comes out `unplaced`,
-   * and the caption follows its road down. `full` for everything is now one
-   * code path, and for ул. Комсомола it is inert either way — that one sits
-   * ABOVE the frame, and the stage only extends downward.
-   */
-  band: 'rest' | 'full';
-  /** solved world-space anchor; null until the first solve */
+  /** world-space anchor; null until the river's first solve */
   at: THREE.Vector3 | null;
-  /** Streets are lettered along their own run; the river is NOT. Figma sets
-   *  «р. Нева» horizontal (its bounding box is exactly one line box tall), which
-   *  is also the cartographic convention — a water body is labelled level, a
-   *  thoroughfare is labelled along its length. */
-  rotates: boolean;
+  /**
+   * The CSS x-shift that puts the mark's own anchor edge on the projected
+   * point — `-50%` for everything the design centres, `0%`/`-100%` for the
+   * blocks it aligns. See `alignShift`.
+   */
+  shift: string;
 }
 
 export class MapLabels {
@@ -237,100 +168,70 @@ export class MapLabels {
     siteSpan: number
   ) {
     this.clear();
-    this.buildBuildings(parts, modelMatrix, siteSpan);
+    this.buildMarks(parts, modelMatrix, siteSpan);
 
     const water = biggest(components(surfaces, WATER_MAT));
-    if (water) {
-      this.add(TEXT.river, feature(water, modelMatrix), 'river', 'bottom-left', false, 'full');
-    }
-
-    // A street is told from a scrap by its RUN, not by its triangle count.
-    //
-    // This was `triCount >= 4`, and round 15's export broke it: straightening
-    // the two roads took them from 9 and 6 triangles to 3 and 2, so both were
-    // filtered out — and since the guard here used to be shared with the river,
-    // the early return took «р. Нева» down with them. All three plan captions
-    // vanished because the roads got SIMPLER.
-    //
-    // `buildingSplit.ts` already learned this and says so in its own header:
-    // triangle count measures modelling detail, and modelling detail is not
-    // what makes something a street. A road crosses the whole site by
-    // definition, so measure that instead and the filter survives the next
-    // re-export.
-    const streets = components(surfaces, STREET_MAT)
-      .filter((c) => horizontalRun(c) >= siteSpan * MIN_STREET_RUN_FRAC)
-      .sort((p, q) => horizontalRun(q) - horizontalRun(p))
-      .slice(0, 2);
-    if (!water || streets.length === 0) return;
-
-    // embankment = the street whose centroid is nearer the river
-    streets.sort(
-      (p, q) =>
-        p.centroid.distanceToSquared(water.centroid) -
-        q.centroid.distanceToSquared(water.centroid)
-    );
-
-    const names = [TEXT.embankment, TEXT.inland];
-    streets.forEach((s, i) => {
-      this.add(names[i], feature(s, modelMatrix), 'street', 'street', true, 'full');
+    if (!water) return;
+    const el = document.createElement('div');
+    el.className = 'map-label map-label--river';
+    el.textContent = RIVER;
+    this.layer.appendChild(el);
+    this.labels.push({
+      el,
+      feature: feature(water, modelMatrix),
+      at: null,
+      shift: '-50%',
     });
   }
 
   /**
-   * Captions welded to the buildings themselves.
+   * Place the authored marks — Figma 591:194, the table in `mapMarks.ts`.
    *
-   * The anchor sits on the ROOF (`bbox.max.y`), and that is the whole trick:
-   * restricted to a horizontal plane at height h the plan-oblique shear
-   * `x' = x + sx·y, z' = z + sz·y` becomes `(x, z) → (x + sx·h, z + sz·h)` —
-   * it has no linear part left, so it is a pure TRANSLATION. A caption anchored
-   * up there therefore slides exactly as far as its roof does and never skews,
-   * with no per-frame correction: `update` already runs every anchor through
-   * the shear, which is simply the identity for the plan captions on y = 0.
+   * A building mark's anchor sits on the ROOF (`bbox.max.y`), and that is the
+   * whole trick: restricted to a horizontal plane at height h the plan-oblique
+   * shear `x' = x + sx·y, z' = z + sz·y` becomes `(x, z) → (x + sx·h, z + sz·h)`
+   * — it has no linear part left, so it is a pure TRANSLATION. A mark anchored
+   * up there slides exactly as far as its roof does and never skews, with no
+   * per-frame correction of any kind.
+   *
+   * A site mark sits at y = 0, the shear's fixed point, so it does not move with
+   * the lean at all. Its offset is measured from the WORLD origin, which is the
+   * site's own centre at grade: `ConceptScreen` seats the model with
+   * `position = (−center·scale, −groundY·scale, −center·scale)`, so that point
+   * is (0, 0, 0) by construction and needs no measuring here.
    */
-  private buildBuildings(
+  private buildMarks(
     parts: BuildingPart[],
     modelMatrix: THREE.Matrix4,
     siteSpan: number
   ) {
-    for (const part of parts) {
-      const spec = BUILDING_CAPTIONS[part.id];
-      if (!spec) continue;
-      const c = part.bbox.getCenter(new THREE.Vector3());
-      const at = new THREE.Vector3(
-        c.x + spec.at[0] * siteSpan,
-        part.bbox.max.y,
-        c.z + spec.at[1] * siteSpan
-      ).applyMatrix4(modelMatrix);
+    const byId = new Map(parts.map((p) => [p.id, p]));
+    // the model's normalize scale, so a site offset in MODEL units (which is
+    // what `siteSpan` is measured in) lands at the right world distance
+    const scale = new THREE.Vector3().setFromMatrixScale(modelMatrix).x;
 
-      const el = document.createElement('div');
-      el.className = 'map-label map-label--building';
-      // one element per line: a caption is two left-aligned lines whose block is
-      // centred on the anchor, which `white-space: pre-line` could not give
-      for (const line of [infoFor(part.id).name, spec.sub]) {
-        if (!line) continue;
-        const row = document.createElement('div');
-        row.textContent = line;
-        el.appendChild(row);
+    for (const mark of [...BUILDING_MARKS, ...SITE_MARKS]) {
+      let at: THREE.Vector3;
+      if (mark.on) {
+        const part = byId.get(mark.on);
+        if (!part) continue;
+        const c = part.bbox.getCenter(new THREE.Vector3());
+        at = new THREE.Vector3(
+          c.x + mark.at[0] * siteSpan,
+          part.bbox.max.y,
+          c.z + mark.at[1] * siteSpan
+        ).applyMatrix4(modelMatrix);
+      } else {
+        at = new THREE.Vector3(
+          mark.at[0] * siteSpan * scale,
+          0,
+          mark.at[1] * siteSpan * scale
+        );
       }
+      const el = createMark(mark);
       this.layer.appendChild(el);
-      // `band` is inert for an authored caption — it only constrains the solver
-      this.labels.push({ el, feature: null, bias: 'fixed', at, rotates: false, band: 'full' });
+      this.labels.push({ el, feature: null, at, shift: alignShift(mark.align) });
     }
-  }
-
-  private add(
-    text: string,
-    f: Feature,
-    kind: string,
-    bias: Label['bias'],
-    rotates: boolean,
-    band: Label['band']
-  ) {
-    const el = document.createElement('div');
-    el.className = `map-label map-label--${kind}`;
-    el.textContent = text;
-    this.layer.appendChild(el);
-    this.labels.push({ el, feature: f, bias, at: null, rotates, band });
   }
 
   /**
@@ -376,41 +277,30 @@ export class MapLabels {
       const x = (this.a.x * 0.5 + 0.5) * w;
       const y = (-this.a.y * 0.5 + 0.5) * h;
 
-      let ang = 0;
-      if (l.rotates && l.feature) {
-        this.b
-          .copy(l.at)
-          .add(axisVector(l.feature.axisAngle))
-          .applyMatrix4(shear)
-          .project(camera);
-        const bx = (this.b.x * 0.5 + 0.5) * w;
-        const by = (-this.b.y * 0.5 + 0.5) * h;
-        // keep the caption reading left-to-right whichever way the axis points
-        ang = Math.atan2(by - y, bx - x);
-        if (ang > Math.PI / 2) ang -= Math.PI;
-        if (ang < -Math.PI / 2) ang += Math.PI;
-      }
-
-      l.el.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${ang.toFixed(4)}rad)`;
+      // A turned mark rotates its TEXT, in `mapMarks`, not its box — so nothing
+      // here needs to know about rotation, and the box a mark occupies stays
+      // the one the browser laid out.
+      l.el.style.transform =
+        `translate(${l.shift}, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
     }
   }
 
   /**
-   * Choose an interior anchor for every caption, in world space.
+   * Choose an interior anchor for the river caption, in world space.
    *
    * Runs at load and on resize. Everything here is screen-space reasoning —
-   * "inside the viewport", "left of centre", "13px of clear road" are all
-   * pixel notions — but the RESULT is converted back to a world point, so the
-   * per-frame path stays a pure projection and the caption stays welded to its
-   * feature between solves.
+   * "inside the viewport", "bottom-left", "13px of clear water" are all pixel
+   * notions — but the RESULT is converted back to a world point, so the
+   * per-frame path stays a pure projection and the caption stays welded to the
+   * Neva between solves.
    */
   private solve(camera: THREE.Camera, view: StageView) {
     const { w, h } = view;
     const blocked = obstacleRects(this.chrome, view.scrollTop);
 
     for (const l of this.labels) {
-      // building captions are authored, not searched for
-      if (l.bias === 'fixed' || !l.feature) continue;
+      // the authored marks are placed, not searched for
+      if (!l.feature) continue;
       const scr = l.feature.tris.map((p) => project(p, camera, w, h));
       const edges = l.feature.edges.map(
         ([p, q]) => [project(p, camera, w, h), project(q, camera, w, h)] as const
@@ -420,13 +310,12 @@ export class MapLabels {
       // centre inside the inset can still hang half the text off-screen, which
       // is how «р. Нева» ended up clipped by the right edge on the first pass.
       // Measured from the live element, so it follows the real font metrics.
-      const half = halfExtents(l, camera, w, h);
-      const bandH = l.band === 'full' ? h : view.restH;
+      const half = { x: l.el.offsetWidth / 2, y: l.el.offsetHeight / 2 };
       const box = {
         x0: SOLVE_MARGIN + half.x,
         y0: SOLVE_MARGIN + half.y,
         x1: w - SOLVE_MARGIN - half.x,
-        y1: bandH - SOLVE_MARGIN - half.y,
+        y1: h - SOLVE_MARGIN - half.y,
       };
 
       // the feature's on-screen extent, intersected with the allowed box
@@ -439,11 +328,6 @@ export class MapLabels {
       const y0 = Math.max(box.y0, minY), y1 = Math.min(box.y1, maxY);
       if (x1 <= x0 || y1 <= y0) continue; // feature not visible; keep last anchor
 
-      // on-screen axis direction, pointing screen-rightward, for the street bias
-      const axis = screenAxis(l.feature, camera, w, h);
-      // the resting fold, for captions allowed past it — see `straddles`
-      const fold = l.band === 'full' ? view.restH : Infinity;
-
       let best: { x: number; y: number } | null = null;
       let bestScore = -Infinity;
 
@@ -451,7 +335,7 @@ export class MapLabels {
         for (let x = x0; x <= x1; x += GRID_STEP) {
           if (!insideAny(scr, x, y)) continue;
           if (overlaps(blocked, x, y, half)) continue;
-          if (straddles(y, half, fold)) continue;
+          if (straddles(y, half, view.restH)) continue;
           const clear = clearance(edges, x, y);
           if (clear < MIN_CLEARANCE) continue;
 
@@ -461,17 +345,11 @@ export class MapLabels {
           // right-hand stretch of the Neva scores ~300px of clearance, which
           // simply outbid a bias term capped at 200. Scaling the preference
           // past any reachable clearance makes the ordering lexicographic.
-          let score: number;
-          if (l.bias === 'bottom-left') {
-            // small x, large y — each normalised over the valid span so neither
-            // axis dominates on a window much wider than it is tall
-            const bias = (x - x0) / (x1 - x0) + (y1 - y) / (y1 - y0);
-            score = -bias * 1e6 + clear;
-          } else {
-            // ordering along the street is a rank, not a value — solved in its
-            // own pass below; here clearance just finds the centreline
-            score = clear;
-          }
+          //
+          // small x, large y — each normalised over the valid span so neither
+          // axis dominates on a window much wider than it is tall
+          const bias = (x - x0) / (x1 - x0) + (y1 - y) / (y1 - y0);
+          const score = -bias * 1e6 + clear;
           if (score > bestScore) {
             bestScore = score;
             best = { x, y };
@@ -479,11 +357,7 @@ export class MapLabels {
         }
       }
 
-      if (l.bias === 'street') {
-        best = solveStreet(scr, edges, x0, y0, x1, y1, axis, blocked, half, fold) ?? best;
-      }
       if (!best) continue;
-
       const at = unproject(best.x, best.y, l.feature, camera, w, h);
       if (at) l.at = at;
     }
@@ -499,30 +373,20 @@ export class MapLabels {
 // ---------------------------------------------------------------- internals
 
 /**
- * Would a caption centred at `y` be cut in half by the resting fold?
+ * Would the caption centred at `y` be cut in half by the resting fold?
  *
- * A `full`-band caption may sit above the fold or below it — but never ACROSS
- * it, because the resting viewport clips whatever hangs past and the caption
- * ships as a row of severed letters until you scroll. Round 15 hit this the
- * moment the wider fit brought Арсенальная наб.'s road back into the resting
- * frame: the solver placed it at y 778.9 with a box reaching 808.7, so 9 px of
- * it were amputated at rest.
+ * It may sit above the fold or below it — but never ACROSS it, because the
+ * resting viewport clips whatever hangs past and the caption ships as a row of
+ * severed letters until you scroll. Round 15 hit this the moment the wider fit
+ * brought a caption back into the resting frame: the solver placed it at y
+ * 778.9 with a box reaching 808.7, so 9 px of it were amputated at rest.
  *
- * Demoting the caption to `band: 'rest'` is NOT the fix — that road's near edge
- * now sits below the rest band's ceiling, so the constraint makes it
- * unplaceable again. The domain is genuinely two legal regions, not one shifted
- * one, and this is the cheapest way to say so: reject the seam, let the search
- * find whichever side has room. `Infinity` for `rest`-band captions, which can
- * never reach the fold anyway.
+ * The legal domain is genuinely two regions, not one shifted one, and this is
+ * the cheapest way to say so: reject the seam, let the search find whichever
+ * side has room.
  */
 function straddles(y: number, half: P2, fold: number): boolean {
   return y - half.y < fold && y + half.y > fold;
-}
-
-/** longest horizontal extent of a flat component — its run across the site */
-function horizontalRun(c: MeshComponent): number {
-  const s = c.bbox.getSize(new THREE.Vector3());
-  return Math.max(s.x, s.z);
 }
 
 function components(surfaces: FlatSurface[], material: string): MeshComponent[] {
@@ -543,7 +407,7 @@ function feature(c: MeshComponent, modelMatrix: THREE.Matrix4): Feature {
       new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(modelMatrix)
     );
   }
-  return { tris, edges: boundaryEdges(tris), axisAngle: c.axisAngle };
+  return { tris, edges: boundaryEdges(tris) };
 }
 
 /**
@@ -657,92 +521,6 @@ function clearance(edges: readonly (readonly [P2, P2])[], x: number, y: number):
 }
 
 /**
- * Half-extents of the caption's on-screen box, measured from the live element
- * (`white-space: nowrap` + absolute positioning make `offsetWidth` the true
- * text width, so this follows the real font metrics rather than an estimate).
- *
- * Street captions are rotated to run with their road, so the relevant box is
- * the ROTATED AABB — «Арсенальная наб.» at 12° is both wider and taller than
- * its upright box, and using the upright one would let a corner cross the
- * viewport edge.
- */
-function halfExtents(l: Label, camera: THREE.Camera, w: number, h: number): P2 {
-  const bw = l.el.offsetWidth;
-  const bh = l.el.offsetHeight;
-  if (!l.rotates || !l.feature) return { x: bw / 2, y: bh / 2 };
-  const ax = screenAxis(l.feature, camera, w, h); // unit: |x| = |cos|, |y| = |sin|
-  const c = Math.abs(ax.x);
-  const s = Math.abs(ax.y);
-  return { x: (bw * c + bh * s) / 2, y: (bw * s + bh * c) / 2 };
-}
-
-/** the feature's principal axis as a screen-space unit vector, pointing right */
-function screenAxis(f: Feature, camera: THREE.Camera, w: number, h: number): P2 {
-  const o = f.tris[0];
-  const a = project(o, camera, w, h);
-  const b = project(o.clone().add(axisVector(f.axisAngle)), camera, w, h);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const s = dx < 0 ? -1 : 1; // point rightward so "left of centre" is unambiguous
-  return { x: (dx / len) * s, y: (dy / len) * s };
-}
-
-/**
- * Street anchor: walk the valid interior points, order them along the street,
- * and take the one `STREET_BIAS` of the way in from the left-hand end.
- *
- * Done as its own pass rather than as a score term because "30% along the
- * street" is a rank, not a value — it cannot be expressed as something to
- * maximise until the full extent of the valid span is known.
- */
-function solveStreet(
-  scr: P2[],
-  edges: readonly (readonly [P2, P2])[],
-  x0: number, y0: number, x1: number, y1: number,
-  axis: P2,
-  blocked: Rect[],
-  half: P2,
-  fold: number
-): P2 | null {
-  const valid: { p: P2; t: number; clear: number }[] = [];
-  for (let y = y0; y <= y1; y += GRID_STEP) {
-    for (let x = x0; x <= x1; x += GRID_STEP) {
-      if (!insideAny(scr, x, y)) continue;
-      if (overlaps(blocked, x, y, half)) continue;
-      if (straddles(y, half, fold)) continue;
-      const clear = clearance(edges, x, y);
-      if (clear < MIN_CLEARANCE) continue;
-      valid.push({ p: { x, y }, t: x * axis.x + y * axis.y, clear });
-    }
-  }
-  if (valid.length === 0) return null;
-
-  let tMin = Infinity, tMax = -Infinity;
-  for (const v of valid) {
-    tMin = Math.min(tMin, v.t);
-    tMax = Math.max(tMax, v.t);
-  }
-  const target = tMin + STREET_BIAS * (tMax - tMin);
-
-  // among points at that station, take the one deepest inside the road — that
-  // is the centreline, which is where a street caption belongs
-  let best: { p: P2; clear: number } | null = null;
-  for (const v of valid) {
-    if (Math.abs(v.t - target) > GRID_STEP) continue;
-    if (!best || v.clear > best.clear) best = v;
-  }
-  if (best) return best.p;
-
-  // no sample landed in the band (a very short visible run) — nearest station
-  let near = valid[0];
-  for (const v of valid) {
-    if (Math.abs(v.t - target) < Math.abs(near.t - target)) near = v;
-  }
-  return near.p;
-}
-
-/**
  * Screen point → world point on the feature's plane.
  *
  * Builds the 2×2 linear part of the (affine) model→screen map from two probe
@@ -772,25 +550,4 @@ function unproject(
 
 function biggest(list: MeshComponent[]): MeshComponent | undefined {
   return list.sort((a, b) => b.triCount - a.triCount)[0];
-}
-
-/**
- * Unit vector along a footprint's principal axis, in the XZ plane.
- *
- * `footprintAxis` (buildingSplit.ts) returns `0.5·atan2(2·sxz, sxx − szz)`,
- * whose dominant eigenvector is `(cos θ, sin θ)` in **(x, z)**. Round 9.1 built
- * `(sin(θ+π/2), 0, cos(θ+π/2))` here, which expands to `(cos θ, 0, −sin θ)` —
- * the flipped z MIRRORED every caption's on-screen tilt, so the streets leaned
- * down-to-the-right when the real streets lean up-to-the-right. It was not
- * obvious because the mirrored angle is still plausible: the cross blocks
- * genuinely do lean the other way, so the captions looked like they were
- * following *something*.
- *
- * NOTE: `MapCamera.focusOn` reads the same `axisAngle` under a different
- * (azimuth-from-+Z) convention. It is deliberately NOT changed — it chooses
- * among four diagonals 90° apart by nearest-to-current, so a mirrored axis still
- * lands on a valid isometric pose, and round 8's focus framing is signed off.
- */
-function axisVector(axis: number): THREE.Vector3 {
-  return new THREE.Vector3(Math.cos(axis), 0, Math.sin(axis));
 }
