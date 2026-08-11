@@ -141,8 +141,23 @@ export class MapScroll {
     return view > 0 ? this.stageH / view : 1;
   }
 
+  /** the top of the PAGE — the intro, then the map below it */
   reset() {
     this.scroller.scrollTop = 0;
+  }
+
+  /**
+   * The top of the MAP, which is `introH` down the page, not 0.
+   *
+   * These were the same position until the intro block landed above the stage,
+   * and `reset()` was used for both. It is the same conflation that broke the
+   * picker: "the top" is two places now, and focus mode wants the second one —
+   * the isometric framing assumes the map fills the viewport, and pinning to the
+   * page top instead leaves the reader looking at the standfirst with half a map
+   * under it.
+   */
+  toMapTop() {
+    this.scroller.scrollTop = this.introH;
   }
 
   /** the BOTTOM OF THE MAP, not the bottom of the page — the intro sits above
@@ -157,7 +172,7 @@ export class MapScroll {
   /** focus mode pins the view: the isometric framing assumes the viewport, and
    *  a scroll fighting the swing has no defined meaning */
   lock(on: boolean) {
-    if (on) this.reset();
+    if (on) this.toMapTop();
     this.scroller.classList.toggle('locked', on);
   }
 }

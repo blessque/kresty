@@ -442,10 +442,15 @@ export class ConceptScreen {
   // ------------------------------------------------------------------ frame
 
   resize = () => {
-    // Back to the top FIRST: the caption solve that follows measures the
-    // window-pinned chrome as obstacles, and the resting composition is the one
-    // the design is judged in.
-    this.scroll.reset();
+    // The intro is wrapped type, so its height moves with the width and the map
+    // moves with it. Measure it BEFORE anything reads a stage coordinate.
+    //
+    // This used to scroll back to the top first, because the caption solver
+    // measured the window-pinned chrome as obstacles and had to do it in the
+    // resting composition. Round 18 deleted the solver, so that reason is gone —
+    // and teleporting the reader to the top of the page on every resize is not a
+    // behaviour worth keeping on its own.
+    this.scroll.measureIntro();
     // The canvas is the STAGE, 1.5x the window's height (mapScroll.ts) — but
     // the camera's FIT stays measured against the window, or the taller aspect
     // would silently re-zoom the map. setOverscan carries the difference.
@@ -457,7 +462,6 @@ export class ConceptScreen {
     this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
     this.mapCam.setOverscan(this.scroll.overscan);
     this.mapCam.snap();
-    this.scroll.measureIntro();
   };
 
   /** the canvas the captions and the picker work in — never the window */
