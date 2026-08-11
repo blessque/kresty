@@ -26,18 +26,43 @@
  * within the ~3 px a centre estimate is good for, and every other anchor
  * followed from its own height with no further measurement.
  *
- * The check that this is right: round 13's hand-authored `b02` offset was
- * [0.102, 0.081] and the frame re-derives it as [0.081, 0.092] — the designer
- * nudged it, they did not move it. A calibration error would not land there.
+ * ---------------------------------------------------------------------------
+ * ROUND 18: THE OFFSET IS MEASURED FROM THE FOOTPRINT, NOT FROM THE ROOF
+ *
+ * Round 17 measured each offset against the building's roof AS DRAWN IN THE
+ * REFERENCE — i.e. against a roof already displaced by its own h·(sx, sz). That
+ * reproduces the design exactly at the lean the screenshot was taken under, and
+ * that is not a state anyone looks at. At rest the lean is zero, the walls
+ * collapse, the drawn silhouette shrinks back to the plan — and the caption
+ * keeps the whole gap. Every mark read too far out, by an amount proportional
+ * to its building's height: ~47 px on the two crosses, ~2 px on the pier. The
+ * client saw it immediately.
+ *
+ * So the offsets below are measured from the FOOTPRINT. The footprint is the
+ * shear's fixed point, which makes it the only anchor for which "the design"
+ * and "the resting composition" are the same statement — a roof is drawn in two
+ * different places in those two frames, a footprint in one.
+ *
+ * The correction was one subtraction, `at − (47, 42)·h / (2.52 · 1145)`, and it
+ * scales with h. That is what makes a single uniform rule safe here: the only
+ * two marks that lie ON a roof rather than beside a building — «Паркинг»
+ * (h = 0.43) and «Причал «Кресты»» (h = 0.09) — sit on the LOWEST volumes, so
+ * they move 8 px and 2 px while the crosses move the full 47. No special case.
+ *
+ * The check that this is right: round 13's hand-authored `b02` x-offset was
+ * 0.102, and the footprint reading re-derives it as 0.098 where the roof reading
+ * gave 0.139. The corrected numbers land back on the value that was already
+ * signed off; the roof reading never did.
  *
  * ---------------------------------------------------------------------------
  * TWO ANCHORS, AND WHY THE SECOND ONE IS FLAT
  *
- * `on` names the building whose ROOF the mark rides (`bbox.max.y`). Restricted
- * to a horizontal plane the shear has no linear part left, so it is a pure
- * translation: the mark slides exactly as far as its roof and never skews, and
- * travel proportional to height is not implemented anywhere — it falls out of
- * the anchor.
+ * `on` names the building whose ROOF the mark rides (`bbox.max.y`) — the offset
+ * is measured from the footprint, but the anchor is still up on the roof, so the
+ * mark travels with the volume it names. Restricted to a horizontal plane the
+ * shear has no linear part left, so it is a pure translation: the mark slides
+ * exactly as far as its roof and never skews, and travel proportional to height
+ * is not implemented anywhere — it falls out of the anchor.
  *
  * A mark with no `on` is pinned to the site plan at y = 0 instead, offset from
  * the model's own centre. That plane is the shear's fixed point, so those marks
@@ -121,43 +146,43 @@ export const BUILDING_MARKS: Mark[] = [
   // The west cross, lettered three times down one left edge — the museum and
   // the hotel share x 584 in the frame, which is what makes them read as one
   // column rather than two loose captions.
-  { on: 'b02', lines: ['Музей Крестов'], at: [0.081, -0.030], align: 'left' },
+  { on: 'b02', lines: ['Музей Крестов'], at: [0.040, -0.067], align: 'left' },
   {
     on: 'b02',
     lines: ['Западный Крест', 'Отель Cosmos 4*'],
-    at: [0.081, 0.092],
+    at: [0.040, 0.055],
     align: 'left',
   },
   /** the annexe on the cross's lower-left; geometrically part of `b02` */
-  { on: 'b02', lines: ['Лекторий'], at: [-0.121, 0.234], align: 'left' },
+  { on: 'b02', lines: ['Лекторий'], at: [-0.162, 0.197], align: 'left' },
 
   // The east cross takes the mirror choice — a RIGHT-aligned block in its
   // lower-left quadrant, which is what keeps it clear of the SPA block.
   {
     on: 'b01',
     lines: ['Восточный Крест', 'Отель Cosmos 5*'],
-    at: [-0.025, 0.091],
+    at: [-0.066, 0.054],
     align: 'right',
   },
-  { on: 'b01', lines: ['SPA-Комплекс'], at: [0.240, -0.090], turn: 90 },
+  { on: 'b01', lines: ['SPA-Комплекс'], at: [0.199, -0.127], turn: 90 },
 
   // The office alley: two blocks lettered down their right flank, one turned to
   // fit the gap rather than shrink to it.
-  { on: 'b08', lines: ['Офисы А1'], at: [0.086, 0.010], turn: 90 },
-  { on: 'b11', lines: ['Офисы А2'], at: [0.086, 0.010], turn: 90 },
-  { on: 'b09', lines: ['Офисы B1'], at: [-0.025, 0.078], align: 'left' },
+  { on: 'b08', lines: ['Офисы А1'], at: [0.069, -0.005], turn: 90 },
+  { on: 'b11', lines: ['Офисы А2'], at: [0.069, -0.005], turn: 90 },
+  { on: 'b09', lines: ['Офисы B1'], at: [-0.039, 0.066], align: 'left' },
 
   // The gastronomy block: two tenants read UPWARD in the alley to its left, the
   // hall reads level under its own footprint.
-  { on: 'b06', lines: ['Mates Bistro'], at: [-0.049, -0.018], turn: -90 },
-  { on: 'b06', lines: ['Pho Bo'], at: [-0.049, 0.069], turn: -90 },
-  { on: 'b06', lines: ['Фуд-холл'], at: [-0.027, 0.130], align: 'left' },
+  { on: 'b06', lines: ['Mates Bistro'], at: [-0.085, -0.050], turn: -90 },
+  { on: 'b06', lines: ['Pho Bo'], at: [-0.085, 0.037], turn: -90 },
+  { on: 'b06', lines: ['Фуд-холл'], at: [-0.063, 0.098], align: 'left' },
 
   /** white ink ON the parking deck, which is why it also carries the P chip */
   {
     on: 'b15',
     lines: ['Паркинг'],
-    at: [0.003, 0.016],
+    at: [-0.004, 0.010],
     turn: -4.47,
     ink: 'white',
     icon: { src: 'parking', at: 'above', w: 35, h: 35 },
@@ -169,13 +194,13 @@ export const BUILDING_MARKS: Mark[] = [
    * string: the designer's own export already has the curve in its outlines, so
    * it ships as artwork with no text at all.
    */
-  { on: 'b04', at: [0.022, 0.047], icon: { src: 'rotonda', at: 'above', w: 98, h: 52 } },
+  { on: 'b04', at: [0.014, 0.040], icon: { src: 'rotonda', at: 'above', w: 98, h: 52 } },
 
   /** the pier is a slab in the river, so its mark lies on it in white */
   {
     on: 'b18',
     lines: ['Причал «Кресты»'],
-    at: [0.057, 0.007],
+    at: [0.056, 0.006],
     ink: 'white',
     icon: { src: 'prichal', at: 'before', w: 32, h: 32 },
   },
