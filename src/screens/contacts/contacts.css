@@ -11,7 +11,7 @@
    positioned sibling has no such dependency. */
 
 #screen-contacts {
-  background: #000;
+  background: #070618;
 }
 
 /* The shader writes alpha 1.0, so the canvas is OPAQUE and would otherwise
@@ -71,11 +71,16 @@
   scroll-snap-stop: always;
 }
 
+/* ROUND 18: one wordmark box sitewide — 251.2×40 at (32, 32), ink #36AFFF. The
+   svg viewBox is 0 0 314 50, so 40 tall is 251.2 wide. It ships fill="white",
+   which used to be right on a black field and no longer is: the page colour is
+   #070618 now and the mark is brand blue on every screen. */
 .fx-home {
   position: absolute;
   left: 32px;
-  top: 40px;
-  width: 220px;
+  top: 32px;
+  width: 251.2px;
+  height: 40px;
   z-index: 6;
   cursor: pointer;
 }
@@ -83,10 +88,12 @@
 .fx-home svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
-/* the logo ships fill="white", which is already right on the black field */
+.fx-home svg path {
+  fill: #36afff;
+}
 
 /* ------------------------------------------------------------ admin panel
 

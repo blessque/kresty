@@ -50,7 +50,13 @@ export function normalizeHex(raw: string): string | null {
   return `#${h.length === 3 ? [...h].map((c) => c + c).join('') : h}`;
 }
 
-const STORE_KEY = 'kresty.contacts.panel';
+/**
+ * Bumped in round 18, when the page colour default moved from #000000 to
+ * #070618. Stored values outrank defaults, so anyone who had opened the panel
+ * before would have kept seeing black and reported the change as not landing.
+ * Bump this whenever a DEFAULT changes, not whenever the schema does.
+ */
+const STORE_KEY = 'kresty.contacts.panel.v2';
 
 type Widget =
   | { range: HTMLInputElement; out: HTMLElement }
