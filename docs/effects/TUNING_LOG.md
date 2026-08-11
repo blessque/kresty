@@ -3356,9 +3356,113 @@ One honest note on the probes: the 8-point pick fingerprint is mildly nondetermi
 because the lean is still settling at 120 ms, and one run in four disagreed with itself. The
 `?ob=0` proof above is the deterministic one and is what the claim rests on.
 
+## Map round 17 (2026-08-11) — the designer's caption layer, 1:1
+
+Figma `591:194`. The frame is a **screenshot of this app with the marks drawn over it** —
+node `591:121` is literally "Screenshot 2026-08-10 at 17.01.08", the round-16 deploy at
+1584×989, with an opaque white rect laid over the top and bottom bands and a caption layer
+on top. So the map's LOOK was already signed off and none of it is in scope: the field, the
+plate, the water and the tones are untouched. What changed is the annotation layer, from
+seven captions to eighteen marks.
+
+### The colours in the screenshot are a display-profile artefact — do not chase them
+
+Measured, the reference reads `#ffffff` in the bands, `#e5f0f4` on the field and `#b0d9fb`
+on the water, against our `#f5f5f5`, `#dde6e9` and `#99daff`. That is not a re-spec. The
+neutrals are lifted a uniform ~+10 per channel while the saturated water moves +23/−1/−4 —
+the signature of a P3 screenshot tagged sRGB, not of anyone picking new values. The marks'
+own inks (`#6d9bb5`, `#b2cad1`, white) ARE authored vectors in Figma and are taken at face
+value; nothing sampled off the screenshot is.
+
+### How eighteen screen positions became model-space offsets
+
+The design is stated in pixels of one capture, and a pixel offset is worthless here — the
+fit changes with the window. Each `at` is that offset divided by the site span, the round-13
+convention.
+
+The conversion took ONE measurement, and it is worth keeping because the same trick answers
+any future frame. The reference was captured under some plan-oblique lean, but the shear is
+`x' = x + sx·y, z' = z + sz·y`: it fixes the ground plane and translates the plane at height
+h by exactly `h·(sx, sz)`. So displacing one roof of known height against a zero-lean render
+calibrates the WHOLE image, and every other anchor follows from its own height with no
+further measurement. Patch-matching the two cross lanterns (h = 2.52) gave **(−45.6, −44.0)**
+and **(−48.3, −40.7)** px independently → (−47, −42).
+
+Two traps on the way there:
+
+- **Do not try to reproduce the lean by moving the cursor.** The frame carries a `State=Hand`
+  cursor instance at (585, 436), which is tempting to read as the pointer position. Driving
+  the real pointer there opens the building drawer, which freezes the lean part-way and dims
+  the map, so the pose never settles and the diff is dominated by the drawer. The cursor is a
+  design-system asset, not a capture artefact. Measure the shear off the image instead.
+- **Patch-correlation on the crosses is ambiguous.** Their ridged roofs are near-periodic, so
+  a naive SSD search returned (−10,−23), (−33,−31) and (−39,−13) for three patches of the
+  same building, and a flat region reported a confident offset for an edge that carries no
+  information along its own direction. The lanterns — small, high-contrast, aperiodic — are
+  what give a single answer.
+
+The check that the calibration is right: round 13's hand-authored `b02` offset was
+`[0.102, 0.081]` and the frame re-derives it as `[0.081, 0.092]`. The designer nudged that
+caption; they did not move it. A calibration error would not land there.
+
+Verified after implementing: every roof-riding mark lands within **1–2 px** of its reference
+ink box, measured by thresholding both renders on `#6d9bb5` and comparing connected
+components.
+
+### The street solver is retired, and that is the design's call, not a re-tune
+
+Rounds 9–15 recovered both roads as `Color_M04` components and searched each for an interior
+point. The machinery was sound and it kept losing, because the thing it solved for stopped
+existing: round 12 pushed ул. Комсомола off the top, round 15 straightened Арсенальная наб.
+clean below the frame, and by round 16 **neither road is drawn at all** in the resting
+composition — the solver's answers were being clamped into the margin band by `SOLVE_MARGIN`
+anyway. The design says so outright: both names set upright in the white band outside the
+plate, in the lighter `#b2cad1`, the way a map letters a feature that runs off the sheet.
+
+They are authored in `mapMarks.ts` now, pinned to the site plan at y = 0 — the shear's fixed
+point, so they do not move with the lean. Gone with them: `solveStreet`, `STREET_BIAS`,
+`MIN_STREET_RUN_FRAC`, `horizontalRun`, `screenAxis`, `axisVector`, the rotated-AABB branch
+of `halfExtents`, `Feature.axisAngle` and the `band`/`bias`/`rotates` label flags. The search
+survives, serving the one caption that still has a visible feature to sit inside — the Neva.
+`mapLabels.ts` went 796 → 553 lines.
+
+**This closes the round-16 open issue** about `.res-bg` re-antialiasing the two rotated street
+captions: nothing on this screen is rotated by 0.31° any more, because the streets are not
+lettered along their roads.
+
+### Three things that are load-bearing in the new layer
+
+- **`turn` rotates the TEXT, never the icon.** The icons came out of Figma with their
+  placement angle already in the artwork — `parking.svg` is a 35×35 box whose mask is a 32×32
+  chip rotated 4.47° — so turning the container too would double it.
+- **A `before` icon needs margin on BOTH sides, and the bottom half is the load-bearing one.**
+  Negative `margin-top` alone centres the icon on line one correctly but leaves it overhanging
+  the row, so the block's box grows upward and its centre stops being the text's centre. That
+  put both entrance marks 5 px high, by an amount that depended on the icon's height. Bleeding
+  the same amount off the bottom makes the icon contribute exactly one line box to layout, so
+  the block's box IS the text's box and the anchor addresses what it appears to.
+- **The caption text is authored, not read from `buildingsInfo`.** Round 13 deliberately took
+  the first line from `infoFor(id).name` so a rename could not leave the map disagreeing with
+  the drawer. That invariant assumed one caption per volume, naming that volume. These name
+  TENANTS — `b02` is lettered three times and `b06` three more — so there is nothing left to
+  keep in step.
+
+### Open: the metro mark lands on the wordmark
+
+The design puts «м. Площадь Ленина» and its metro chip at x 104–255, y 14–63. `.concept-home`
+— the «КРЕСТЫ» wordmark, the home link — is the sitewide 251.2×40 box at (32, 32), so the two
+overlap almost completely. The designer covered the app's own top band with an opaque white
+rect before drawing, so the wordmark was not visible to them and the frame does not say what
+should happen to it. Shipped 1:1 pending a decision; the two candidates are dropping the
+wordmark on this screen (it is a home link, so probably not) or moving the metro block clear
+of it.
+
 ## Open issues
 
-- **[OPEN] Round 16's `.res-bg` plate re-antialiases the two ROTATED street captions.**
+- **[CLOSED by map round 17] Round 16's `.res-bg` plate re-antialiased the two ROTATED street
+  captions.** The streets are no longer lettered along their roads, so nothing on this screen
+  carries the ~0.31° rotation that caused it. Kept below because the METHOD note is still good.
+- **[WAS OPEN] Round 16's `.res-bg` plate re-antialiases the two ROTATED street captions.**
   Found when rounds 15 and 16 were merged: the map at `scrollTop 0` differs from round 15
   alone by **3,704 px of 1,152,000**, and removing `.res-bg` at runtime makes the two trees
   **pixel-identical (0 differing)** — so the plate is the whole cause. It is confined to
