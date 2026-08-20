@@ -12,6 +12,17 @@
 
 #screen-contacts {
   background: #070618;
+  /* The `Frame` handles, written here as inline styles by JS — inline wins over
+     these stylesheet defaults, and all three inherit down to the canvas.
+     Declaring them on `.fx-canvas` instead would SHADOW the JS values, since a
+     custom property set on the element itself beats one inherited from an
+     ancestor, and the handles would silently do nothing.
+
+     `--fx-mask: none` is the OFF state and is what makes the whole Frame group
+     revertible: with no mask the canvas is bit-for-bit the page as it shipped. */
+  --fx-mask: none;
+  --fx-cx: 50%;
+  --fx-cy: 50%;
 }
 
 /* The shader writes alpha 1.0, so the canvas is OPAQUE and would otherwise
@@ -20,6 +31,31 @@
    composites with `screen`, exactly as the main screen does over #56b7e6.
    Screen is `1 − (1−a)(1−b)`, which against black (b=0) reduces to `a`, so
    this is a no-op at #000000 and correct at every other colour. */
+/* The `Frame` handles dissolve the light into the page before it reaches the
+   window, so a screenshot has no straight terminating line where the rays were
+   cut. `--fx-mask` is a LAYER LIST built in ContactsScreen.buildMask(): a
+   top/bottom band (`edge fade`) and an ellipse centred on the icon
+   (`radial fade` + `radial width`), each independently off at 0. Four decisions
+   worth keeping:
+
+   - A MASK, not a painted overlay. Masking drops the canvas to alpha 0 and lets
+     `#screen-contacts` show through, so the band is the page colour BY
+     CONSTRUCTION and the `bg` handle keeps working. A gradient overlay would
+     have to be re-coloured from JS on every `bg` change.
+   - On the canvas ITSELF, never on a wrapper around it. A wrapper establishes a
+     stacking context, which isolates `mix-blend-mode: screen` from the page
+     background — the screen blend would then run against transparent and `bg`
+     would go dead. Same reason `.fx-overlay` is not folded in here.
+   - A sampled smoothstep, not a two-stop linear ramp. A linear alpha ramp across
+     a glow leaves a visible shoulder where the gradient starts — the same
+     cut-off artifact, just moved inboard.
+   - `mask-composite: intersect`, so the two fades MULTIPLY. They are not a mode
+     switch: a corner icon needs both, and each is off at 0.
+
+   With `--fx-mask: none` there is no mask at all and the canvas is bit-for-bit
+   the page as it shipped — the off state is an absence, not a transparent
+   layer, which matters because under `intersect` a fully transparent layer
+   would erase the canvas instead of doing nothing. */
 .fx-canvas {
   position: absolute;
   inset: 0;
@@ -29,6 +65,12 @@
   z-index: 1;
   pointer-events: none;
   mix-blend-mode: screen;
+  -webkit-mask-image: var(--fx-mask);
+  mask-image: var(--fx-mask);
+  /* `source-in` is the legacy WebKit spelling of `intersect`; the standard
+     property is declared second so it wins wherever both are understood */
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
 /* the crisp icon over the light. Sized and positioned from JS to the light's

@@ -3766,6 +3766,188 @@ stale `scrollTop` riding on a view object is the same near-miss that let this hi
 offset" — the exact phrasing that produced the bug — and now names `stageOffset` and says
 what it is not.
 
+## «Контакты» round 14 (2026-08-14) — `edge fade`, so a screenshot has no cut line
+
+The page is shot at one-viewport-per-icon and dropped into Figma. The god-rays reach the
+window at full strength, so the screenshot **terminates them on a straight line** — measured
+at the shipped defaults, the bottom 50 px of a 1440×900 frame still carries mean luminance
+**19.2/255**. One new handle, `edge fade` (`?fade=`, group `Frame`, 0–0.4, **default 0**),
+dissolves the light into the page colour at the top and bottom edges.
+
+~~Top and bottom only, chosen deliberately: the rays run off the left and right edges too, but
+the frames are cropped to a band, so those never reach the slide.~~ **SUPERSEDED by round
+14.1 the same day** — the band has nothing to do with where the icon sits, which the Corner
+composition makes obvious. It survives as one of two composable layers.
+
+### It is a MASK on the canvas — not a shader term, and not a painted overlay
+
+Three reasons, in order of how much time each would have cost:
+
+1. **Not a shader term.** `rayField.frag.glsl` and `rayField.wgsl` are mirrored twins, so a
+   vertical falloff is double the work plus a uniform slot in both — for something that is
+   framing for a deck, not part of the light's physics.
+2. **A mask, not a gradient overlay.** Masking drops the canvas to alpha 0 and lets
+   `#screen-contacts` show through, so the band is the page colour **by construction** and the
+   `bg` swatch keeps working. An overlay would have to be re-coloured from JS on every `bg`
+   change — a second source of truth for a colour that already has one.
+3. **On the canvas itself, never on a wrapper.** A wrapper element establishes a stacking
+   context, which isolates `mix-blend-mode: screen` from the page background. The screen blend
+   would then run against transparent and the `bg` handle would go silently dead — the exact
+   failure round 12.1's compositing note exists to prevent.
+
+### `.fx-overlay` is deliberately NOT masked, and the reason is not laziness
+
+The first cut applied the identical declaration to the canvas and the crisp icon. **Percentage
+gradient stops resolve against the masked element's own border box.** The canvas is `inset: 0`,
+so `18%` is 18% of the viewport; `.fx-overlay` is a ~310 px `<img>` placed by `transform`, so
+the same string would have faded the *icon's own* top and bottom edges wherever it sat on
+screen. It is also the right call on the merits — the overlay is the subject, not the glow,
+and it is off by default (`svg: 0`).
+
+### Five stops per edge, approximating smoothstep
+
+A two-stop linear alpha ramp across a glow leaves a visible shoulder where the gradient
+starts — the same cut-off artifact, moved inboard. The ramp is `0 / .156 / .5 / .844 / 1` at
+`0 / ¼ / ½ / ¾ / 1` of the band, all positioned with `calc()` off one custom property.
+
+### `--fx-fade` is declared on `#screen-contacts`, not on `.fx-canvas`
+
+JS writes it as an inline style on the screen root. A `--fx-fade: 0%` fallback declared on
+`.fx-canvas` **shadows** it — a custom property set on the element itself beats one inherited
+from an ancestor — and the handle does nothing. The stylesheet default lives on the root with
+the inline style, where inline correctly wins.
+
+### Verified
+
+Single page load, panel hidden, the real slider driven by `input` events, mean luminance per
+50 px band of the **screenshot** (not of the WebGL canvas — the point is what Figma receives):
+
+| band | fade 0 | fade 0.12 | fade 0.18 | fade 0.3 |
+|---|---|---|---|---|
+| y 0–50 | 9.37 | 5.44 | 5.04 | 4.82 |
+| y 800–850 | 21.65 | 16.18 | 9.82 | 4.45 |
+| y 850–900 | **19.21** | 3.56 | **1.95** | 1.11 |
+| interior (bands 5–12) | **37.391** | **37.391** | **37.391** | 37.339 |
+
+The interior column is the assertion that matters: identical to three decimals at 0, 0.12 and
+0.18, so the handle provably touches nothing but the edges, and **`fade 0` is the page exactly
+as it shipped**. At 0.3 the band starts eating band 12 (39.99 → 39.66) — correct, not a bug.
+The bottom ramp is monotone with no shoulder (1.95 → 9.82 → 20.74 → 28.25 → 33.28).
+
+The residual ~4.8 at the top edge is the **wordmark**, which is chrome at `z-index: 6` and
+deliberately outside the mask.
+
+**Measure the screenshot, not the canvas.** `mix-blend-mode` and `mask-image` both land
+*after* the WebGL canvas has produced its pixels, so anything read back through
+`gl.readPixels` or `canvas.toDataURL` shows the mask having no effect at all, convincingly.
+
+**Do not A/B this across page loads.** The first attempt reloaded once per fade value and
+reported the interior changing by 14/255, which reads like a real bug. It is scroll
+restoration landing the snap on a different frame. One load, one slider, four samples.
+
+## «Контакты» round 14.1 (2026-08-14) — the fade goes radial, and the two layers COMPOSE
+
+A horizontal band is a property of the frame, not of the picture. On the Corner composition
+the icon sits at `(¼w, ⅓h)` and a top/bottom band has visibly nothing to do with it. Two new
+handles: **`radial fade`** (`?radial=`, px, 0 = off) — a circle centred on the icon's actual
+centre — and **`fade curve`** (`?curve=`, 0.3–3, default 1), the pacing dial for both fades.
+
+### There is no "Edges vs Radial" switcher, because there does not need to be
+
+`mask-image` takes a layer list and `mask-composite: intersect` multiplies them, so the band
+and the circle are **two independent falloffs, each off at 0**, not two modes. This matters
+for more than tidiness: **no single radius is inside every edge.** On 1440×900 the Corner icon
+is 300 px from the top but 1080 px from the right, so any circle worth having still runs off
+the top and left — the radial fade buys a falloff that *reads* as centred on the subject, and
+the band is what actually cleans up the near edge. Composing gets both; a switcher would have
+forced a choice between them and produced a dead slider either way.
+
+This is also why the off state is `mask-image: none` and not a transparent layer. Under
+`intersect` a fully transparent layer **erases the canvas**; an absent mask is the identity.
+
+### `curve` warps the smoothstep's INPUT, so `curve: 1` is bit-for-bit round 14
+
+`alpha = smoothstep(u^curve)`. Warping the input rather than scaling the output is what keeps
+the default inert — a pacing dial whose own default restyles every look already dialled in is
+a trap. Above 1 the dissolve starts early and the dark rim is wide; below 1 the light holds
+full and dies abruptly at the very edge.
+
+**A single power curve cannot do this job.** `1 − u^g` and friends are concave or convex but
+never S-shaped, and a fade that does not ease in at *both* ends shows the seam where it
+starts — which is the same terminating line the whole handle exists to remove.
+
+### The circle rides the icon; the string does not get rebuilt to do it
+
+`buildMask()` runs on a panel change only and emits `at var(--fx-cx) var(--fx-cy)`; `update()`
+writes those two custom properties per frame, *behind* the `freeze` early-return, so a still
+page pays nothing. Scrolling between sections translates the mask with the light.
+
+`circle <length>`, never a percentage — CSS allows percentage radii on `ellipse` only. Px is
+the better unit anyway: it makes `radial fade` and `reach` directly comparable numbers.
+
+### Verified
+
+One page load, panel hidden, real sliders driven by `input` events. Mean luminance by **ring
+radius from the icon centre** — a horizontal band profile averages across a circular mask and
+hides it:
+
+| | r 0–100 | 200–300 | 400–500 | 600–700 | 700–800 |
+|---|---|---|---|---|---|
+| off | 150.12 | 34.70 | 16.30 | 13.26 | 13.59 |
+| radial 700, curve 0.4 | 149.14 | 32.22 | 11.96 | 4.52 | 3.08 |
+| radial 700, curve 1 | 145.15 | 24.57 | 4.87 | 1.85 | 3.08 |
+| radial 700, curve 2.5 | 128.09 | 9.39 | 0.28 | 1.65 | 3.08 |
+| Corner: radial 600 + edge 0.15 | 141.17 | 23.39 | 4.99 | 0.00 | 0.00 |
+
+Monotone across the whole curve family and in the right direction at every radius: 0.4 barely
+touches the core (149.14 vs 150.12) and holds light out to r 600; 2.5 is already eating the
+core. The residual 3.08 past r 700 is the **wordmark**, which is chrome at `z-index: 6` and
+deliberately outside the mask. The Corner row reaching exactly 0.00 is both layers landing.
+
+Computed style asserted directly, not inferred from pixels: **0 layers and `mask-image: none`
+at rest**, 1 layer with `radial fade` alone, 2 layers and `mask-composite: intersect, intersect`
+with both — and `--fx-cx/--fx-cy` reading `(720, 450)` for Center and exactly `(360, 300)` for
+Corner on 1440×900, which is round 13's measured `(w/4, h/3)`.
+
+Ten stops per ramp shows no banding at any curve setting. `tsc --noEmit` and `vite build` clean.
+
+**Correction to the paragraph above**, which describes an earlier pass: the shipped gradient is
+an **`ellipse rx ry`**, not a `circle`, because `radial width` (`?aspect=`) stretches it
+horizontally, and the stops are **percentages**, not px. Both follow from the same fact the
+paragraph gets right — a length stop is measured along the gradient ray, i.e. the *horizontal*
+radius only, so px stops walked to `radial` would finish the whole ramp inside the first
+`1/aspect` of the shape and put back the hard rim. A percentage is of the ending shape and so
+scales on both axes. `radial` is the VERTICAL radius, which keeps it directly comparable with
+`reach`. See the comment in `buildMask()`.
+
+## «Контакты» round 14.2 (2026-08-20) — two more icons, and why that is one line
+
+`Culture-640.svg` and `outside-640.svg` join the showreel. The whole change is two strings in
+`ICONS`; there is no second edit anywhere, and that is worth recording because it is the payoff
+of round 12's structure rather than luck:
+
+- The slides are **generated from `ICONS`** and the mask array is `ICONS.map(() => null)`, so
+  nothing is keyed by count. The scroll index clamps to `ICONS.length - 1`.
+- Exposure is **measured per icon, not authored**. `maskCoverage` reads each icon's own ink and
+  divides `godrays`/`bloom` by its ratio to `REF_COVERAGE` (0.0806), so a new silhouette lands
+  at hero brightness with no dial. Measured here: `outside` sits inside the existing family —
+  side by side with `Park` at the same uniforms it reads at the same weight, no white-out.
+- `CONTENT_FRAC` normalises apparent SIZE the same way, off the mask's own footprint.
+
+The header's coverage range is restated **0.15–0.29 (1.9–3.6×)**, from 0.17–0.29 (2.1–3.6×):
+the new icons widen the low end, and the sentence quotes real measurements.
+
+One naming wart, left alone deliberately: `outside-640.svg` is lowercase where every sibling is
+capitalised. It is the file the designer supplied, and the list is loaded by exact filename —
+renaming buys tidiness and risks a 404 on a name that exists elsewhere in their handoff.
+
+### Verified
+
+Nine slides enumerated from the live DOM in load order; the `outside` slide's overlay mask
+rasterises at 640×640 with no `mask failed` warning. Page background still round 18's
+`#070618`, `mask-image: none` at rest (the Frame off state is untouched), panel absent without
+`?admin` and present with it. No console errors on either. `tsc --noEmit` and `vite build` clean.
+
 ## Open issues
 
 - **[CLOSED by map round 17] Round 16's `.res-bg` plate re-antialiased the two ROTATED street
