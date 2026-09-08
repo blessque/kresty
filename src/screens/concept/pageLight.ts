@@ -99,7 +99,8 @@ const LIGHT = {
   falloff: 1010,
   exposure: 1.3,
   ca: 0.028,
-  /** apparent size of the icon ink, CSS px */
+  /** apparent size of the icon ink, CSS px — the DEFAULT; the caller measures
+   *  the real box and passes it, since it is responsive (see `bake`) */
   px: 220,
   parallax: 2,
 } as const;
@@ -122,6 +123,8 @@ interface BakeArgs {
   idx: number;
   anchorX: number;
   pointer: [number, number];
+  /** apparent size of the icon ink in CSS px — the DOM box it must fill */
+  px: number;
 }
 
 export class PageLight {
@@ -322,9 +325,9 @@ export class PageLight {
    * arm-length terms) — it is a relationship between the two points, not a
    * translation, which is why it cannot be faked with a transform.
    */
-  bake(idx: number, anchorX: number, pointer: [number, number]) {
+  bake(idx: number, anchorX: number, pointer: [number, number], px: number) {
     if (!this.renderer) return;
-    const args: BakeArgs = { idx, anchorX, pointer };
+    const args: BakeArgs = { idx, anchorX, pointer, px };
     this.lastBake = args;
 
     if (idx !== this.activeIdx) {
@@ -344,13 +347,13 @@ export class PageLight {
     this.render(args);
   }
 
-  private render({ idx, anchorX, pointer }: BakeArgs) {
+  private render({ idx, anchorX, pointer, px }: BakeArgs) {
     if (!this.renderer || !this.viewH) return;
     const centerPx: [number, number] = [anchorX, this.viewH];
 
-    const key = `${idx}|${Math.round(anchorX)}|${Math.round(pointer[0])}|${Math.round(
-      pointer[1]
-    )}`;
+    const key = `${idx}|${Math.round(anchorX)}|${Math.round(px)}|${Math.round(
+      pointer[0]
+    )}|${Math.round(pointer[1])}`;
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.renderCount++;
@@ -372,7 +375,11 @@ export class PageLight {
       // Scaling the whole field to size the icon instead stretches the 1010 px
       // falloff past the frame corner, so nothing decays and it reads as grey
       // fog — measured in round 12, not guessed.
-      signSize: LIGHT.px / CONTENT_FRAC,
+      // MEASURED from the `.sec-icon` box, not the LIGHT.px constant. The box
+      // flexes with viewport height (it is the largest term in the station
+      // invariant), and a fixed signSize would draw a 220 px icon into a 128 px
+      // box on a short window — the light simply overflowed it.
+      signSize: px / CONTENT_FRAC,
     };
 
     const state: RayFieldState = {

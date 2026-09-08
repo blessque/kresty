@@ -434,15 +434,16 @@
   left: 32px;
   top: 92px;
   width: 275px;
-  font-family: 'ALS Hauss', sans-serif;
+  font-family: var(--font-text);
   /* MUST be reset: global.css sets `font-weight: 120`, which is ALS Chromius
      Regular on that font's non-standard axis (50/120/232). ALS Hauss has an
      ordinary axis, where 120 is Thin — inherited, this rendered as hairline
      grey and all but vanished over a photo. Same reason the CTA sets it. */
-  font-weight: 400;
-  font-size: 16px;
-  line-height: 24px;
-  color: #fff;
+  font-weight: var(--font-text-regular);
+  /* Figma text style Caption Small (was a one-off 16/24) */
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
+  color: var(--white);
 }
 
 /* «Связаться» (Figma 840:40): a white plate, top right, mirroring the logo's
@@ -463,13 +464,15 @@
   width: 172px;
   height: 55px;
   pointer-events: auto; /* .corners is pointer-events: none */
-  background: #fff;
-  color: #1b93d0;
-  box-shadow: 6px 6px 0 0 #fff;
-  font-family: 'ALS Hauss', sans-serif;
-  font-weight: 400; /* see .logo-descriptor — global.css's 120 is Chromius-only */
-  font-size: 18px;
-  line-height: 1;
+  background: var(--white);
+  /* was #1b93d0 / #0d6ea6 — two blues invented for one button while
+     `--blue-brand` was already the brand blue on a light plate elsewhere */
+  color: var(--blue-brand);
+  box-shadow: 6px 6px 0 0 var(--white);
+  font-family: var(--font-text);
+  font-weight: var(--font-text-regular); /* global.css's 120 is Chromius-only */
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
   text-decoration: none;
   transition:
     box-shadow 0.22s ease,
@@ -477,8 +480,8 @@
 }
 /* the plate absorbs its own offset stroke — the button reads as pressed */
 .contact-cta:hover {
-  box-shadow: 0 0 0 0 #fff;
-  color: #0d6ea6;
+  box-shadow: 0 0 0 0 var(--white);
+  color: var(--ink-dark);
 }
 
 /* bottom-right ARTLEBEDEV mark (Figma node 340:574). Figma's odd decimals

@@ -1,0 +1,89 @@
+/**
+ * DESIGN TOKENS — the vocabulary. One place, one answer per question.
+ *
+ * WHY THIS FILE EXISTS. Before it, the CSS carried 26 hex colours, 16 font
+ * sizes and EIGHT distinct blues across four stylesheets, with no `:root`
+ * layer at all. Nothing declared which blue was *the* blue, so the cheapest
+ * correct-looking move when writing a new section was always to invent a
+ * value — and round 11/19 duly invented three more. That is a structural
+ * failure, not an attention one: an author with no vocabulary cannot use it.
+ *
+ * THE RULE: no raw hex, `font-size` or `line-height` outside this file. If
+ * nothing here fits, add a token here and say why in the commit. Enforced by
+ * `npm run lint:tokens`, which also runs as a Stop hook.
+ *
+ * TWO LAYERS, ON PURPOSE.
+ *   1. TYPE + COLOUR — the designer's vocabulary. The type scale below is the
+ *      Figma text-style set, verbatim. Colour is pending a Token Studio export
+ *      and is consolidated-but-unchanged until then (see the note there).
+ *   2. LAYOUT — NOT here. Max-widths, the grid, breakpoints and the 32/40
+ *      corner rule are *decisions*, not values: a number alone cannot carry
+ *      why. They live in code beside their reasoning (`layout.ts`'s STAGE_W /
+ *      CENTER_X, the section geometry in `sectionRun.ts`), which is the same
+ *      principle TUNING_LOG has always applied. Single-sourced, not centralised
+ *      for its own sake.
+ */
+
+:root {
+  /* ── TYPE ────────────────────────────────────────────────────────────────
+     The Figma text styles, verbatim (`size / line-height %`). Figma states
+     line-height as a percentage; these are the resolved px, and the percentage
+     is kept in the comment so a re-export can be checked against it.
+
+     Two styles share 24px — `base` at 145 % and `caption-big` at 120 %. That
+     is not a duplicate: same size, different density, and picking between them
+     is a real editorial choice about how a block should read.
+
+     NOT tokenised here: `font-weight`. ALS Chromius has a NON-STANDARD axis
+     (min 50 / default 120 / max 232) where Regular is 120 and Medium is 150,
+     while ALS Hauss has an ordinary one where 120 is Thin. A single
+     `--weight-regular` would therefore be wrong on one of the two families —
+     round 8 shipped that bug upward (500 clamping to Black) and round 11 shipped
+     it downward (120 rendering as a hairline). The weight belongs with the
+     family, so the family tokens below carry it. */
+  --type-h1-size: 54px;
+  --type-h1-lh: 59.4px; /* 110% */
+  --type-h2-size: 44px;
+  --type-h2-lh: 48.4px; /* 110% */
+  --type-h3-size: 32px;
+  --type-h3-lh: 36.8px; /* 115% */
+  --type-base-size: 24px;
+  --type-base-lh: 34.8px; /* 145% */
+  --type-caption-big-size: 24px;
+  --type-caption-big-lh: 28.8px; /* 120% */
+  --type-caption-sm-size: 16px;
+  --type-caption-sm-lh: 20.8px; /* 130% */
+
+  /* families, each with the weight its own axis calls Regular/Medium */
+  --font-display: 'ALS Chromius', sans-serif;
+  --font-display-regular: 120;
+  --font-display-medium: 150;
+  --font-text: 'ALS Hauss', sans-serif;
+  --font-text-regular: 400;
+
+  /* ── COLOUR ──────────────────────────────────────────────────────────────
+     PENDING the Token Studio export. Until it lands these are the values
+     already shipping, consolidated but NOT re-picked — changing an approved
+     screen's colour is a designer's call, not a refactor's side effect.
+
+     The one exception is the brand blue on dark. Round 11/19 invented
+     `#1b93d0`, `#0d6ea6` and `#6bb7ff` for a CTA and a phone link while
+     `#36afff` was already doing exactly that job in two other stylesheets.
+     Those three are collapsed here — that is the drift this file exists to
+     stop, and leaving it in place would have made the file a lie on day one.
+
+     Still un-collapsed and visible on purpose: `#36a0ff`, `#44abde`, `#6fb6dd`
+     are near-duplicates of `--blue-brand` inherited from earlier rounds. They
+     are named rather than merged so the duplication is legible and can be
+     settled by the designer with the Figma library, instead of being silently
+     resolved by me. */
+  --blue-hero: #56b7e6; /* the main screen's field — see mainHandoff.ts */
+  --blue-brand: #36afff; /* wordmark + links on a dark field */
+  --blue-caption: #44abde; /* «О Крестах» intro heading */
+  --blue-mark: #36a0ff; /* map annotation marks */
+  --ink-dark: #123a5c; /* type on the near-white map */
+  --ink-deep: #030d25; /* the intro standfirst */
+  --field-dark: #070618; /* «Контакты» */
+  --field-form: #050b1d; /* the contact form, and the run's darkest point */
+  --white: #fff;
+}

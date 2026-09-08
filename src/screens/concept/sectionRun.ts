@@ -70,6 +70,10 @@ export interface SectionGeom {
   iconInCol: number;
   /** the icon's centre x within the scroller, px — measured, not authored */
   iconX: number;
+  /** the icon box's rendered size, px — responsive, so the light follows it */
+  iconPx: number;
+  /** false below the sticky breakpoint: the column flows and never pins */
+  sticky: boolean;
 }
 
 export class SectionRun {
@@ -127,7 +131,10 @@ export class SectionRun {
       const col = el.querySelector('.sec-col') as HTMLElement;
       const icon = el.querySelector('.sec-icon') as HTMLElement;
       const cs = getComputedStyle(col);
-      const pin = parseFloat(cs.top) || 0;
+      // `position: static` below the sticky breakpoint — the column flows, so
+      // there is no pin and the station invariant does not apply
+      const isSticky = cs.position === 'sticky';
+      const pin = isSticky ? parseFloat(cs.top) || 0 : 0;
       const padBottom = parseFloat(getComputedStyle(el).paddingBottom) || 0;
       // offsetTop chains are relative to the offsetParent; take the difference
       // of rects instead so nesting cannot silently change the meaning
@@ -145,6 +152,8 @@ export class SectionRun {
         // MEASURED off the icon's own rect, so the light's x and the h2's
         // column come from one source (the grid) instead of two that can drift
         iconX: ir.left + ir.width / 2,
+        iconPx: ir.width,
+        sticky: isSticky,
       };
     });
 
@@ -158,6 +167,7 @@ export class SectionRun {
     // and gains lines. Silent otherwise: the symptom is a halo popping at a
     // station swap, which nobody traces back to a line break.
     for (const [i, g] of this.geom.entries()) {
+      if (!g.sticky) continue;
       const need = g.pin + g.colH + g.padBottom;
       if (need > viewH) {
         console.warn(
@@ -196,6 +206,7 @@ export class SectionRun {
     const g = this.geom[i];
     if (!g) return 0;
     const flowing = g.top + g.toIcon - scrollTop;
+    if (!g.sticky) return flowing;
     const pinned = g.pin + g.iconInCol;
     const pushed = g.top + g.height - g.padBottom - g.colH + g.iconInCol - scrollTop;
     // `pushed` MUST NOT be floored at `pinned`. Flooring it looks like a
@@ -233,6 +244,7 @@ export class SectionRun {
     return {
       idx,
       x: this.iconX(idx),
+      px: this.geom[idx]?.iconPx ?? 220,
       y: bestY,
       opacity: mapVisible ? 0 : PageLight.envelope(bestY / viewH),
     };

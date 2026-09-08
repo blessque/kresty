@@ -54,6 +54,7 @@ export class ConceptPage {
   private viewH = 0;
   private warmed = false;
   private lastBakeIdx = -1;
+  private lastBakePx = 0;
 
   constructor(screen: HTMLElement, scroller: HTMLElement) {
     this.bg = new PageBackground(screen);
@@ -121,9 +122,12 @@ export class ConceptPage {
       }
       if (light.ready && t.opacity > 0) {
         // bake only on a station change — never on scroll (round 16.1)
-        if (t.idx !== this.lastBakeIdx) {
+        // re-bake on a station change OR when the icon box resizes (it flexes
+        // with viewport height); `render()`'s lastKey dedupe absorbs the rest
+        if (t.idx !== this.lastBakeIdx || t.px !== this.lastBakePx) {
           this.lastBakeIdx = t.idx;
-          light.bake(t.idx, t.x, pointer);
+          this.lastBakePx = t.px;
+          light.bake(t.idx, t.x, pointer, t.px);
         }
         light.position(t.y, t.opacity);
       } else {

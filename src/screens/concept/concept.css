@@ -531,12 +531,17 @@
   /* The top inset lives on the SECTION, never on `.sec-col`. Inside the column
      it would count toward the column's own height H, and the station-swap
      invariant is `pin + H + padBottom <= viewH` — the runtime assertion in
-     sectionRun.ts caught this at 869px against an 800px viewport. */
-  padding: 20vh 32px 96px;
+     sectionRun.ts caught this at 869px against an 800px viewport.
+
+     The bottom pad is one of the three terms of that invariant, so it flexes
+     with the viewport. The TYPE does not: the h2 is a Figma text style at a
+     fixed 44px, and shrinking a designer's scale to make a layout fit is the
+     wrong lever. Flex what is ours — pad, pin, icon box — not what is theirs. */
+  padding: 20vh 32px clamp(56px, 12vh, 96px);
   /* MUST stay visible: an `overflow: hidden` ancestor between a sticky element
      and its scrollport silently clips it and it never sticks. */
   overflow: visible;
-  color: #fff;
+  color: var(--white);
 }
 
 .sec-grid {
@@ -558,7 +563,7 @@
    `.page-bg` and kill the blend outright. */
 .sec-col {
   position: sticky;
-  top: var(--sec-pin, 18vh);
+  top: var(--sec-pin, 14vh);
   align-self: start;
 }
 
@@ -566,31 +571,37 @@
    measured rect is the single source of the icon's x — so the light and the h2
    come from one source (the grid) rather than two that can drift. */
 .sec-icon {
-  width: 220px;
-  height: 220px;
-  margin-bottom: 40px;
+  /* Reserves the box the LIGHT draws into. Flexes with viewport height because
+     it is the largest term in `pin + column + pad <= viewH` and it is a layout
+     decision, not a design token — at a fixed 220 it alone was a third of a
+     640px viewport. The light's `signSize` is MEASURED from this box and
+     passed to `bake()` — it does not follow automatically, and a fixed
+     signSize drew a 220px icon into a 128px box until it did. */
+  width: clamp(140px, 16vh, 220px);
+  height: clamp(140px, 16vh, 220px);
+  margin-bottom: clamp(20px, 4vh, 40px);
 }
 
 .sec-h2 {
-  font-family: 'ALS Chromius', sans-serif;
-  /* Chromius Medium = wght 150 on this font's non-standard axis (50/120/232).
-     NEVER 500 — it clamps to 232 = Black. See fonts.css. */
-  font-weight: 150;
-  /* clamped so the column cannot outgrow the viewport on a narrow window: the
-     station-swap invariant is pin + column + pad <= viewH, and this is the term
-     that runs away when Russian type gains a line. sectionRun warns if it does. */
-  font-size: clamp(28px, 2.6vw, 40px);
-  line-height: 1.15;
+  font-family: var(--font-display);
+  font-weight: var(--font-display-medium);
+  /* Figma text style H2. It was a one-off `clamp(28px, 2.6vw, 40px)` — locally
+     reasonable, globally entropy, and exactly the drift tokens.css exists to
+     stop. The narrow-window concern the clamp was covering is handled where it
+     belongs: `sectionRun.measure()` asserts pin + column + pad <= viewH and
+     names the offending section, rather than quietly shrinking the type. */
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
   max-width: 15em;
 }
 
 .sec-body {
-  font-family: 'ALS Hauss', sans-serif;
+  font-family: var(--font-text);
   /* global.css sets font-weight 120, which is Chromius Regular on that font's
      axis but THIN on ALS Hauss's ordinary one — reset it or this is a hairline */
-  font-weight: 400;
-  font-size: 20px;
-  line-height: 1.5;
+  font-weight: var(--font-text-regular);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
   max-width: 34em;
 }
 
@@ -631,7 +642,9 @@
   color: rgba(255, 255, 255, 0.6);
 }
 .cf-phone {
-  color: #6bb7ff;
+  /* was #6bb7ff — a fourth blue invented for one link. `--blue-brand` is what
+     already marks a link on a dark field elsewhere in this same stylesheet. */
+  color: var(--blue-brand);
   text-decoration: none;
 }
 .cf-phone:hover {
@@ -654,7 +667,8 @@
   grid-column: 1 / -1;
 }
 .cf-field label {
-  font-size: 14px;
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
   color: rgba(255, 255, 255, 0.55);
 }
 .cf-field input,
@@ -663,11 +677,12 @@
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.35);
   padding: 6px 0;
-  color: #fff;
+  color: var(--white);
   font-family: inherit;
-  /* never below 16: iOS zooms any focused input under it */
-  font-size: 18px;
-  line-height: 1.4;
+  /* Base Text — and comfortably over the 16px floor below which iOS zooms a
+     focused input */
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
   transition: border-color 0.2s ease;
 }
 .cf-field textarea {
@@ -686,7 +701,7 @@
 .cf-field input:-webkit-autofill,
 .cf-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #fff;
-  -webkit-box-shadow: inset 0 0 0 1000px #050b1d;
+  -webkit-box-shadow: inset 0 0 0 1000px var(--field-form);
   transition: background-color 9999s ease-in-out 0s;
 }
 
@@ -694,10 +709,11 @@
   grid-column: 1 / -1;
   justify-self: start;
   padding: 14px 32px;
-  background: #fff;
-  color: #050b1d;
+  background: var(--white);
+  color: var(--field-form);
   font-family: inherit;
-  font-size: 18px;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
   cursor: pointer;
   transition: opacity 0.2s ease;
 }
@@ -727,7 +743,11 @@
   pointer-events: none;
 }
 
-@media (max-width: 900px) {
+/* Sticky needs vertical ROOM, so the fallback keys on height as well as width.
+   Below either threshold the column simply flows, the station invariant stops
+   applying, and the assertion in sectionRun.ts goes quiet with it. A short
+   laptop window is the case that matters — 1280x720 is not a phone. */
+@media (max-width: 900px), (max-height: 720px) {
   .sec-grid,
   .contact-form form {
     grid-template-columns: 1fr;

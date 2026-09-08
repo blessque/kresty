@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint:tokens": "node scripts/lint-tokens.mjs",
+    "lint:tokens:update": "node scripts/lint-tokens.mjs --update"
   },
   "dependencies": {
     "three": "^0.170.0"

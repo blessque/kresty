@@ -1,4 +1,6 @@
 import './styles/fonts.css';
+// FIRST, so every stylesheet below can reference the vocabulary
+import './styles/tokens.css';
 import './styles/global.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
