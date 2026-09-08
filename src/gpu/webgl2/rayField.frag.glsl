@@ -57,6 +57,8 @@ uniform float u_bloom;         // emissive halo around the emblem
 uniform float u_slitMix;       // 0 procedural field, 1 logo-slit light
 uniform float u_dissolve;      // 0 crisp logo, 1 dissolved into zoom-blur trails
 uniform float u_signRot;       // slow continuous rotation of the light pattern, rad
+uniform vec2 u_hoverDir;       // Σ hover[j]·(cos aj, sin aj) over EVERY nav link
+uniform float u_hoverAmt;      // Σ hover[j] over EVERY nav link (unclamped)
 uniform float u_lightR;        // colour of the light itself, per channel;
 uniform float u_lightG;        //   (1,1,1) = white = every shipped variant.
 uniform float u_lightB;        //   Applied before the tone curve — see main().
@@ -552,15 +554,13 @@ void main() {
   // ---- «Прорезь»: the logo as light, blended over the field ------------
   vec3 col = field;
   if (u_slitMix > 0.001) {
-    vec2 hoverDir = vec2(0.0);
-    float hoverAmt = 0.0;
-    for (int j = 0; j < 4; j++) {
-      hoverAmt += u_beamHover[j];
-      hoverDir += u_beamHover[j] * vec2(cos(u_linkAngles[j]), sin(u_linkAngles[j]));
-    }
+    // ROUND 11: these two sums used to be a `for (j < 4)` loop right here. They
+    // have no per-pixel term, so they are now reduced on the CPU over ALL nav
+    // links — byte-identical, and it is what let the nav go to five without
+    // touching the vec4 link slots (see rayFieldTypes.ts).
     // never blank: fall back to the procedural cross glow if the mask is absent
     vec3 slit = (u_hasMask > 0.5)
-      ? slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx))
+      ? slitLight(p, q, r, u_hoverDir, min(u_hoverAmt, 1.0), hash21(fragPx))
       : (crossGlyph + vec3(core));
     col = mix(field, slit, u_slitMix);
   }

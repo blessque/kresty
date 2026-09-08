@@ -1,7 +1,7 @@
 import type { RayFieldRenderer, RayFieldState } from '../rayFieldTypes';
 import wgsl from './rayField.wgsl?raw';
 
-const FLOATS = 72; // 18 × vec4f = 288 bytes
+const FLOATS = 76; // 19 × vec4f = 304 bytes
 
 export class WebGPURayFieldRenderer implements RayFieldRenderer {
   readonly backend = 'webgpu' as const;
@@ -156,6 +156,10 @@ export class WebGPURayFieldRenderer implements RayFieldRenderer {
     d[69] = p.lightG;
     d[70] = p.lightB;
     // d[71] spare — p10.w
+    d[72] = s.hoverDir[0];
+    d[73] = s.hoverDir[1];
+    d[74] = s.hoverAmt;
+    // d[75] spare — p11.w
     this.device.queue.writeBuffer(this.ubuf, 0, d);
 
     const enc = this.device.createCommandEncoder();

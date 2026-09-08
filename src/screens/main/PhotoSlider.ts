@@ -2,7 +2,16 @@ import { SLIDER_SLIDES } from './layout';
 import { IdleWatcher } from '../../shared/idle';
 import { bindShortWords } from '../../shared/ruTypography';
 
-const IDLE_MS = 7000; // idle delay before the slider takes over
+/*
+ * Idle delay before the slider takes over. ROUND 11 cut this 7000 → 1000: the
+ * headlines are now the page's permanent copy, not a reward for waiting.
+ *
+ * This makes the round-18.3 activation gate load-bearing rather than
+ * theoretical — every hover-out re-arms a 1 s countdown instead of a 7 s one,
+ * so the path that used to bring the headline back word by word is now walked
+ * constantly. Do not relax `setHoverBlocked`/`tryActivate` below.
+ */
+const IDLE_MS = 1000;
 const WORD_STAGGER_MS = 80; // per-word reveal delay
 
 /* ── the slide-change timeline (round 9) ──────────────────────────────────────

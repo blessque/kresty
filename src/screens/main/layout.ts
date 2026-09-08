@@ -29,37 +29,84 @@ export interface NavLinkSpec {
 }
 
 /**
- * Nav links re-centered around the light (Figma node 306:113): centers sit on
- * the ±45° diagonals from the stage center, so the measured bisector beams
- * form an exactly upright cross.
+ * ROUND 11: five links, not four (Figma frame 720:57).
+ *
+ * The five labels sit on ONE circle about the convergence point at EXACTLY 72°
+ * apart. Measured off that frame's own pixels, the five gaps came out
+ * 71.3 / 70.6 / 72.2 / 73.3 / 72.6° — 360/5 to within the width of a glyph.
+ * Round 7's four links were the same idea at 90°, so this generalises the rule
+ * rather than replacing it.
+ *
+ * The positions are DERIVED, not transcribed. The Figma file is a dirty visual
+ * reference (no components, no auto-layout), and its per-label centres scatter
+ * over r = 256…287 for a reason that is not design: a longer word has a longer
+ * bounding box, and the centre of that box sits further out. Transcribing the
+ * five radii would bake a text-length artefact into the layout as though it
+ * were a decision — and it would drift the moment a label is re-worded. One
+ * radius and one angle step reproduce the frame to within ~12 px everywhere.
+ */
+const NAV_R = 272; // stage px — mean of the five measured label radii
+const NAV_A0 = -125.43; // deg, screen convention (y down); best fit over all five
+const NAV_STEP = 360 / 5;
+
+/**
+ * Glyph axis = the radius, wrapped into (−90, 90] so no label reads upside
+ * down. This is the same convention round 7 used for the four diagonal links —
+ * «История» at −135.85° carried `rot: 45.29`, i.e. the angle plus a half turn.
+ */
+function glyphRot(deg: number): number {
+  return ((((deg + 90) % 180) + 180) % 180) - 90;
+}
+
+function navSpec(
+  i: number,
+  id: string,
+  label: string,
+  route: NavLinkSpec['route'],
+): NavLinkSpec {
+  const a = NAV_A0 + i * NAV_STEP;
+  const r = (a * Math.PI) / 180;
+  return {
+    id,
+    label,
+    x: Math.round(CENTER_X + NAV_R * Math.cos(r)),
+    y: Math.round(CENTER_Y + NAV_R * Math.sin(r)),
+    rot: Number(glyphRot(a).toFixed(2)),
+    route,
+  };
+}
+
+/**
+ * Order is the circle's, starting at the upper-left label and running
+ * clockwise. Ids are unchanged where the link survived round 10 — `kontseptsia`
+ * and `kontakty` still carry the `#concept` / `#contacts` routes, so
+ * scripts/interact-test.mjs keeps driving `#nav-kontseptsia`.
+ *
+ * «Музей», «Аренда» and «События» have no page yet, so they route nowhere. The
+ * labels are Figma's own: «События» (Events), not «Новости».
  */
 export const NAV_LINKS: NavLinkSpec[] = [
-  { id: 'istoria', label: 'История', x: 480, y: 167, rot: 45.29, route: null },
-  { id: 'kontseptsia', label: 'О «Крестах»', x: 955, y: 175, rot: -44.71, route: 'concept' },
-  { id: 'arenda', label: 'Аренда', x: 465, y: 645, rot: -44.71, route: null },
-  // TEMPORARY: «Контакты» hosts the icon-showcase page used to shoot the
-  // presentation stills. Not a designed screen — see screens/contacts/.
-  { id: 'kontakty', label: 'Контакты', x: 937, y: 644, rot: 45.29, route: 'contacts' },
+  navSpec(0, 'muzey', 'Музей', null),
+  navSpec(1, 'kontseptsia', 'О «Крестах»', 'concept'),
+  navSpec(2, 'kontakty', 'Контакты', 'contacts'),
+  navSpec(3, 'arenda', 'Аренда', null),
+  navSpec(4, 'sobytia', 'События', null),
 ];
 
 /**
- * News ticker items (Figma node 338:48 + the loose headlines at 349:715..717).
- *
- * ROUND 18 dropped the date row: the block is two rows now, a headline and
- * «Все новости». The dates were placeholder 2026 anyway apart from the KVS
- * purchase, and a made-up date reads as a claim in a client demo in a way a
- * made-up headline does not.
+ * The descriptor under the wordmark (Figma 844:125 — 275×42 at x 32, y 92,
+ * i.e. two lines starting 20 px below the 40 px-tall logo box).
  */
-export interface NewsItem {
-  text: string;
-}
+export const LOGO_DESCRIPTOR = 'Открытое городское пространство';
 
-export const NEWS_ITEMS: NewsItem[] = [
-  { text: 'Застройщик KVS выкупил территорию бывшей тюрьмы «Кресты»' },
-  { text: 'Застройщик начал работы по демонтажу аварийных конструкций' },
-  { text: 'Прошла презентация концепции отельного комплекса Cosmos' },
-  { text: 'Подписаны последние акты для начала строительства' },
-];
+/** Top-right call to action (Figma 840:40). */
+export const CONTACT_CTA = 'Связаться';
+
+/*
+ * ROUND 11 KILLED THE NEWS BLOCK on the main screen. `NEWS_ITEMS` and
+ * `NewsTicker.ts` are deleted, not commented out — news now lives on its own
+ * «События» page, and a second copy here would be the thing that drifts.
+ */
 
 export const SHOWREEL_IMAGES = [
   '/resources/skies.webp',
@@ -69,14 +116,19 @@ export const SHOWREEL_IMAGES = [
 ].map((p) => asset(encodeURI(p)));
 
 /**
- * «Слайдер» slides — one full-bleed photo per slide. Round 8: the client's
- * final renders, each HARD-BOUND to the headline it was framed for (Figma
- * section 366:92, slide frames 306:152 · 340:81 · 340:250 · 340:162 · 340:210 ·
- * 340:231 · 342:653 · 342:677, in that canvas order). Do not reorder or
- * re-pair — the photo is the headline's illustration, not decoration.
+ * «Слайдер» slides — one full-bleed photo per slide, each HARD-BOUND to the
+ * headline it illustrates. Do not reorder or re-pair: the photo is the
+ * headline's illustration, not decoration.
  *
- * `concept-plan.webp` is deliberately absent: it is the «Концепция» nav-hover
- * image only (Figma 340:594), never a slide.
+ * ROUND 11 replaced the copy wholesale. The strategist's frame
+ * (`references/texts.txt`) is a creative constraint, not a list of sentences:
+ * the word «Свобода» is STATIC and only the rest of the line changes. So every
+ * headline here begins with it, and the seven are the site's seven topics in
+ * that file's order — the same seven the «О Крестах» page unwraps at length
+ * under a different h2.
+ *
+ * `concept-plan.webp` is deliberately absent: it is a nav-hover image only
+ * (Figma 340:594), never a slide.
  */
 export interface SliderSlide {
   photo: string;
@@ -85,32 +137,35 @@ export interface SliderSlide {
 
 export const SLIDER_SLIDES: SliderSlide[] = [
   {
+    // TODO(photos): awaiting a real Причал (pier) photograph in new-photos/.
+    // `skies.webp` is a stand-in — it is the only water-and-sky frame we have.
     photo: '/resources/skies.webp',
-    headline: 'Парковые зоны и веранды вместо колючей проволоки',
+    headline: 'Свобода строить новые маршруты по воде',
   },
   {
-    photo: '/resources/atrium-roof.webp',
-    headline: 'Пространство для объединения вместо заключения',
-  },
-  {
-    photo: '/resources/atrium-floor.webp',
-    headline: 'Место встречи вместо точки наблюдения',
-  },
-  {
+    // TODO(photos): awaiting a real culture/events photograph in new-photos/.
     photo: '/resources/kids-playground.webp',
-    headline: 'Детские площадки вместо тюремных заграждений',
+    headline: 'Свобода строить культурные планы на выходные',
   },
   {
-    photo: '/resources/forum.webp',
-    headline: 'Открытые лекции вместо темных подвалов',
-  },
-  {
-    photo: '/resources/table.webp',
-    headline: 'Уютные кафе вместо холодных стен',
+    photo: '/resources/hotel.webp',
+    headline: 'Свобода остановиться там, где хочется',
   },
   {
     photo: '/resources/pool.webp',
-    headline: 'Свобода быть собой и заботиться о душе и теле',
+    headline: 'Свобода заботиться о душе и теле',
+  },
+  {
+    photo: '/resources/table.webp',
+    headline: 'Свобода пробовать жизнь на вкус',
+  },
+  {
+    photo: '/resources/atrium-roof.webp',
+    headline: 'Свобода открывать для себя новые смыслы',
+  },
+  {
+    photo: '/resources/forum.webp',
+    headline: 'Свобода работать в месте культурного наследия',
   },
 ].map((s) => ({ ...s, photo: asset(encodeURI(s.photo)) }));
 

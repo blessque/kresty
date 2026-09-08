@@ -3464,6 +3464,109 @@ section — measured as 4 stalls in 219 frames, one per newly-entered section.
   render the light at the right size, offset and opacity, with no console errors.
 - `npm run build` clean.
 
+---
+
+## Main round 11 (2026-09-08) — five links, the strategist's copy, and a uniform that went nowhere
+
+The main screen's rework: nav 4 → 5, all copy replaced, the news block deleted, a descriptor
+under the wordmark, a «Связаться» plate top-right, and the slider starting after 1 s instead
+of 7.
+
+### The nav is five links at 72°, and the positions are DERIVED
+
+Measured off Figma frame `720:57`'s own pixels (cluster the white label glyphs, take centroids
+about the convergence point), the five gaps come out **71.3 / 70.6 / 72.2 / 73.3 / 72.6°** —
+360/5 to within the width of a glyph. Round 7's four links were the same idea at 90°, so this
+generalises the rule rather than replacing it.
+
+The per-label radii, however, scatter over **r = 256…287**, and that scatter is *not* design:
+a longer word has a longer bounding box, so its centre sits further out. Transcribing five
+radii would bake a text-length artefact into the layout as though it were a decision, and it
+would drift the moment a label is re-worded. One radius (272) and one step (72°) reproduce the
+frame to **1.6–17.3 px** everywhere, and survive a copy change. Live measurement after the
+change: gaps 72 / 72 / 72 / 72.1 / 71.9, every link at r = 272.
+
+### The vec4 link slots did NOT have to grow, and the reason is in the preset
+
+The obvious read is that five links need `u_linkAngles`/`u_beamHover` widened to five in both
+shader twins plus both uniform layouts. They do not, because on the shipped variant that data
+is already dead:
+
+- `u_beamAngles` — «Сияние»/«Слайдер» set `primaryIntensity: 0`, so `beams *= u_primaryIntensity`
+  zeroes the beam term. The other three uses sit behind `hoverMode` 3/4 and `compositeMode == 1`,
+  none of which the preset takes.
+- The hover `zone` blaze and the `u_shadow` wedge live in `field`, and the composite is
+  `col = mix(field, slit, u_slitMix)` at `slitMix: 1` — **`field` never reaches the screen.**
+
+What *is* live is the slit light's lean: `hoverAmt = Σ hover[j]` and
+`hoverDir = Σ hover[j]·(cos aⱼ, sin aⱼ)`. Neither has a per-pixel term, so both are now reduced
+**on the CPU**, where the link count is known, and arrive as one `vec2` + one `float`. Output
+is byte-identical, it scales to any link count, and it removes a loop from a ~109-fetch-per-pixel
+shader. The four-wide slots stay for «Призма» (`slitMix: 0`), the dev-switcher comparison
+variant, where the fifth link simply casts no shadow.
+
+### THE TRAP: a uniform that is uploaded but never registered is a SILENT no-op
+
+`WebGL2RayFieldRenderer` resolves uniforms from an explicit **name list**, and `u()` returns
+`null` for anything missing. `gl.uniform2f(null, …)` is legal and does nothing. So
+`u_hoverDir`/`u_hoverAmt` were declared in the GLSL, read by the shader, computed correctly on
+the CPU and uploaded every frame — **to nowhere**. No error, no warning, no visual artefact:
+the light rendered perfectly and the lean was permanently zero.
+
+It survived a screenshot check, because the hover *scene* (the photo swap and `sceneDim`) is
+DOM-driven and worked the whole time. Adding a uniform means adding it to that list.
+
+### How the hover was actually proven
+
+Two probes failed before one worked, and both failures are worth recording:
+
+1. **`drawImage` on the ray canvas returns empty.** No `preserveDrawingBuffer`, so every link
+   read a flat `meanΔ = 0.0` — including links that had always worked. A measurement that
+   reports failure for a known-good case is measuring nothing.
+2. **Pixel-diffing composited screenshots cannot isolate hover here.** The light rotates at
+   ~0.6°/s and the slider is cycling, so *every* frame differs regardless of input.
+
+What worked: intercept `getUniformLocation` to map location → name, then wrap `uniform2f` and
+read what is actually sent to the GPU. Result, on WebGL2 forced by shadowing
+`Navigator.prototype.gpu` — each link raises `hoverAmt` to 1.000 and points `hoverDir` at
+itself to **0.0°** (−125.4 / −53.4 / 18.6 / 90.6 / 162.7), releasing to 0.0009. **Hover each
+of the five**: the first four looking right is exactly what a missed fifth slot looks like.
+
+### The rest
+
+- **`IDLE_MS` 7000 → 1000.** This makes the round-18.3 activation gate load-bearing rather than
+  theoretical: every hover-out re-arms a 1 s countdown instead of a 7 s one, so the path that
+  used to bring the headline back word by word is now walked constantly. Re-ran 18.3's own
+  probe (a bare `pointerleave` with no `pointermove` behind it, sampling the `.word` spans):
+  **peak word opacity 0.000** over 3 s. First headline now shows at ~1.3 s including the fade.
+- **Copy.** All seven headlines begin «Свобода» — the strategist's frame is that the word is
+  STATIC and only the rest of the line changes. They wrap uniformly to 3 lines at 561 px;
+  round 8's "4×2 + 4×3" rule described the *old* eight strings and no longer applies.
+  Two slides run on stand-in photography pending a pier and an events frame (marked TODO).
+- **`font-weight: 120` is Chromius-only.** `global.css` sets it globally because ALS Chromius's
+  axis is 50/120/232, where 120 is Regular. ALS Hauss has an ordinary axis, where 120 is
+  **Thin** — inherited, the new descriptor rendered as a hairline and all but vanished over a
+  photo. Any ALS Hauss element must reset to 400. This is the same axis trap as round 8, from
+  the other direction: there, 500 clamped up to Black; here, 120 fell to Thin.
+- **The «Связаться» stroke is a `box-shadow`, not a `border`.** Figma draws a hard line on the
+  bottom and right edges only, which a border cannot express — it rings all four sides and
+  grows the box. A zero-blur offset shadow paints exactly the two visible edges, costs no
+  layout, and leaves the plate's measured 172×55 intact.
+- **News deleted, not commented out** (`NEWS_ITEMS`, `NewsTicker.ts`, `.news`). It moves to its
+  own «События» page, and a second copy here would be the thing that drifts.
+
+### Verified
+
+- Five links, ids `muzey` / `kontseptsia` / `kontakty` / `arenda` / `sobytia`; `#concept` and
+  `#contacts` routes unchanged, so `scripts/interact-test.mjs` still drives `#nav-kontseptsia`.
+- 5/5 links lean the light (above). Computed type: headline and nav at Chromius 150, descriptor
+  and CTA at Hauss 400, no `font-variation-settings` anywhere.
+- Chrome furniture: no `.news` in the DOM; descriptor at (32, 92); CTA at right 32 / top 32,
+  172×55, `pointer-events: auto`, shadow `6px 6px 0px 0px`.
+- Both backends (WebGPU default, WebGL2 forced). `tsc --noEmit` clean, `npm run build` clean,
+  `scripts/interact-test.mjs` clean. The one 404 is the browser's automatic `/favicon.ico` —
+  `index.html` declares no favicon on `origin/main` either, so it is pre-existing.
+
 ## Open issues
 
 - **[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**

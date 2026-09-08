@@ -91,6 +91,12 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
       'u_linkDist',
       'u_linkHalfAng',
       'u_beamHover',
+      // NOTE: `u()` returns null for any name missing from this list, and
+      // `gl.uniform*(null, …)` is a silent no-op — a new uniform that is
+      // uploaded but not registered here simply never reaches the shader,
+      // with no error anywhere. Adding a uniform means adding it here too.
+      'u_hoverDir',
+      'u_hoverAmt',
       'u_bgMix',
       'u_sceneDim',
       'u_modeMix',
@@ -145,6 +151,8 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     gl.uniform4f(u('u_linkDist'), ...s.linkDist);
     gl.uniform4f(u('u_linkHalfAng'), ...s.linkHalfAng);
     gl.uniform4f(u('u_beamHover'), ...s.beamHover);
+    gl.uniform2f(u('u_hoverDir'), s.hoverDir[0], s.hoverDir[1]);
+    gl.uniform1f(u('u_hoverAmt'), s.hoverAmt);
     gl.uniform1f(u('u_bgMix'), s.bgMix);
     gl.uniform1f(u('u_sceneDim'), s.sceneDim);
     gl.uniform1f(u('u_modeMix'), s.modeMix);

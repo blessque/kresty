@@ -7,11 +7,13 @@ import {
   CENTER_X,
   CENTER_Y,
   NAV_LINKS,
+  LOGO_DESCRIPTOR,
+  CONTACT_CTA,
   stageScale,
 } from './layout';
 import { asset } from '../../shared/assetUrl';
+import { bindShortWords } from '../../shared/ruTypography';
 import { VARIANTS, variantIndexFromUrl, SWITCHER_COUNT } from './variants';
-import { NewsTicker } from './NewsTicker';
 import { Showreel } from './Showreel';
 import { PhotoSlider } from './PhotoSlider';
 import { selectBackend } from '../../gpu/capabilities';
@@ -23,6 +25,15 @@ import { rasterizeMask } from '../../shared/rasterizeMask';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
 const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
+
+/**
+ * The shader's link slots are a vec4 and the nav is no longer four links long.
+ * This truncates (or zero-pads) to the four the procedural field can carry —
+ * which the shipped variant discards anyway. See rayFieldTypes.ts.
+ */
+function quad(a: number[]): [number, number, number, number] {
+  return [a[0] ?? 0, a[1] ?? 0, a[2] ?? 0, a[3] ?? 0];
+}
 
 /**
  * Slow continuous rotation of the whole light cross, rad/s (round 7).
@@ -47,7 +58,6 @@ export class MainScreen {
   private stage!: HTMLElement;
   private renderer: RayFieldRenderer | null = null;
   private pointer = new SmoothPointer();
-  private ticker!: NewsTicker;
   private showreel!: Showreel;
   private photoSlider!: PhotoSlider;
   /** seconds since the last slide throw — drives the light dip (round 8) */
@@ -71,15 +81,28 @@ export class MainScreen {
   /** 0..1 transition converge amount, driven by TransitionController */
   converge = 0;
 
-  private hoverTarget = [0, 0, 0, 0];
-  private hover = [0, 0, 0, 0];
-  /** bisector directions between adjacent links — beams strike BETWEEN links */
+  /*
+   * ROUND 11: these are sized from NAV_LINKS, not fixed 4-tuples. The link
+   * count is a product decision that has now changed once; the shader's
+   * `vec4` beam slots are a rendering constraint that has NOT changed. Keeping
+   * them separate is what let five links land without touching the beam math —
+   * see `measureBeams()`.
+   */
+  private hoverTarget = NAV_LINKS.map(() => 0);
+  private hover = NAV_LINKS.map(() => 0);
+  /**
+   * Bisector directions between adjacent links — beams strike BETWEEN links.
+   * Still exactly BEAM_COUNT of them regardless of how many links there are.
+   */
   private baseBeamAngles: [number, number, number, number] = [0, 0, 0, 0];
   private beamAngles: [number, number, number, number] = [0, 0, 0, 0];
   /** measured link directions, index-aligned with linkEls/hover */
-  private linkAngles: [number, number, number, number] = [0, 0, 0, 0];
-  private linkDist: [number, number, number, number] = [0, 0, 0, 0];
-  private linkHalfAng: [number, number, number, number] = [0, 0, 0, 0];
+  private linkAngles = NAV_LINKS.map(() => 0);
+  private linkDist = NAV_LINKS.map(() => 0);
+  private linkHalfAng = NAV_LINKS.map(() => 0);
+  /** CPU-side reduction of the hover lean over ALL links — see rayFieldTypes */
+  private hoverDir: [number, number] = [0, 0];
+  private hoverAmt = 0;
   private linkEls: HTMLElement[] = [];
   private hoverScene!: HTMLElement;
   private hoverImgs: HTMLImageElement[] = [];
@@ -116,14 +139,17 @@ export class MainScreen {
     const dark = document.createElement('div');
     dark.className = 'hover-dark';
     this.hoverScene.appendChild(dark);
-    // index-aligned with NAV_LINKS (positional coupling — keep the order).
-    // «Концепция» gets its own plan render, fixed by Figma frame 340:594; the
-    // rest borrow the closest slide photo by meaning.
+    // Index-aligned with NAV_LINKS (positional coupling — keep the order, and
+    // keep the LENGTH: `lastHovered` indexes straight into this, so a link
+    // without an entry would hover to `undefined`). «О «Крестах»» gets its own
+    // plan render, fixed by Figma frame 340:594; the rest borrow the closest
+    // slide photo by meaning.
     const hoverImages = [
-      '/resources/atrium-roof.webp', // История — the cross-shaped block from above
-      '/resources/concept-plan.webp', // Концепция — hover-only, never a slide
-      '/resources/table.webp', // Аренда
+      '/resources/atrium-roof.webp', // Музей — the cross-shaped block from above
+      '/resources/concept-plan.webp', // О «Крестах» — hover-only, never a slide
       '/resources/forum.webp', // Контакты
+      '/resources/table.webp', // Аренда
+      '/resources/kids-playground.webp', // События
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');
@@ -159,6 +185,26 @@ export class MainScreen {
     logo.setAttribute('aria-label', 'Кресты');
     corners.appendChild(logo);
 
+    // Round 11: the descriptor under the wordmark (Figma 844:125). It is a
+    // sibling of the logo rather than a child, so the logo box stays the exact
+    // 251.2×40 it is on every other page.
+    const descriptor = document.createElement('p');
+    descriptor.className = 'logo-descriptor';
+    descriptor.textContent = bindShortWords(LOGO_DESCRIPTOR);
+    corners.appendChild(descriptor);
+
+    // Round 11: «Связаться», top right (Figma 840:40). `.corners` is
+    // pointer-events: none, so an interactive child has to opt back in.
+    const cta = document.createElement('a');
+    cta.className = 'contact-cta';
+    cta.href = '#contacts';
+    cta.textContent = CONTACT_CTA;
+    cta.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.onNavigate('contacts');
+    });
+    corners.appendChild(cta);
+
     NAV_LINKS.forEach((spec, i) => {
       const a = document.createElement('a');
       a.className = 'nav-link';
@@ -184,11 +230,6 @@ export class MainScreen {
       this.stage.appendChild(a);
       this.linkEls.push(a);
     });
-
-    const news = document.createElement('div');
-    news.className = 'news';
-    corners.appendChild(news);
-    this.ticker = new NewsTicker(news);
 
     // bottom-right studio mark (Figma node 340:574) — the ARTLEBEDEV stroke
     // logo with its "2026" line, one vector. Replaced the «КРЕСТЫ · 2026» text
@@ -332,7 +373,6 @@ export class MainScreen {
     this.el.classList.remove('hidden');
     this.pointer.attach();
     this.armIdleShow();
-    this.ticker.start();
     addEventListener('resize', this.layout);
     addEventListener('keydown', this.onKeyDown);
     this.lastT = performance.now();
@@ -354,18 +394,26 @@ export class MainScreen {
     this.pointer.detach();
     this.showreel.detach();
     this.photoSlider.detach();
-    this.ticker.stop();
     removeEventListener('resize', this.layout);
     removeEventListener('keydown', this.onKeyDown);
   }
 
   private update(dt: number) {
-    // hover easing: 150ms in, 300ms out
-    for (let i = 0; i < 4; i++) {
+    // hover easing: 150ms in, 300ms out — over every link, not a fixed four
+    let hx = 0;
+    let hy = 0;
+    let ha = 0;
+    for (let i = 0; i < this.hover.length; i++) {
       const target = this.hoverTarget[i];
       const tau = target > this.hover[i] ? 0.06 : 0.13;
       this.hover[i] += (target - this.hover[i]) * (1 - Math.exp(-dt / tau));
+      // the slit light's lean, summed here rather than in the fragment shader
+      ha += this.hover[i];
+      hx += this.hover[i] * Math.cos(this.linkAngles[i]);
+      hy += this.hover[i] * Math.sin(this.linkAngles[i]);
     }
+    this.hoverDir = [hx, hy];
+    this.hoverAmt = ha;
     this.pointer.update(dt);
 
     // living beams: slow continuous rotation of the whole cross (replaces the
@@ -458,10 +506,15 @@ export class MainScreen {
       scale: s * rs,
       signRot: this.timeSec * ROT_SPEED,
       beamAngles: this.beamAngles,
-      linkAngles: this.linkAngles,
-      linkDist: this.linkDist,
-      linkHalfAng: this.linkHalfAng,
-      beamHover: [this.hover[0], this.hover[1], this.hover[2], this.hover[3]],
+      // First four links only — these feed the procedural field, which the
+      // shipped variant discards at slitMix 1. See rayFieldTypes.ts.
+      linkAngles: quad(this.linkAngles),
+      linkDist: quad(this.linkDist),
+      linkHalfAng: quad(this.linkHalfAng),
+      beamHover: quad(this.hover),
+      // …whereas the hero's slit light leans over EVERY link, reduced here.
+      hoverDir: this.hoverDir,
+      hoverAmt: this.hoverAmt,
       bgMix: Math.max(this.showreel.mix, this.photoSlider.mix),
       sceneDim: this.sceneDim,
       modeMix: this.modeMix,

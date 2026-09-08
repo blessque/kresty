@@ -648,6 +648,9 @@ export class ContactsScreen {
       linkDist: [400, 400, 400, 400],
       linkHalfAng: [0.1, 0.1, 0.1, 0.1],
       beamHover: [0, 0, 0, 0],
+      // no nav here, so the slit light never leans
+      hoverDir: [0, 0],
+      hoverAmt: 0,
       bgMix: 0,
       sceneDim: 0,
       modeMix: 0, // never warms — there is no showreel here

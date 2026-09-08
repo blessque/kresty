@@ -108,13 +108,41 @@ export interface RayFieldState {
   /** slow continuous rotation of the whole light pattern, radians */
   signRot: number;
   beamAngles: [number, number, number, number];
-  /** measured link directions (index-aligned with beamHover) for hover zone light */
+  /**
+   * Measured link directions (index-aligned with beamHover) for the hover zone
+   * light, and the link geometry the shadow wedge needs.
+   *
+   * THESE ARE STILL FOUR SLOTS, AND ROUND 11 DELIBERATELY LEFT THEM THAT WAY
+   * even though the nav now has five links. They are read only by the
+   * PROCEDURAL field — the hover `zone` blaze and the `u_shadow` wedge — and
+   * the shipped variant discards that field wholesale: «Сияние»/«Слайдер» run
+   * at `slitMix: 1`, and the composite is `col = mix(field, slit, u_slitMix)`,
+   * so `field` never reaches the screen. «Призма» (`slitMix: 0`) is the only
+   * consumer left, it is a dev-switcher comparison variant, and on it the
+   * fifth link simply casts no shadow.
+   *
+   * The hero's hover DOES respond to all five — through `hoverDir`/`hoverAmt`
+   * below, which is the same sum reduced on the CPU where the link count is
+   * known. Widening these to five would have cost a uniform-layout change in
+   * both backends to feed a code path that is already dead.
+   */
   linkAngles: [number, number, number, number];
   /** link center distances from the convergence point, reference px */
   linkDist: [number, number, number, number];
   /** apparent angular half-width of each label seen from the convergence point, rad */
   linkHalfAng: [number, number, number, number];
   beamHover: [number, number, number, number];
+  /**
+   * Σ hover[j]·(cos aⱼ, sin aⱼ) and Σ hover[j] over EVERY nav link.
+   *
+   * The slit light leans toward whatever is hovered, and it only ever needed
+   * these two reductions — the shader used to compute them itself in a
+   * `for (j < 4)` loop over the vec4s above. Neither sum has a per-pixel term,
+   * so doing it CPU-side is byte-identical output that scales to any link
+   * count, and it moves work off a ~109-fetch-per-pixel shader.
+   */
+  hoverDir: [number, number];
+  hoverAmt: number;
   /** 0 = over flat blue, 1 = over showreel photos (dims the field a bit) */
   bgMix: number;
   /** 0 = normal, 1 = hover "gallery dark" scene: light boosted + warmed */

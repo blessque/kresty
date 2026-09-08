@@ -422,44 +422,63 @@
   opacity: 0.4;
 }
 
-/* news block (Figma node 338:48): 32/40 from the bottom-left corner, 270 wide,
-   ALS Chromius Regular, rows gapped 8.
+/* ROUND 11 DELETED THE NEWS BLOCK from the main screen (`.news`, its headline
+   rows and NewsTicker.ts). News lives on the «События» page now. */
 
-   ROUND 18: the date row is gone and the type stepped down to 16. The block is
-   now headline + link and measures 65 + 8 + 22 = 95. The 65 is three lines at
-   16/1.35 (21.6 each) — the headline row still RESERVES three lines so that
-   «Все новости» never shifts as the items cycle, which is the only reason
-   min-height exists. Recompute it if either number moves. */
-.news {
+/* Descriptor under the wordmark (Figma 844:125 — 275×42 at x 32, y 92).
+   The 92 is not authored: the logo box is 40 tall at y 32, so this is a flat
+   20px under it, which is the same corner arithmetic the rest of the furniture
+   uses. Two lines at 16/24 measure the 42. */
+.logo-descriptor {
   position: absolute;
   left: 32px;
-  bottom: 40px;
-  width: 270px;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: 'ALS Chromius', sans-serif;
-  /* Chromius Regular = wght 120 on this font's axis — see fonts.css */
-  font-weight: 120;
+  top: 92px;
+  width: 275px;
+  font-family: 'ALS Hauss', sans-serif;
+  /* MUST be reset: global.css sets `font-weight: 120`, which is ALS Chromius
+     Regular on that font's non-standard axis (50/120/232). ALS Hauss has an
+     ordinary axis, where 120 is Thin — inherited, this rendered as hairline
+     grey and all but vanished over a photo. Same reason the CTA sets it. */
+  font-weight: 400;
   font-size: 16px;
-  line-height: 1.35;
-}
-.news .headline {
-  color: rgba(255, 255, 255, 0.65);
-  transition: opacity 0.4s ease;
-  /* three lines at 16/1.35, so the link below never moves — see the note above */
-  min-height: 65px;
-}
-.news .headline.fading {
-  opacity: 0;
-}
-.news a {
-  width: fit-content;
+  line-height: 24px;
   color: #fff;
 }
-.news a:hover {
-  text-decoration: underline;
+
+/* «Связаться» (Figma 840:40): a white plate, top right, mirroring the logo's
+   32/32. Measured off the frame's own pixels — the plate is 172×55 and the
+   stroke sits 6px to the right and below it.
+
+   THE STROKE IS AN OFFSET SHADOW, NOT A BORDER, and that is the whole detail:
+   Figma draws a hard line on the bottom and right edges only, which a border
+   cannot express (a border rings all four sides and grows the box). A
+   zero-blur box-shadow paints exactly the two visible edges, costs no layout,
+   and keeps the plate's own 172×55 intact. */
+.contact-cta {
+  position: absolute;
+  right: 32px;
+  top: 32px;
+  display: grid;
+  place-items: center;
+  width: 172px;
+  height: 55px;
+  pointer-events: auto; /* .corners is pointer-events: none */
+  background: #fff;
+  color: #1b93d0;
+  box-shadow: 6px 6px 0 0 #fff;
+  font-family: 'ALS Hauss', sans-serif;
+  font-weight: 400; /* see .logo-descriptor — global.css's 120 is Chromius-only */
+  font-size: 18px;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    box-shadow 0.22s ease,
+    color 0.22s ease;
+}
+/* the plate absorbs its own offset stroke — the button reads as pressed */
+.contact-cta:hover {
+  box-shadow: 0 0 0 0 #fff;
+  color: #0d6ea6;
 }
 
 /* bottom-right ARTLEBEDEV mark (Figma node 340:574). Figma's odd decimals

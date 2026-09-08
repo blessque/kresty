@@ -23,6 +23,7 @@ struct U {
   p8: vec4f, // modeMix, slitMix, hasMask, signSize
   p9: vec4f, // godrays, bloom, dissolve, signRot
   p10: vec4f, // lightR, lightG, lightB, (spare)
+  p11: vec4f, // hoverDirX, hoverDirY, hoverAmt, (spare)
 };
 
 @group(0) @binding(0) var<uniform> u: U;
@@ -519,12 +520,12 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   // ---- «Прорезь»: the logo as light, blended over the field ------------
   var col = field;
   if (slitMix > 0.001) {
-    var hoverDir = vec2f(0.0);
-    var hoverAmt = 0.0;
-    for (var j = 0; j < 4; j++) {
-      hoverAmt = hoverAmt + u.beamHover[j];
-      hoverDir = hoverDir + u.beamHover[j] * vec2f(cos(u.linkAngles[j]), sin(u.linkAngles[j]));
-    }
+    // ROUND 11: these two sums used to be a `for (j < 4)` loop right here. They
+    // have no per-pixel term, so they are now reduced on the CPU over ALL nav
+    // links — byte-identical, and it is what let the nav go to five without
+    // touching the vec4 link slots (see rayFieldTypes.ts).
+    let hoverDir = u.p11.xy;
+    let hoverAmt = u.p11.z;
     var slit: vec3f;
     if (hasMask > 0.5) {
       slit = slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx));
