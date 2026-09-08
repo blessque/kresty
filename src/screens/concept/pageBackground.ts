@@ -1,3 +1,5 @@
+import { T } from '../../styles/tokens.gen';
+
 /**
  * The page's background colour, as a pure function of scroll position.
  *
@@ -24,7 +26,7 @@
 export const BAND_VH = 0.6;
 
 /** what the map and the gap sit on, and the colour the first section blends up from */
-export const LEAD_COLOR = '#ffffff';
+export const LEAD_COLOR = T.bgLightMain;
 
 export interface ColorStop {
   /** scroll position within the scroller at which this colour takes over */

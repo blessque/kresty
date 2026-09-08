@@ -1,3 +1,5 @@
+import { T } from '../../styles/tokens.gen';
+
 /**
  * The five editorial sections below the map on «О Крестах».
  *
@@ -31,32 +33,34 @@ export interface PageSection {
   icon: string;
   h2: string;
   paras: string[];
-  /** page background while this section owns the frame — the designer's hue */
+  /** page background while this section owns the frame — a semantic token */
   bg: string;
-  /**
-   * The same hue carried down into the band where the light actually reads.
-   *
-   * Not a second opinion about colour: the hue and saturation are the sampled
-   * ones, only the lightness moves. See `PALETTE` below.
-   */
-  bgDeep: string;
   image?: string;
   imageAlt?: string;
 }
 
 /**
- * WHICH PALETTE IS LIVE. `?pal=figma` shows the sampled hues at their sampled
- * lightness; the default carries them down to where the light reads.
- *
- * This is a real choice with a measured cost on each side, so it is a dial and
- * not a silent decision — see the note on the palette below.
+ * ROUND 20: one value per section, straight from the designer's semantic
+ * tokens. The round-19 `bg`/`bgDeep` pair and `?pal=figma` are gone — they were
+ * a stand-in for exactly this export, and keeping three palettes would be the
+ * drift this file warns about. The shipped round-19 values stay reachable as
+ * `?pal=old` for the designer's A/B; delete `LEGACY_BG` on sign-off.
  */
-export function palette(): 'figma' | 'deep' {
-  return new URLSearchParams(location.search).get('pal') === 'figma' ? 'figma' : 'deep';
+export function palette(): 'new' | 'old' {
+  return new URLSearchParams(location.search).get('pal') === 'old' ? 'old' : 'new';
 }
 
+/** round 19's lightness-clamped set, for comparison only */
+const LEGACY_BG: Record<string, string> = {
+  hotel: '#460061',
+  spa: '#5e0326',
+  restaurant: '#56250b',
+  museum: '#04225d',
+  office: '#015a4b',
+};
+
 export function sectionBg(s: PageSection): string {
-  return palette() === 'figma' ? s.bg : s.bgDeep;
+  return palette() === 'old' ? (LEGACY_BG[s.id] ?? s.bg) : s.bg;
 }
 
 /**
@@ -92,8 +96,8 @@ export const PAGE_SECTIONS: PageSection[] = [
       'Из номеров открываются виды на Неву, окрестности и обновленную территорию открытого городского пространства.',
       'Атриумы каждого здания — уютное пространство лобби с выходом к ресторану с авторской кухней и к музею.',
     ],
-    bg: '#9100c8',
-    bgDeep: '#460061',
+    bg: T.bgHotels,  // ink-1000  #031721   7.1% lightness
+
     image: '/resources/hotel.webp',
     imageAlt: 'Атриум отеля',
   },
@@ -106,8 +110,8 @@ export const PAGE_SECTIONS: PageSection[] = [
       'Для тех, кто остался в отеле, — отдельные часы работы комплекса. Для гостей, кто заглянул на день и хочет замедлиться, комплекс работает в другие часы.',
       'Тишина, вода, приглушенный свет — все, чтобы сделать заботу о себе частью привычного городского маршрута.',
     ],
-    bg: '#7d0433',
-    bgDeep: '#5e0326',
+    bg: T.bgWellness,  // amethyst  #783c96  41.2% — above the light's ceiling
+
     image: '/resources/pool.webp',
     imageAlt: 'Бассейн СПА-комплекса',
   },
@@ -120,8 +124,8 @@ export const PAGE_SECTIONS: PageSection[] = [
       'Гастрономический кластер с камерными форматами кофеен, стрит-фуда нового поколения и уютными винными барами.',
       'Разнообразие форматов удовлетворит каждого: от высокой кухни для особого случая до обедов по пути через город.',
     ],
-    bg: '#7a3410',
-    bgDeep: '#56250b',
+    bg: T.bgFood,  // garnet    #78141e  27.5% — marginal
+
     image: '/resources/table.webp',
     imageAlt: 'Ресторан с видом на Неву',
   },
@@ -135,8 +139,8 @@ export const PAGE_SECTIONS: PageSection[] = [
       'Музейное пространство в одном из крыльев зданий-крестов погружает в содержание понятия «свободы» — эволюцию представления о ней в России и мире.',
       'На территории разработаны экскурсионные маршруты, которые расскажут о пространстве в истории — что здесь было, чем особенная архитектура, что прогрессивного для своего времени показало это место.',
     ],
-    bg: '#052a73',
-    bgDeep: '#04225d',
+    bg: T.bgCulture,  // navy      #081b5a  19.2%
+
     image: '/resources/atrium-roof.webp',
     imageAlt: 'Historic atrium roof',
   },
@@ -148,14 +152,22 @@ export const PAGE_SECTIONS: PageSection[] = [
       'Новый городской офисный кластер на Выборгской стороне, с удобной инфраструктурой и приятной атмосферой.',
       'В исторических зданиях комплекса оборудованы пространства для офисов разного формата для аренды.',
     ],
-    bg: '#015a4b',
-    bgDeep: '#015a4b',
+    bg: T.bgOffices,  // emerald   #004b3c  14.7%
+
     image: '/resources/forum.webp',
     imageAlt: 'Офисное пространство',
   },
 ];
 
-/** the contact form's field, and the darkest point of the run (Figma 727:26) */
+/**
+ * The contact form's field, and the darkest point of the run (Figma 727:26).
+ *
+ * NOT `T.bgDarkMain`, deliberately: that resolves to ink-1000, which is ALSO
+ * `bg-hotels`, so the form would become the exact colour of the FIRST section
+ * with three sections between them — the run would read as a return rather
+ * than a descent. Kept as a project exemption (`--field-form` in tokens.css)
+ * with the question filed for the designer.
+ */
 export const FORM_BG = '#050b1d';
 
 /**
@@ -171,5 +183,10 @@ export const FORM_BG = '#050b1d';
  */
 export const DAWN_MID = '#2b4a7a';
 
-/** `#screen-main`'s resting field — see mainHandoff.ts for why it must match */
-export const MAIN_BG = '#56b7e6';
+/**
+ * `#screen-main`'s resting field. It and `--color-field-main` now BOTH derive
+ * from the single `blue` primitive through one generator run, so they can no
+ * longer drift apart — which is what the round-19 seam depends on. Verified by
+ * `npm run tokens:check`.
+ */
+export const MAIN_BG = T.blue;

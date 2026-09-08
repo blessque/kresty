@@ -11,7 +11,7 @@
    positioned sibling has no such dependency. */
 
 #screen-contacts {
-  background: #070618;
+  background: var(--color-bg-dark-main);
   /* The `Frame` handles, written here as inline styles by JS — inline wins over
      these stylesheet defaults, and all three inherit down to the canvas.
      Declaring them on `.fx-canvas` instead would SHADOW the JS values, since a
@@ -134,7 +134,7 @@
 }
 
 .fx-home svg path {
-  fill: #36afff;
+  fill: var(--color-link);
 }
 
 /* ------------------------------------------------------------ admin panel

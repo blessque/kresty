@@ -1,0 +1,9 @@
+{
+  "tokenSetOrder": [
+    "global",
+    "colors/Mode 1",
+    "semantic-colors/Mode 1",
+    "typography/Desktop & Tablet",
+    "typography/Mobile"
+  ]
+}

@@ -3699,6 +3699,114 @@ eye with both on screen.
   1.0 to clear the form's last line before the colour moves, 1.4 of dawn, 0.6 of settle,
   0.5 of bounce clearance.
 
+---
+
+## Round 20 (2026-09-08) — the designer's tokens, and a font that was never there
+
+The designer built the real system in Figma and exported it with Token Studio to `tokens/`
+(five sets: primitives, semantic colours, and two typography modes). This round replaced the
+round-19 placeholder with the authored set and applied it across the three user-facing pages.
+
+### ALS Hauss was never loaded, and rounds 11/19 put it there
+
+`fonts.css` has said since round 10 that Chromius is the only typeface and Hauss "was removed
+outright at the designer's request … none should be reintroduced". There is exactly one
+`@font-face` in the repo. The Hauss woff2 files exist only in gitignored `references/`.
+
+Rounds 11 and 19 nonetheless set `font-family: 'ALS Hauss'` on `.logo-descriptor`,
+`.contact-cta`, `.sec-body` and — through `font-family: inherit` — every `.cf-*` form element.
+**All of it rendered in system sans for two rounds**, on a client-facing pitch. Round 19 even
+added a `--font-text` token and a careful comment reasoning about Hauss's weight axis, for a
+font that was not there.
+
+**The trap in fixing it:** those rules also carried `font-weight: 400`, harmless on system sans.
+On Chromius's 50/120/232 axis, 400 **clamps to 232 = Black**. Family and weight had to move in
+the same edit. There are now three guards, because one was clearly not enough: the generator
+throws on any family that is not ALS Chromius, `lint:tokens` bans the string `ALS Hauss` and
+`--font-text`, and a third rule requires every `font-weight` to be a token.
+
+### The weight rule earned itself immediately
+
+Added, then found three raw literals still in the tree — and two live bugs a screenshot would
+have passed:
+
+- **`.sec-h2` was rendering at 120, not 150.** It referenced `--font-display-medium`, deleted in
+  the same round; `font-weight: var(--undefined)` is invalid-at-computed-value-time → `normal`
+  → and it happened to inherit 120 rather than clamp. Silently the wrong weight for a round.
+- **`.cf-field input` computed 400.** A form control does **not** inherit `font-weight` —
+  `font-family: inherit` does not carry it — so the UA default stood, and on Chromius that
+  clamps to Black. The one place the trap survives inheritance.
+
+### Two conversions the generator owns, each load-bearing
+
+**px, not rem.** The tokens are authored at a 16px root; this site's is 21px, so rem would have
+rendered every size ~31% oversized. Re-homing the root was rejected for a better reason than
+convenience: only the TYPE would then respond to the browser root, inside a layout that does
+not — a fixed 1440×800 stage, nav positions derived from a hard radius of 272, captions solved
+from `offsetWidth`. Type that scales alone inside fixed geometry is a bug, not accessibility.
+Each emitted declaration carries its source rem so a re-homed root is checkable.
+
+**Unitless line-heights.** `concept.css` centres the map-mark icons with
+`calc((var(--mark-lh) * 1em - var(--icon-h)) / 2)`. A px line-height makes `38.4px * 1em`
+invalid at computed-value time, the whole `calc` drops, and both entrance marks jump ~5px with
+no error. Ratios also make the responsive switch five declarations instead of ten.
+
+### The export corrected two values round 19 had transcribed from a screenshot
+
+H3 line-height 115% → **120%**, Caption Small 130% → **120%**. The JSON is authoritative.
+
+### The section palette, measured rather than argued
+
+The semantic layer disagreed with round 19's hue-based guess: hotels is **ink-1000**, not the
+violet — amethyst is **wellness**. And `amber` is referenced by no semantic at all, which
+retired the worry that a 50%-lightness field would obliterate the light.
+
+Applied as authored per instruction, then measured (ray peak vs field luminance, left column,
+1440×800):
+
+| section | token | field L | ray/field contrast | round 19 |
+|---|---|---|---|---|
+| hotels | ink-1000 7.1% | 19.5 | **10.63** | 9.67 |
+| wellness | amethyst 41.2% | 79.3 | **3.09** | 8.70 |
+| food | garnet 27.5% | 42.0 | 5.53 | 5.14 |
+| culture | navy 19.2% | 27.5 | 8.00 | 7.05 |
+| offices | emerald 14.7% | 58.0 | 4.13 | 3.47 |
+
+Four of five improved. **Wellness collapsed from 8.70 to 3.09** — on amethyst the god-rays stop
+reading and the lotus is a flat silhouette, exactly what round 16's 15–22% ceiling predicts.
+Reported with the screenshot pair, not silently corrected; `?pal=old` keeps round 19's set for
+the A/B.
+
+### The seam got better
+
+`#screen-main`'s field and `MAIN_BG` now both derive from the single `blue` primitive through
+one generator run, so they cannot drift. Measured: concept's settled frame **max Δ 0**, the
+frame at the swap **max Δ 1** on 0.000% of pixels — better than round 19's Δ 2 on 0.02%.
+
+### Verified
+
+- Every text element on both pages: ALS Chromius, weight 120 or 150, **never 400 or 232**.
+- Responsive switch at exactly 768: 54/44/32/24/16 → 40/32/28/20/16.
+- Map: 19 marks, 0 unplaced, picking unchanged, no station-invariant warnings at 1440×800.
+- Drawer still three sizes (32/24/16), which is what round 18 actually asked for.
+- Baseline debt **46 → 11**, and what remains is the `?admin` panels, `.fx-switch` and the
+  documented 21px document base.
+- `tokens:check`, `lint:tokens`, `tsc`, `build`, `interact-test` all clean.
+
+### Open
+
+- **`bg-hotels` resolves to ink-1000, identical to `bg-dark-main`** — the first section has no
+  hue of its own and the run opens on the same near-black as the form. Hence `FORM_BG` was NOT
+  mapped to `bg-dark-main`: the form would have become the first section's exact colour with
+  three sections between them, and the run would read as a return rather than a descent.
+- `amber` is in the primitives and used by nothing.
+- `.map-label` inherits 21px and the scale offers 16 or 24 with nothing between; forcing 24
+  would re-solve caption placement on an approved screen.
+- `.slider-headline` 56/64 (slide frames) vs H1 54/59.4 (text styles) — two Figma artefacts
+  disagree; pixels kept, value named.
+- The map's blue-grey ink ramp was mapped to the neutral `text-onlight-*` ramp; ΔE up to 22.6,
+  awaiting the designer's eye.
+
 ## Open issues
 
 - **[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**

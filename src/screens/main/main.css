@@ -1,5 +1,5 @@
 #screen-main {
-  background: #56b7e6;
+  background: var(--color-field-main);
 }
 
 /* photo showreel sits under the ray canvas; screen-blend lightens it */
@@ -30,14 +30,14 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(24, 61, 84, 0.45);
+  background: var(--scrim-showreel);
 }
 /* delayed darkening of the showreel — flips the light into dusty mode */
 .showreel .showreel-veil {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: #050403;
+  background: var(--scrim-veil);
   opacity: 0;
 }
 
@@ -149,7 +149,7 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  background: #000;
+  background: var(--scrim-photo);
   opacity: 0.4;
 }
 .photo-slider .photo-overlay.scrim-open {
@@ -198,7 +198,7 @@
 .hover-scene .hover-dark {
   position: absolute;
   inset: 0;
-  background: #04070c;
+  background: var(--scrim-hover);
   opacity: 0.93;
 }
 .hover-scene img {
@@ -274,11 +274,15 @@
 .nav-link {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-family: 'ALS Chromius', sans-serif;
-  font-size: 32px;
+  font-family: var(--font-family-display);
+  /* H3's SIZE only — deliberately no line-height. These are single-line,
+     nowrap, `translate(-50%,-50%)`-centred absolute labels, so leading is
+     geometry here: 1.35 → 1.2 would move every label 2.4px against nav
+     positions derived from a hard radius of 272 (layout.ts). */
+  font-size: var(--type-h3-size);
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
-  font-weight: 150;
-  color: #fff;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-ondark-main);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -365,16 +369,19 @@
   width: 580px;
   transform: translateY(-50%);
   text-align: left;
-  font-family: 'ALS Chromius', sans-serif;
-  font-size: 56px;
+  font-family: var(--font-family-display);
+  /* 56/64 is measured off the client's own slide frames and does NOT match
+     H1 (54/59.4). Two Figma artefacts disagree, so the pixels are kept and
+     named rather than silently re-typed — see tokens.css. */
+  font-size: var(--type-slide-headline-size);
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css */
-  font-weight: 150;
+  font-weight: var(--font-weight-medium);
   /* Figma reports leading as "1.15" but its boxes are 192px for 3 lines and
      256px for 4 — i.e. a flat 64px line box, not 56 x 1.15 = 64.4. Use the
      exact px so the block height matches the mockup instead of drifting
      0.4px per line. */
-  line-height: 64px;
-  color: #fff;
+  line-height: var(--type-slide-headline-lh);
+  color: var(--color-text-ondark-main);
   pointer-events: none;
 }
 /* each word is an inline-block so it never splits mid-word. Base = hidden and
@@ -434,16 +441,20 @@
   left: 32px;
   top: 92px;
   width: 275px;
-  font-family: var(--font-text);
-  /* MUST be reset: global.css sets `font-weight: 120`, which is ALS Chromius
-     Regular on that font's non-standard axis (50/120/232). ALS Hauss has an
-     ordinary axis, where 120 is Thin — inherited, this rendered as hairline
-     grey and all but vanished over a photo. Same reason the CTA sets it. */
-  font-weight: var(--font-text-regular);
-  /* Figma text style Caption Small (was a one-off 16/24) */
+  /* ROUND 20: this said `ALS Hauss`, which IS NOT LOADED — there is one
+     @font-face on the site and it is Chromius (fonts.css: Hauss was removed
+     at the designer's request in round 10 and must not return). So this block
+     had been rendering in the system sans all along. The token set agrees:
+     every text style is Chromius.
+
+     The family and the WEIGHT had to move together. The old rule carried
+     `font-weight: 400`, harmless on system sans — but on Chromius's 50/120/232
+     axis, 400 clamps to 232 = BLACK. */
+  font-family: var(--font-family-display);
+  font-weight: var(--type-caption-sm-weight);
   font-size: var(--type-caption-sm-size);
   line-height: var(--type-caption-sm-lh);
-  color: var(--white);
+  color: var(--color-text-ondark-main);
 }
 
 /* «Связаться» (Figma 840:40): a white plate, top right, mirroring the logo's
@@ -464,13 +475,12 @@
   width: 172px;
   height: 55px;
   pointer-events: auto; /* .corners is pointer-events: none */
-  background: var(--white);
-  /* was #1b93d0 / #0d6ea6 — two blues invented for one button while
-     `--blue-brand` was already the brand blue on a light plate elsewhere */
-  color: var(--blue-brand);
-  box-shadow: 6px 6px 0 0 var(--white);
-  font-family: var(--font-text);
-  font-weight: var(--font-text-regular); /* global.css's 120 is Chromius-only */
+  /* a button on a dark field — the exact semantic */
+  background: var(--color-button-ondark);
+  color: var(--color-link);
+  box-shadow: 6px 6px 0 0 var(--color-button-ondark);
+  font-family: var(--font-family-display); /* see .logo-descriptor */
+  font-weight: var(--type-caption-sm-weight);
   font-size: var(--type-caption-sm-size);
   line-height: var(--type-caption-sm-lh);
   text-decoration: none;
@@ -480,8 +490,8 @@
 }
 /* the plate absorbs its own offset stroke — the button reads as pressed */
 .contact-cta:hover {
-  box-shadow: 0 0 0 0 var(--white);
-  color: var(--ink-dark);
+  box-shadow: 0 0 0 0 var(--color-button-ondark);
+  color: var(--color-text-onlight-main);
 }
 
 /* bottom-right ARTLEBEDEV mark (Figma node 340:574). Figma's odd decimals
@@ -536,10 +546,10 @@
   transition: background 0.25s ease, color 0.25s ease;
 }
 .fx-switch button:hover {
-  color: #fff;
+  color: var(--color-text-ondark-main);
 }
 .fx-switch button.active {
   background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  color: var(--color-text-ondark-main);
 }
 

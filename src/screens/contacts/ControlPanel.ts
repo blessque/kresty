@@ -56,7 +56,8 @@ export function normalizeHex(raw: string): string | null {
  * before would have kept seeing black and reported the change as not landing.
  * Bump this whenever a DEFAULT changes, not whenever the schema does.
  */
-const STORE_KEY = 'kresty.contacts.panel.v2';
+// v3: round 20 moved the default field to the `bg-dark-main` token.
+const STORE_KEY = 'kresty.contacts.panel.v3';
 
 type Widget =
   | { range: HTMLInputElement; out: HTMLElement }

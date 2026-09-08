@@ -44,7 +44,12 @@ const BASELINE = join(ROOT, 'scripts/token-baseline.json');
  */
 
 /** files whose raw values are the vocabulary itself, or are not ours */
-const EXEMPT = [/styles\/tokens\.css$/, /styles\/fonts\.css$/, /waterPanel\.css$/];
+const EXEMPT = [
+  /styles\/tokens\.css$/,
+  /styles\/tokens\.gen\.css$/, // generated; guarded by `npm run tokens:check`
+  /styles\/fonts\.css$/,
+  /waterPanel\.css$/,
+];
 
 /**
  * `?admin` dev panels are exempt: they are debug furniture, never in a client
@@ -82,6 +87,25 @@ const RULES = [
     ok: (v) => v.startsWith('var(') || v === 'inherit' || v === 'normal',
     hint: 'use --type-*-lh',
   },
+  {
+    // ROUND 20. A raw weight is the most dangerous literal in this codebase:
+    // ALS Chromius's axis is 50/120/232, so `400` or `500` CLAMPS TO BLACK and
+    // nothing errors. It is also invisible to a screenshot check if the element
+    // was already bold-ish.
+    id: 'font-weight',
+    re: /font-weight:\s*([^;]+);/g,
+    ok: (v) => v.startsWith('var(') || v === 'inherit',
+    hint: 'use --type-*-weight or --font-weight-regular|medium',
+  },
+  {
+    // ALS Hauss is NOT LOADED and was removed at the designer's request in
+    // round 10 (fonts.css). Rounds 11/19 reintroduced it and four visible text
+    // blocks silently rendered in system sans for two rounds. Permanent guard —
+    // the generator refuses it too, at build time.
+    id: 'dead-font',
+    re: /(ALS Hauss|--font-text\b)/g,
+    hint: 'ALS Hauss is not loaded — use var(--font-family-display)',
+  },
 ];
 
 const baseline = existsSync(BASELINE)
@@ -97,9 +121,19 @@ for (const file of cssFiles(SRC)) {
   if (EXEMPT.some((r) => r.test(file))) continue;
   const rel = relative(ROOT, file);
   const lines = readFileSync(file, 'utf8').split('\n');
+  // A real block-comment state machine. The old test was per-line
+  // (`/^\s*(\/\*|\*|\/\/)/`), so a continuation line that did not happen to
+  // start with `*` was scanned as code — prose mentioning a colour counted as a
+  // violation. This round rewrites a lot of comments, so that class would grow.
+  let inBlock = false;
   lines.forEach((line, i) => {
-    // a line that is entirely a comment is not a declaration
-    if (/^\s*(\/\*|\*|\/\/)/.test(line)) return;
+    const wasInBlock = inBlock;
+    const opens = line.lastIndexOf('/*');
+    const closes = line.lastIndexOf('*/');
+    if (opens > closes) inBlock = true;
+    else if (closes > opens) inBlock = false;
+    if (wasInBlock) return;
+    if (/^\s*(\/\*|\/\/)/.test(line)) return;
     for (const rule of RULES) {
       rule.re.lastIndex = 0;
       const m = rule.re.exec(line);

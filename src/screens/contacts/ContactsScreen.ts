@@ -2,6 +2,7 @@ import logoSvg from '../../assets/logo.svg?raw';
 import { asset } from '../../shared/assetUrl';
 import { rasterizeMask, maskCoverage, maskToOverlayUrl } from '../../shared/rasterizeMask';
 import { SmoothPointer } from '../../shared/pointer';
+import { T } from '../../styles/tokens.gen';
 import { getPerfTier } from '../../shared/performanceTier';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
@@ -284,7 +285,10 @@ export class ContactsScreen {
       shimmer: 0.6,
       freeze: 1,
       light: '#ffffff',
-      bg: '#070618',
+      // ROUND 20: the token, not a literal. CSS alone cannot land this — the
+      // field is written here every apply, and ControlPanel's STORE_KEY had to
+      // bump to v3 or a stored value would outrank it.
+      bg: T.bgDarkMain,
       rs: this.tier.renderScale,
     };
 

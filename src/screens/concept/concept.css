@@ -3,9 +3,9 @@
    clears to it, so the two never meet; this colour is only ever seen above the
    stage. (It was #f2f6fa to match MAP_BG when the map was the whole page.) */
 #screen-concept {
-  background: #fff;
+  background: var(--color-bg-light-main);
   /* overlay UI sits on a near-white studio field, so it is dark, not white */
-  color: #123a5c;
+  color: var(--map-ink-strong);
 }
 
 /* The global film grain is tuned for the main screen's bright blue. Over the
@@ -100,19 +100,20 @@
   /* Chromius Medium = wght 150 on this font's axis — see fonts.css. NEVER add
      `font-variation-settings` here: it overrides `font-weight`, and this axis
      (min 50 / default 120 / max 232) has already caused this bug three times. */
-  font-family: 'ALS Chromius', sans-serif;
-  font-weight: 150;
-  font-size: 48px;
-  line-height: 1.1;
-  color: #44abde;
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h1-weight);
+  /* Figma text style H1 (was a one-off 48/1.1 — the 1.1 already matched) */
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-lh);
+  color: var(--accent-intro-heading);
   margin: 0 0 20px;
 }
 
 .concept-intro__lead {
-  font-weight: 120;
-  font-size: 24px;
-  line-height: 1.4;
-  color: #030d25;
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  color: var(--color-text-onlight-main);
   margin: 0;
 }
 
@@ -145,7 +146,7 @@
 }
 
 .concept-home svg path {
-  fill: #36afff;
+  fill: var(--color-link);
 }
 
 #screen-concept.past-intro .concept-home {
@@ -174,8 +175,8 @@
   width: 400px;
   max-width: 86vw;
   z-index: 8;
-  background: #fff;
-  color: #010c11;
+  background: var(--color-bg-light-main);
+  color: var(--color-text-onlight-main);
   /* the airy curve used across the project (rounds 6-7) */
   transition: transform 0.55s cubic-bezier(0.3, 0, 0.12, 1),
     opacity 0.4s cubic-bezier(0.3, 0, 0.12, 1);
@@ -212,7 +213,7 @@
   flex: none;
   height: 297px;
   overflow: hidden;
-  background: #dfe7ee;
+  background: var(--map-hero-tint);
 }
 .bld-photo {
   display: block;
@@ -243,16 +244,18 @@
    own «Сайт отеля» link. Do not reintroduce a fourth size here without one. */
 .bld-name {
   margin: 0 0 18px;
-  font-size: 34px;
-  /* Chromius Medium = wght 150 on this font's axis - see fonts.css */
-  font-weight: 150;
-  line-height: 1.15;
+  /* Figma text style H3 (was a one-off 34/1.15). The drawer's "three sizes
+     only" rule is preserved — the COUNT is what round 18 asked for, and it is
+     still three: 32 / 24 / 16. */
+  font-size: var(--type-h3-size);
+  font-weight: var(--type-h3-weight);
+  line-height: var(--type-h3-lh);
 }
 
 .bld-brief {
   margin-bottom: 22px;
-  font-size: 24px;
-  line-height: 1.42;
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
 }
 
 /* `margin-top: auto` is what pins the list to the foot of the panel. When the
@@ -272,7 +275,8 @@
   align-items: baseline;
   gap: 14px;
   padding: 11px 0;
-  font-size: 16px;
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
 }
 
 /* The resident's own name, and the floor it is on. Both 16px; the name carries
@@ -281,12 +285,12 @@
 .bld-resident {
   flex: 1 1 auto;
   min-width: 0;
-  color: #6d9bb5;
+  color: var(--map-ink-mark);
 }
 
 .bld-floor {
   flex: none;
-  color: #b2cad1;
+  color: var(--map-ink-margin);
 }
 
 .bld-empty {
@@ -306,7 +310,7 @@
   place-items: center;
   border-radius: 50%;
   background: rgba(18, 58, 92, 0.28);
-  color: #fff;
+  color: var(--color-text-ondark-main);
   transition: background 0.2s ease;
 }
 .bld-close:hover {
@@ -344,8 +348,11 @@
      `font-weight: 400` would clamp to 232 = Black. Regular is 120. And never
      add `font-variation-settings` here — it overrides `font-weight` and
      reintroduces exactly the bug round 8 fixed. See styles/fonts.css. */
-  font-family: 'ALS Chromius', sans-serif;
-  font-weight: 120;
+  font-family: var(--font-family-display);
+  /* NB no font-size: the inherited 21px has no token — the scale offers 16
+     or 24 and nothing between, and forcing 24 would re-solve the caption
+     placement on an approved screen. Question filed in tokens.css. */
+  font-weight: var(--font-weight-regular);
   line-height: 1.4;
   /* transform-origin stays at the element centre; MapLabels writes
      translate(-50%,-50%) first so the anchor is the caption's middle */
@@ -370,7 +377,7 @@
    sits a good deal darker than the marks — it has more tone to read against
    (Figma #5992ab) */
 .map-label--river {
-  color: #5992ab;
+  color: var(--map-ink-river);
 }
 
 /* ---------------------------------------------------------------- map marks
@@ -395,13 +402,17 @@
      apart, which is a hair of air rather than a measured space */
   gap: 1px;
   white-space: nowrap;
-  font-family: 'ALS Chromius', sans-serif;
-  font-weight: 120;
-  font-size: 16px;
-  /* one number, referenced by the icon's own centring calc below */
-  --mark-lh: 1.2;
+  font-family: var(--font-family-display);
+  font-weight: var(--type-caption-sm-weight);
+  font-size: var(--type-caption-sm-size);
+  /* One number, referenced by the icon's own centring calc below. It reads the
+     token because that calc is `var(--mark-lh) * 1em` — a PX line-height here
+     is invalid at computed-value time, the whole calc drops, and both entrance
+     marks jump ~5px silently. That is why the scale's line-heights are emitted
+     as unitless ratios. */
+  --mark-lh: var(--type-caption-sm-lh);
   line-height: var(--mark-lh);
-  color: #6d9bb5;
+  color: var(--map-ink-mark);
   will-change: transform;
 }
 
@@ -461,15 +472,15 @@
    The design steps the weight up with it: at 120 the white breaks up over the
    roof's own edge lines, and Chromius Medium is 150. */
 .map-mark--white {
-  color: #fff;
-  font-weight: 150;
+  color: var(--color-text-ondark-main);
+  font-weight: var(--font-weight-medium);
 }
 
 /* The margin tint, for features that run off the sheet: both streets and the
    metro. They are lettered in the white band outside the plate, so they carry
    less weight than anything standing on the site itself. */
 .map-mark--muted {
-  color: #b2cad1;
+  color: var(--map-ink-margin);
   --mark-lh: 1.4;
 }
 
@@ -541,7 +552,7 @@
   /* MUST stay visible: an `overflow: hidden` ancestor between a sticky element
      and its scrollport silently clips it and it never sticks. */
   overflow: visible;
-  color: var(--white);
+  color: var(--color-text-ondark-main);
 }
 
 .sec-grid {
@@ -583,8 +594,8 @@
 }
 
 .sec-h2 {
-  font-family: var(--font-display);
-  font-weight: var(--font-display-medium);
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h2-weight);
   /* Figma text style H2. It was a one-off `clamp(28px, 2.6vw, 40px)` — locally
      reasonable, globally entropy, and exactly the drift tokens.css exists to
      stop. The narrow-window concern the clamp was covering is handled where it
@@ -596,10 +607,12 @@
 }
 
 .sec-body {
-  font-family: var(--font-text);
-  /* global.css sets font-weight 120, which is Chromius Regular on that font's
-     axis but THIN on ALS Hauss's ordinary one — reset it or this is a hairline */
-  font-weight: var(--font-text-regular);
+  /* ROUND 20: said `ALS Hauss`, which is NOT LOADED — see main.css's
+     .logo-descriptor. This block and every .cf-* element inside it (they
+     inherit) had been rendering in system sans. Family and weight move
+     together: 400 on Chromius clamps to 232 = Black. */
+  font-family: var(--font-family-display);
+  font-weight: var(--type-base-weight);
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
   max-width: 34em;
@@ -639,12 +652,10 @@
   margin: 0 0 1.2em;
 }
 .cf-dept {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--color-text-ondark-secondary);
 }
 .cf-phone {
-  /* was #6bb7ff — a fourth blue invented for one link. `--blue-brand` is what
-     already marks a link on a dark field elsewhere in this same stylesheet. */
-  color: var(--blue-brand);
+  color: var(--color-link);
   text-decoration: none;
 }
 .cf-phone:hover {
@@ -669,16 +680,21 @@
 .cf-field label {
   font-size: var(--type-caption-sm-size);
   line-height: var(--type-caption-sm-lh);
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--color-text-ondark-secondary);
 }
 .cf-field input,
 .cf-field textarea {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid var(--color-text-ondark-secondary);
   padding: 6px 0;
-  color: var(--white);
+  color: var(--color-text-ondark-main);
   font-family: inherit;
+  /* A FORM CONTROL DOES NOT INHERIT font-weight: the UA default is `normal`
+     = 400, and on Chromius's 50/120/232 axis that clamps to 232 = BLACK.
+     `font-family: inherit` does not carry the weight with it, so this must be
+     stated explicitly — it is the one place the trap survives inheritance. */
+  font-weight: var(--type-base-weight);
   /* Base Text — and comfortably over the 16px floor below which iOS zooms a
      focused input */
   font-size: var(--type-base-size);
@@ -692,7 +708,7 @@
 .cf-field input:focus,
 .cf-field textarea:focus {
   outline: none;
-  border-bottom-color: #fff;
+  border-bottom-color: var(--color-text-ondark-main);
 }
 
 /* Safari and Chrome paint their own autofill background and `background-color`
@@ -700,7 +716,7 @@
    repaint it, and the text needs -webkit-text-fill-color to stay legible. */
 .cf-field input:-webkit-autofill,
 .cf-field input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #fff;
+  -webkit-text-fill-color: var(--color-text-ondark-main);
   -webkit-box-shadow: inset 0 0 0 1000px var(--field-form);
   transition: background-color 9999s ease-in-out 0s;
 }
@@ -709,9 +725,10 @@
   grid-column: 1 / -1;
   justify-self: start;
   padding: 14px 32px;
-  background: var(--white);
-  color: var(--field-form);
+  background: var(--color-button-ondark);
+  color: var(--color-text-onlight-main);
   font-family: inherit;
+  font-weight: var(--type-caption-big-weight); /* Caption Big is Medium */
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   cursor: pointer;

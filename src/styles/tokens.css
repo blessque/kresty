@@ -1,89 +1,90 @@
 /**
- * DESIGN TOKENS — the vocabulary. One place, one answer per question.
+ * DESIGN TOKENS — the hand-written layer.
  *
- * WHY THIS FILE EXISTS. Before it, the CSS carried 26 hex colours, 16 font
- * sizes and EIGHT distinct blues across four stylesheets, with no `:root`
- * layer at all. Nothing declared which blue was *the* blue, so the cheapest
- * correct-looking move when writing a new section was always to invent a
- * value — and round 11/19 duly invented three more. That is a structural
- * failure, not an attention one: an author with no vocabulary cannot use it.
+ * The generated layer is `tokens.gen.css`, built from the designer's Token
+ * Studio export in `tokens/` by `scripts/build-tokens.mjs`. It carries the
+ * primitives (`--ref-*`), the type scale (`--fs-*`, `--lh-*`), the semantic
+ * colours (`--color-*`) and the six text styles (`--type-*`). Do not edit it;
+ * `npm run tokens:check` fails if you do, and it runs in `build`.
  *
- * THE RULE: no raw hex, `font-size` or `line-height` outside this file. If
- * nothing here fits, add a token here and say why in the commit. Enforced by
- * `npm run lint:tokens`, which also runs as a Stop hook.
+ * THIS file holds only what the token set does not name — and every entry here
+ * is an admission of that, carrying the question it is waiting on.
  *
- * TWO LAYERS, ON PURPOSE.
- *   1. TYPE + COLOUR — the designer's vocabulary. The type scale below is the
- *      Figma text-style set, verbatim. Colour is pending a Token Studio export
- *      and is consolidated-but-unchanged until then (see the note there).
- *   2. LAYOUT — NOT here. Max-widths, the grid, breakpoints and the 32/40
- *      corner rule are *decisions*, not values: a number alone cannot carry
- *      why. They live in code beside their reasoning (`layout.ts`'s STAGE_W /
- *      CENTER_X, the section geometry in `sectionRun.ts`), which is the same
- *      principle TUNING_LOG has always applied. Single-sourced, not centralised
- *      for its own sake.
+ * ── THE RULE ────────────────────────────────────────────────────────────────
+ * Stylesheets reference the SEMANTIC layer only: `--color-*`, `--font-*`,
+ * `--type-*`, plus the project tokens below. `--ref-*`, `--fs-*` and `--lh-*`
+ * exist so the semantic layer can be re-pointed in one place; they must not
+ * appear outside `src/styles/`. `npm run lint:tokens` enforces this, and also
+ * enforces that no raw hex, `font-size`, `line-height` or `font-weight` appears
+ * outside these two files.
+ *
+ * That separation is the whole point: it is what makes "which blue?" have
+ * exactly one answer. Before it, this codebase carried eight.
  */
 
 :root {
-  /* ── TYPE ────────────────────────────────────────────────────────────────
-     The Figma text styles, verbatim (`size / line-height %`). Figma states
-     line-height as a percentage; these are the resolved px, and the percentage
-     is kept in the comment so a re-export can be checked against it.
+  /* ── project tokens: values the Figma set has no name for ────────────────
+     Each is a real gap, not a shortcut. Listed together so the gaps are
+     countable, and so a future export can retire them one by one. */
 
-     Two styles share 24px — `base` at 145 % and `caption-big` at 120 %. That
-     is not a duplicate: same size, different density, and picking between them
-     is a real editorial choice about how a block should read.
+  /**
+   * `#screen-main`'s field. The set has `blue` as a primitive and exposes it as
+   * `--color-link` and `--color-button-onlight`, but no BACKGROUND semantic —
+   * and putting a link colour on a page field would be the wrong role.
+   *
+   * LOAD-BEARING: this must stay equal to `MAIN_BG` in `pageSections.ts`, which
+   * reads the same primitive from `tokens.gen.ts`. If the two ever differ, the
+   * round-19 scroll seam becomes visible. See mainHandoff.ts.
+   */
+  --color-field-main: var(--ref-blue);
 
-     NOT tokenised here: `font-weight`. ALS Chromius has a NON-STANDARD axis
-     (min 50 / default 120 / max 232) where Regular is 120 and Medium is 150,
-     while ALS Hauss has an ordinary one where 120 is Thin. A single
-     `--weight-regular` would therefore be wrong on one of the two families —
-     round 8 shipped that bug upward (500 clamping to Black) and round 11 shipped
-     it downward (120 rendering as a hairline). The weight belongs with the
-     family, so the family tokens below carry it. */
-  --type-h1-size: 54px;
-  --type-h1-lh: 59.4px; /* 110% */
-  --type-h2-size: 44px;
-  --type-h2-lh: 48.4px; /* 110% */
-  --type-h3-size: 32px;
-  --type-h3-lh: 36.8px; /* 115% */
-  --type-base-size: 24px;
-  --type-base-lh: 34.8px; /* 145% */
-  --type-caption-big-size: 24px;
-  --type-caption-big-lh: 28.8px; /* 120% */
-  --type-caption-sm-size: 16px;
-  --type-caption-sm-lh: 20.8px; /* 130% */
+  /**
+   * The map's ink ramp. A coherent four-step BLUE-grey designed against the
+   * near-white studio plate; the token set's on-light ramp is NEUTRAL grey.
+   * Round 19 mapped these to `--color-text-onlight-*` and the designer is
+   * comparing the two on screen — if the neutral ramp wins these are deleted,
+   * if the blue-grey wins the set needs a second on-light ramp.
+   */
+  --map-ink-strong: #123a5c; /* default overlay ink on the plate */
+  --map-ink-river: #5992ab;
+  --map-ink-mark: #6d9bb5; /* map marks, and .bld-resident */
+  --map-ink-margin: #b2cad1; /* off-sheet features, and .bld-floor */
+  --map-hero-tint: #dfe7ee; /* drawer photo placeholder — a surface, not a bg */
 
-  /* families, each with the weight its own axis calls Regular/Medium */
-  --font-display: 'ALS Chromius', sans-serif;
-  --font-display-regular: 120;
-  --font-display-medium: 150;
-  --font-text: 'ALS Hauss', sans-serif;
-  --font-text-regular: 400;
+  /** «О Крестах» intro title. A fourth blue with no semantic home: it is a
+   *  heading, so `--color-link` is the wrong role, and `--color-text-onlight-
+   *  main` (ink-1000) would render it near-black. Question filed. */
+  --accent-intro-heading: #44abde;
 
-  /* ── COLOUR ──────────────────────────────────────────────────────────────
-     PENDING the Token Studio export. Until it lands these are the values
-     already shipping, consolidated but NOT re-picked — changing an approved
-     screen's colour is a designer's call, not a refactor's side effect.
+  /**
+   * The contact form's field, and the darkest point of the colour run (Figma
+   * 727:26). NOT mapped to `--color-bg-dark-main`, deliberately: that resolves
+   * to ink-1000, which is ALSO `--color-bg-hotels`, so the form would become
+   * the exact colour of the first section with three sections between them —
+   * the run would read as a return rather than a descent. Question filed.
+   */
+  --field-form: #050b1d;
 
-     The one exception is the brand blue on dark. Round 11/19 invented
-     `#1b93d0`, `#0d6ea6` and `#6bb7ff` for a CTA and a phone link while
-     `#36afff` was already doing exactly that job in two other stylesheets.
-     Those three are collapsed here — that is the drift this file exists to
-     stop, and leaving it in place would have made the file a lie on day one.
+  /** the chosen mid-tone that carries the run out to the main screen's blue.
+   *  A transition value with no design meaning; not a brand colour. */
+  --dawn-mid: #2b4a7a;
 
-     Still un-collapsed and visible on purpose: `#36a0ff`, `#44abde`, `#6fb6dd`
-     are near-duplicates of `--blue-brand` inherited from earlier rounds. They
-     are named rather than merged so the duplication is legible and can be
-     settled by the designer with the Figma library, instead of being silently
-     resolved by me. */
-  --blue-hero: #56b7e6; /* the main screen's field — see mainHandoff.ts */
-  --blue-brand: #36afff; /* wordmark + links on a dark field */
-  --blue-caption: #44abde; /* «О Крестах» intro heading */
-  --blue-mark: #36a0ff; /* map annotation marks */
-  --ink-dark: #123a5c; /* type on the near-white map */
-  --ink-deep: #030d25; /* the intro standfirst */
-  --field-dark: #070618; /* «Контакты» */
-  --field-form: #050b1d; /* the contact form, and the run's darkest point */
-  --white: #fff;
+  /**
+   * Photographic scrims. Tuned against the shader in TUNING_LOG, measured
+   * against the light rather than picked from a palette — these are effect
+   * values and forcing them into the colour set would be a bad mapping.
+   */
+  --scrim-hover: #04070c; /* the "gallery dark" hover drop */
+  --scrim-veil: #050403; /* the dusty-mode showreel veil */
+  --scrim-photo: #000; /* the Figma 338:37 slide scrim */
+  --scrim-showreel: rgba(24, 61, 84, 0.45);
+
+  /**
+   * The slider headline. 56/64 is measured off the client's own slide frames
+   * (a flat 64px box, 192px for three lines) and does not match H1's 54/59.4.
+   * Two Figma artefacts disagree; that is the designer's call, so the pixels
+   * are kept and the value is named rather than silently re-typed. Question filed.
+   */
+  --type-slide-headline-size: 56px;
+  --type-slide-headline-lh: 64px;
 }

@@ -1,5 +1,7 @@
 import './styles/fonts.css';
-// FIRST, so every stylesheet below can reference the vocabulary
+// FIRST, so every stylesheet below can reference the vocabulary.
+// Generated layer before the hand-written one: tokens.css references --ref-*.
+import './styles/tokens.gen.css';
 import './styles/tokens.css';
 import './styles/global.css';
 import './screens/main/main.css';

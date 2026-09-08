@@ -1,0 +1,52 @@
+{
+  "fs-h1": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "2.5rem"
+  },
+  "fs-h2": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "2rem"
+  },
+  "fs-lead": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "1.75rem"
+  },
+  "fs-base": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "1.25rem"
+  },
+  "fs-small": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "1rem"
+  }
+}
