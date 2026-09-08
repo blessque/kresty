@@ -472,3 +472,270 @@
   color: #b2cad1;
   --mark-lh: 1.4;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROUND 19 — the page below the map: five sections, the form, the handoff.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The page's colour. The SINGLE source of it — nothing else below may carry a
+   background of its own, or it sits as an unfading band across the crossfade
+   running underneath (round 16's `.res-gap` shipped exactly that bug). */
+.page-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* THE ID-SCOPED RULE ABOVE (`#screen-concept canvas`) OUTRANKS ANY BARE CLASS,
+   and round 16.1 lost a debugging round to it: the light simply vanished,
+   because `inset: 0` pinned a 200 %-tall canvas back to one viewport. So this
+   carries the id AND undoes `bottom` explicitly. Do not "simplify" it to
+   `.page-light`.
+
+   z-index 1 puts the light UNDER the content (round 16 had it over): the copy
+   is three paragraphs wanting full contrast, the icon and the text are in
+   different columns so the spill argument is weaker, and it keeps the light off
+   the form's underlines. Reversible with one number. */
+#screen-concept canvas.page-light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  height: 200%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  will-change: transform;
+}
+
+/* the scroller sits above both, and its content is transparent throughout */
+.concept-scroll {
+  z-index: 2;
+}
+
+/* White breathing room between the map and the first section. Deliberately has
+   NO background of its own — see .page-bg. */
+.page-gap {
+  height: calc(var(--gap-vh, 0.8) * 100%);
+}
+
+/* ── the two-column sections ─────────────────────────────────────────────── */
+
+.sec,
+.contact-form {
+  position: relative;
+  /* The top inset lives on the SECTION, never on `.sec-col`. Inside the column
+     it would count toward the column's own height H, and the station-swap
+     invariant is `pin + H + padBottom <= viewH` — the runtime assertion in
+     sectionRun.ts caught this at 869px against an 800px viewport. */
+  padding: 20vh 32px 96px;
+  /* MUST stay visible: an `overflow: hidden` ancestor between a sticky element
+     and its scrollport silently clips it and it never sticks. */
+  overflow: visible;
+  color: #fff;
+}
+
+.sec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  max-width: 1376px;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+/* GRID, not flex, and `align-self: start` — a sticky flex item under the
+   default `align-items: stretch` is full-height, has nowhere to travel, and
+   silently never sticks. Nothing above this may carry `will-change`, `filter`
+   or a transform either: any of them steals sticky's containing block.
+
+   The light canvas may NEVER live in here: `position: sticky` creates a
+   stacking context, which would isolate its `mix-blend-mode: screen` from
+   `.page-bg` and kill the blend outright. */
+.sec-col {
+  position: sticky;
+  top: var(--sec-pin, 18vh);
+  align-self: start;
+}
+
+/* Empty and aria-hidden: it reserves the box the LIGHT draws into, and its
+   measured rect is the single source of the icon's x — so the light and the h2
+   come from one source (the grid) rather than two that can drift. */
+.sec-icon {
+  width: 220px;
+  height: 220px;
+  margin-bottom: 40px;
+}
+
+.sec-h2 {
+  font-family: 'ALS Chromius', sans-serif;
+  /* Chromius Medium = wght 150 on this font's non-standard axis (50/120/232).
+     NEVER 500 — it clamps to 232 = Black. See fonts.css. */
+  font-weight: 150;
+  /* clamped so the column cannot outgrow the viewport on a narrow window: the
+     station-swap invariant is pin + column + pad <= viewH, and this is the term
+     that runs away when Russian type gains a line. sectionRun warns if it does. */
+  font-size: clamp(28px, 2.6vw, 40px);
+  line-height: 1.15;
+  max-width: 15em;
+}
+
+.sec-body {
+  font-family: 'ALS Hauss', sans-serif;
+  /* global.css sets font-weight 120, which is Chromius Regular on that font's
+     axis but THIN on ALS Hauss's ordinary one — reset it or this is a hairline */
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.5;
+  max-width: 34em;
+}
+
+.sec-body p {
+  margin: 0 0 1.2em;
+}
+
+.sec-figure {
+  margin: 48px 0 0;
+}
+
+/* aspect-ratio is authored from the known 3:2 crop so height is committed
+   BEFORE decode — a late image otherwise shifts every section below it and
+   desyncs the measured track mid-scroll. */
+.sec-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+
+/* ── the contact form ────────────────────────────────────────────────────── */
+
+/* At least one viewport tall, and that is an INVARIANT rather than a look: it
+   is what keeps the last section's light station clear of the handoff zone. */
+.contact-form {
+  min-height: 100%;
+  color-scheme: dark;
+}
+
+.cf-lead,
+.cf-dept,
+.cf-note {
+  margin: 0 0 1.2em;
+}
+.cf-dept {
+  color: rgba(255, 255, 255, 0.6);
+}
+.cf-phone {
+  color: #6bb7ff;
+  text-decoration: none;
+}
+.cf-phone:hover {
+  text-decoration: underline;
+}
+
+.contact-form form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px 24px;
+  margin-top: 40px;
+  max-width: 34em;
+}
+.cf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-field--message {
+  grid-column: 1 / -1;
+}
+.cf-field label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.cf-field input,
+.cf-field textarea {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 6px 0;
+  color: #fff;
+  font-family: inherit;
+  /* never below 16: iOS zooms any focused input under it */
+  font-size: 18px;
+  line-height: 1.4;
+  transition: border-color 0.2s ease;
+}
+.cf-field textarea {
+  resize: none;
+  overflow: hidden;
+}
+.cf-field input:focus,
+.cf-field textarea:focus {
+  outline: none;
+  border-bottom-color: #fff;
+}
+
+/* Safari and Chrome paint their own autofill background and `background-color`
+   CANNOT override it on a dark field — the inset shadow is the only way to
+   repaint it, and the text needs -webkit-text-fill-color to stay legible. */
+.cf-field input:-webkit-autofill,
+.cf-field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: inset 0 0 0 1000px #050b1d;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.cf-submit {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 14px 32px;
+  background: #fff;
+  color: #050b1d;
+  font-family: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.cf-submit:hover {
+  opacity: 0.85;
+}
+.cf-thanks {
+  display: none;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.contact-form form.sent .cf-field,
+.contact-form form.sent .cf-submit {
+  display: none;
+}
+.contact-form form.sent .cf-thanks {
+  display: block;
+}
+
+/* ── the handoff into the main screen ────────────────────────────────────── */
+
+/* Deliberately EMPTY and with no background of its own: `.page-bg` carries the
+   dawn into `#56b7e6` underneath it. See mainHandoff.ts for the budget behind
+   the height and why the trigger is an interior line rather than scroll-end. */
+.main-handoff {
+  height: calc(var(--handoff-vh, 3.5) * 100%);
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .sec-grid,
+  .contact-form form {
+    grid-template-columns: 1fr;
+  }
+  .sec-col {
+    position: static;
+  }
+  .sec-body {
+    padding-top: 24px;
+  }
+}

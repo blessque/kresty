@@ -147,6 +147,17 @@ export class MapScroll {
   }
 
   /**
+   * Put the reader back where they left, clamped to what the page can actually
+   * scroll. A THIRD arrival position, distinct from both `reset()` and
+   * `toMapTop()` — see the note on `toMapTop` about that conflation; this is
+   * the same lesson a third time.
+   */
+  restore(y: number) {
+    const max = Math.max(0, this.scroller.scrollHeight - this.scroller.clientHeight);
+    this.scroller.scrollTop = Math.min(Math.max(0, y), max);
+  }
+
+  /**
    * The top of the MAP, which is `introH` down the page, not 0.
    *
    * These were the same position until the intro block landed above the stage,

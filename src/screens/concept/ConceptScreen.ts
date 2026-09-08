@@ -15,6 +15,7 @@ import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
 import { MapScroll, STAGE_VH } from './mapScroll';
 import { buildIntro } from './conceptIntro';
+import { ConceptPage } from './conceptPage';
 
 /**
  * Plan-oblique («military») projection: the camera is PERMANENTLY straight
@@ -101,6 +102,14 @@ const CREASE_DEG = 35;
 export class ConceptScreen {
   el: HTMLElement;
   onNavigate: (to: 'main') => void = () => {};
+  /**
+   * The reader scrolled off the bottom into the main screen. Distinct from
+   * `onNavigate` because it is a SEAM, not a click: the router uses it to pick
+   * the flash-free transition and to record where to come back to.
+   */
+  onScrollToMain: (from: number) => void = () => {};
+  /** so the handoff never fires mid-transition; wired by the router */
+  transitionBusy: () => boolean = () => false;
 
   private renderer!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -109,6 +118,7 @@ export class ConceptScreen {
 
   private model?: THREE.Object3D;
   private scroll!: MapScroll;
+  private page!: ConceptPage;
   private picker = new BuildingPicker();
   private ground?: GroundPlan;
   private labels!: MapLabels;
@@ -207,6 +217,10 @@ export class ConceptScreen {
     this.scroll = new MapScroll(this.el, this.stageVh);
     this.scroll.stage.appendChild(this.renderer.domElement);
     this.scroll.setIntro(buildIntro());
+
+    // everything below the map: sections, form, handoff, colour, icon light
+    this.page = new ConceptPage(this.el, this.scroll.scroller);
+    this.page.handoff.onCross = () => this.onScrollToMain(this.scroll.scrollTop);
 
     const add = (tag: string, cls: string, html: string) => {
       const n = document.createElement(tag);
@@ -462,6 +476,8 @@ export class ConceptScreen {
     this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
     this.mapCam.setOverscan(this.scroll.overscan);
     this.mapCam.snap();
+    // AFTER measureIntro: every section top below the intro moves with it.
+    this.page.measure(this.scroll.stageW, this.scroll.viewH);
   };
 
   /** the canvas the captions and the picker work in — never the window */
@@ -469,12 +485,31 @@ export class ConceptScreen {
     return { w: this.scroll.stageW, h: this.scroll.stageH };
   }
 
-  start() {
+  /**
+   * `restore` is the scroll offset to come back to. Its ABSENCE is what means
+   * "a fresh arrival" — round 18's unconditional `scroll.reset()` is still
+   * right for a nav click, and wrong for a reader returning through the seam,
+   * who must land where they left. The two arrivals are genuinely different and
+   * the code has to say which is which.
+   */
+  start(restore?: number) {
     if (this.running) return;
     this.running = true;
     this.el.classList.remove('hidden');
-    // arriving from the main screen must always land on the resting composition
-    this.scroll.reset();
+    this.page.handoff.reset();
+    if (restore === undefined) {
+      // arriving from the main screen must always land on the resting composition
+      this.scroll.reset();
+    } else {
+      // the page must be laid out before a scroll offset means anything
+      this.resize();
+      // Clamped to the handoff's own re-arm point, never to the scroller's end.
+      // The end is PAST the fire line, so restoring there would hand the reader
+      // straight back to the main screen; `restoreTop` is visually identical
+      // (it is all flat blue through there) but lands disarmed, with runway.
+      const cap = this.page.restoreTop(this.scroll.viewH);
+      this.scroll.restore(Math.min(restore, cap));
+    }
     addEventListener('resize', this.resize);
     let last = performance.now();
     const loop = (now: number) => {
@@ -511,6 +546,17 @@ export class ConceptScreen {
         );
         this.renderer.render(this.scene, this.mapCam.camera);
       }
+      // The page below the map runs EVERY frame, outside the branch above: the
+      // colour track is what holds the page at LEAD_COLOR in the white region,
+      // so gating it on `mapVisible` would leave that region uncoloured.
+      this.page.update(
+        this.scroll.scrollTop,
+        this.scroll.stageW,
+        this.scroll.viewH,
+        mapVisible,
+        [this.cursor.x, this.cursor.y],
+        this.transitionBusy(),
+      );
       if (this.panel) this.reportStats(now);
       this.raf = requestAnimationFrame(loop);
     };

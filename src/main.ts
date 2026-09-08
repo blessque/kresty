@@ -8,6 +8,7 @@ import { MainScreen } from './screens/main/MainScreen';
 import { ConceptScreen } from './screens/concept/ConceptScreen';
 import { ContactsScreen } from './screens/contacts/ContactsScreen';
 import { Router } from './router';
+import { ScrollIntent } from './shared/scrollIntent';
 
 // global film grain overlay (tiny generated noise tile, blend: overlay)
 function makeGrain() {
@@ -33,6 +34,16 @@ async function boot() {
   // TEMPORARY: icon showcase for presentation stills (see screens/contacts/)
   const contacts = new ContactsScreen(document.getElementById('screen-contacts')!);
   const router = new Router(main, concept, contacts);
+
+  // Scrolling up at the top of the main screen goes back to wherever the reader
+  // came from. Wired HERE, in the composition root, so `MainScreen` never
+  // learns that routes exist — it only owns the light and its own DOM.
+  const back = new ScrollIntent(
+    document.getElementById('screen-main')!,
+    () => router.goBackFromMain(),
+  );
+  back.attach();
+  router.onEnterMain = () => back.reset();
 
   router.showInitial();
   await main.initRenderer();

@@ -3567,6 +3567,138 @@ of the five**: the first four looking right is exactly what a missed fifth slot 
   `scripts/interact-test.mjs` clean. The one 404 is the browser's automatic `/favicon.ico` —
   `index.html` declares no favicon on `origin/main` either, so it is pre-existing.
 
+---
+
+## «О Крестах» round 19 (2026-09-08) — two columns, a colour that travels, and a seam into the main screen
+
+The page below the map: five editorial sections in two independent columns, a contact form,
+and then the reader scrolls straight into the REAL main screen without being able to tell
+where one page ended and the next began.
+
+### The footer was replaced by a handoff, and that removed the risk rather than managing it
+
+The brief asked for a 1:1 copy of the main block as a footer. A second ray-field canvas is
+not "a second canvas": `WebGPURayFieldRenderer.init` calls `requestAdapter()` **and**
+`requestDevice()` per instance, so it is a second `GPUDevice`, a second swapchain and a
+second copy of every mask texture — on top of a shader that is fill-rate bound at ~109
+texture fetches per pixel. Scrolling into the real main screen instead means there is only
+ever ONE main block, the page gains no second context, and the same pattern serves the five
+remaining pages.
+
+### The seam is undetectable, not merely smooth — and that is measurable
+
+`slitLight()` returns `core·coreIntensity + bloom·bloom + rays·godrays`, all × `life`, and
+everything downstream in `main()` is multiplicative **except two additive terms**:
+`col += (g − 0.5)·u_grain` — and «Сияние» ships `grain: 0.06` — and the ±1/255 dither. So
+`grain` had to go into the reveal multiply alongside the intensities; with it the shader
+writes `vec3(0)`, and under `mix-blend-mode: screen` the page keeps its own flat colour.
+
+`#screen-main`'s resting field is flat `#56b7e6` and nothing else (`.showreel` and
+`.hover-scene` both rest at opacity 0). So if the concept page's last painted frame is also
+that blue, nothing changes at the swap. **Measured against `#56b7e6`, per pixel:**
+
+| | max Δ | mean Δ | px ≥ 2/255 |
+|---|---|---|---|
+| concept, settled on the handoff | **0** | 0.000 | 0.00 % |
+| the frame AT the swap | **2** | 0.038 | 0.02 % |
+| +200 ms (light emerging) | 102 | 5.39 | 48.5 % |
+
+Max Δ 2 on 0.02 % of pixels is the anti-banding dither and nothing else.
+
+**It is swap-then-EMERGE, not converge-then-release.** There is nothing to converge *from* —
+the concept page has no light on screen at the seam. `reveal` walks 0→1 while `converge`
+walks 1→0, so the light blooms open out of a point.
+
+**`setStageDim` could not be reused, and the reason is `.corners`.** `setStageDim(1)` leaves
+the stage at opacity 0.05 and never touches `.corners` at all — the wordmark, descriptor,
+«Связаться» plate and studio mark are a separate z-5 layer and would have appeared fully
+opaque at the swap. `setReveal` is its seam-only sibling and drives both, plus `--grain-k`:
+`#grain` is suppressed on «О Крестах» but sits at 0.07 on main, and over `#56b7e6` an overlay
+grain is VISIBLE (it is a no-op only against black), so undriven it pops in at the swap.
+
+`beginReveal()` also sets `burstT = 99`. On a first entry the round-5 entrance burst (×5
+godrays, τ 0.09/0.15) would otherwise fire WHILE the reveal ramps — two easings with
+different time constants overlapping, which reads as a stutter, not as drama.
+
+### THE BUG THE MEASUREMENT CAUGHT: a floor that looked like a guard
+
+The sticky icon's screen position is a clamp,
+`y = min(max(flowing, pinned), pushed)`. It was first written with `Math.max(pushed, pinned)`
+on the upper bound — an apparently harmless guard against `pushed` dipping below the pin
+inside a section.
+
+It is the bug that left the last section's icon **lit and hovering on the handoff's flat
+blue, two viewports past its own section**, which would have destroyed the seam outright.
+With the floor in place the upper bound never falls, so the icon can never leave the frame
+and `envelope()` never reaches 0. Before the fix the concept page's settled frame measured
+max Δ **146** against `#56b7e6`; after, **0**.
+
+Worth noting how it surfaced: the pixel measurement flagged it, and only then did looking at
+the frame explain it. A screenshot alone would have shown a bed icon on a blue field and
+looked almost plausible.
+
+### Sticky, and the invariant that replaces round 16's
+
+The left column is `position: sticky`, never a rAF-driven transform — a transform runs on the
+MAIN thread while the right column scrolls on the COMPOSITOR, which is bit-for-bit round
+16.1's "10 fps, jumps ~20 px". Three silent failure modes are guarded in the CSS with the
+reason written next to each: a sticky flex item under `align-items: stretch` has nowhere to
+travel (→ grid + `align-self: start`); an `overflow: hidden` ancestor clips it; a
+transformed/filtered/`will-change` ancestor steals its containing block.
+
+Round 16's dip proof (`s = ⅔h[i] + ⅓h[i+1] ≥ viewH`) no longer applies, because sticky adds a
+hold phase. The replacement does not depend on section height at all:
+
+```
+pin + columnHeight + paddingBottom  ≤  viewH
+```
+
+It is asserted at runtime, and **it fired on the first run**: 869 px against an 800 px
+viewport, on four of five sections. The cause was `padding-top: 20vh` on `.sec-col` — inside
+the column it counts toward the column's own height. Moved to the section, where it belongs.
+This is the failure that is otherwise silent: the symptom is a halo popping at a station
+swap, which nobody traces back to a line break.
+
+### The palette and the light are in genuine tension, so both ship
+
+Sampled from the designer's own frames (decoded off the rendered pixels): violet `#9100c8`
+at **39.2 %** lightness, crimson `#7d0433` 25.3 %, blue `#052a73` 23.5 %, teal `#015a4b`
+17.8 %. Round 16 measured 15–22 % as this light's ceiling, and on screen the violet does
+exactly what that predicts — the god-rays stop reading and the icon flattens into a
+silhouette, because `screen` is `1 − (1−a)(1−b)` and a bright field leaves nothing to lighten
+into.
+
+So `bg` is the designer's value and `bgDeep` is that value with **hue and saturation
+untouched** and only lightness pulled to 19 % («Офисы» is already below it and is identical
+in both). `?pal=figma` shows the sampled set. This is not a colour opinion being imposed —
+it is the one dial where the brief and the mechanism disagree, and it wants the designer's
+eye with both on screen.
+
+### Verified
+
+- **Light cost, round 16.1's own assertions reproduced:** **0** GPU submissions across 60
+  frames inside a section; **8** across the whole five-section run (five stations plus
+  re-bakes from the late mask upload). Light opacity **0** on the handoff field.
+- Colour pure at every section midpoint, and `rgb(86, 183, 230)` — exactly `#56b7e6` — before
+  the fire line.
+- Handoff: hash → `#main-from-concept`, `history.state.from = 'concept'`, and scrolling up
+  returns to `#concept` at the disarmed offset. The gesture calls `history.back()`, so it and
+  the browser Back button are ONE code path and cannot drift.
+- Map unregressed on **both backends**: 19 buildings, 19 marks, 0 unplaced, picking hits
+  buildings, no console errors.
+- `tsc --noEmit`, `npm run build` and `scripts/interact-test.mjs` all clean.
+
+### Open
+
+- **The palette decision above.** Deep is the default; `?pal=figma` is the alternative.
+- Figma draws **four** colour bands for **five** topics — the file is a dirty visual
+  reference, so «Ресторанная зона»'s amber is derived from the gap the other four leave.
+- No touch-scroll test on a real device yet; the intent handler is written for it
+  (`shared/scrollIntent.ts`) but has only been exercised with a wheel.
+- `?ho=` and `?fire=` size the handoff zone; the 3.5 viewports are budgeted, not padding —
+  1.0 to clear the form's last line before the colour moves, 1.4 of dawn, 0.6 of settle,
+  0.5 of bounce clearance.
+
 ## Open issues
 
 - **[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**

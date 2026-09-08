@@ -80,6 +80,12 @@ export class MainScreen {
 
   /** 0..1 transition converge amount, driven by TransitionController */
   converge = 0;
+  private corners!: HTMLElement;
+  /**
+   * 0..1 — how much of the screen exists at all. 1 is normal and short-circuits
+   * every path below, so this costs nothing when the seam is not running.
+   */
+  private reveal = 1;
 
   /*
    * ROUND 11: these are sized from NAV_LINKS, not fixed 4-tuples. The link
@@ -177,6 +183,7 @@ export class MainScreen {
     // the slider headline) belongs in the stage.
     const corners = document.createElement('div');
     corners.className = 'corners';
+    this.corners = corners;
     this.el.appendChild(corners);
 
     const logo = document.createElement('div');
@@ -496,6 +503,38 @@ export class MainScreen {
     }
     this.slideT += dt;
 
+    /*
+     * THE SEAM'S DARKNESS, and it has to be exact rather than merely low.
+     *
+     * `slitLight()` returns `core·coreIntensity + bloom·bloom + rays·godrays`,
+     * all × `life`, and everything downstream in `main()` is MULTIPLICATIVE —
+     * except two additive terms: `col += (g − 0.5)·u_grain` and the ±1/255
+     * anti-banding dither. So zeroing the intensities is not enough on its own:
+     * «Сияние» ships `grain: 0.06`, and shader noise on a flat blue field is
+     * exactly the tell this seam exists to remove. `grain` is therefore in the
+     * list, and with it the output is `vec3(0)` plus the dither, which is
+     * sub-LSB after `mix-blend-mode: screen`.
+     *
+     * The procedural keys are included even though `slitMix` is 1 for the
+     * shipped variant, because `slitMix` is eased and only reaches 1
+     * asymptotically — this way the black is structural rather than dependent
+     * on a float landing exactly on 1.0.
+     */
+    if (this.reveal < 1) {
+      p = { ...p };
+      const e = this.reveal;
+      p.godrays *= e;
+      p.bloom *= e;
+      p.coreIntensity *= e;
+      p.crossIntensity *= e;
+      p.primaryIntensity *= e;
+      p.secIntensity *= e;
+      p.dustAmount *= e;
+      p.moteAmount *= e;
+      p.hazeBase *= e;
+      p.grain *= e;
+    }
+
     const s = stageScale();
     const rs = this.tier.renderScale;
     const stageRect = this.stage.getBoundingClientRect();
@@ -531,6 +570,57 @@ export class MainScreen {
     this.stage.style.opacity = String(1 - 0.95 * t);
     const s = stageScale() * (1 - 0.045 * t);
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+  }
+
+  /**
+   * How much of the screen exists, 0..1 — the scroll seam's own ramp.
+   *
+   * NOT `setStageDim`, and the difference is the whole point. `setStageDim(1)`
+   * leaves the stage at opacity 0.05 and never touches `.corners` at all — the
+   * wordmark, the descriptor, the «Связаться» plate and the studio mark are a
+   * separate viewport-pinned layer, and at the swap they would appear fully
+   * opaque over a page that is meant to look like it has not changed yet. The
+   * 0.045 scale term is borrowed from `setStageDim` so the two agree.
+   *
+   * `--grain-k` is here because `#grain` is suppressed on «О Крестах» but sits
+   * at full strength on the main screen, and over `#56b7e6` an overlay grain is
+   * visible (it is a no-op only against black). Un-driven, it pops in at the
+   * swap — which is precisely the tell this seam exists to remove.
+   */
+  setReveal(k: number) {
+    this.reveal = k;
+    this.stage.style.opacity = String(k);
+    const s = stageScale() * (1 - 0.045 * (1 - k));
+    this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+    this.corners.style.opacity = String(k);
+    document.documentElement.style.setProperty('--grain-k', String(k));
+  }
+
+  /**
+   * Arm the seam: fully dark, and with the entrance burst suppressed.
+   *
+   * `burstT` matters. On a first-ever entry it is 0, so round 5's explosive
+   * appearance (×5 godrays, τ 0.09/0.15) would fire WHILE the reveal ramps —
+   * two easings with different time constants overlapping, which reads as a
+   * stutter rather than as drama. The reveal curve is the only beat here.
+   */
+  beginReveal() {
+    this.burstT = 99;
+    this.setReveal(0);
+    this.converge = 1;
+  }
+
+  /**
+   * Render one frame right now, so the canvas is never showing a stale image.
+   *
+   * `start()` does not draw synchronously, so between the swap and the next
+   * rAF the canvas still holds the last frame from before the reader navigated
+   * away — a full light, on a page that is supposed to look unchanged. The
+   * router already does exactly this for «О Крестах» in the other direction.
+   */
+  primeFrame() {
+    this.layout();
+    this.update(0);
   }
 }
 
