@@ -171,22 +171,10 @@ export const PAGE_SECTIONS: PageSection[] = [
 export const FORM_BG = '#050b1d';
 
 /**
- * The two stops that carry the page out of the form and into the main screen's
- * own flat blue.
- *
- * TWO stops, not one wide band, and that is the decision: the leap from a ~7 %
- * lightness form to a 62 % lightness brand blue is far more travel than any
- * seam round 16 had, and widening a single band to cover it flattens the whole
- * thing into the mush a gradient would have been. A chosen mid-tone lets two
- * ordinary bands run back to back, and oklab through a mid-tone you picked
- * beats oklab through the midpoint it would have computed.
+ * ROUND 24 MOVED `DAWN_MID` and `MAIN_BG` to `page/seamColors.ts`, with their
+ * reasoning. They were section-run constants when «О Крестах» was the only page
+ * that seamed into the main screen; four more pages do now and none of them has
+ * sections, so the colours belong to the seam rather than to the run that
+ * happened to own them first. Re-exported here so existing readers are unmoved.
  */
-export const DAWN_MID = '#2b4a7a';
-
-/**
- * `#screen-main`'s resting field. It and `--color-field-main` now BOTH derive
- * from the single `blue` primitive through one generator run, so they can no
- * longer drift apart — which is what the round-19 seam depends on. Verified by
- * `npm run tokens:check`.
- */
-export const MAIN_BG = T.blue;
+export { MAIN_BG, DAWN_MID } from '../../page/seamColors';

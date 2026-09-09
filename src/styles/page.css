@@ -1,0 +1,188 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   SHARED PAGE FURNITURE (round 24) — the scroller, the colour track, the
+   wordmark home link and the contact form.
+
+   Moved out of `concept.css` when four more pages needed three quarters of it.
+   Imported from `main.ts` after grid.css and before the screen sheets, so a
+   screen can still override any of it.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* THE SCROLLER. The page scrolls, the DOCUMENT does not — `html/body/.screen`
+   keep `overflow: hidden`. `z-index: 1` puts it under the chrome, which is a
+   SIBLING of this element and never a child: a scroll container's
+   absolutely-positioned children scroll with its content, so a home link inside
+   would slide off the top on the first wheel event. */
+.page-scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.page-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* THE COLOUR TRACK — ONE element, and nothing below it may carry a background
+   of its own: a hard-coded colour anywhere in the content sits as an unfading
+   band across the crossfade. Behind the scroller and behind any light. */
+.page-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* THE WORDMARK, one box sitewide: 251.2 x 40 at (32, 32). The 251.2 is the
+   asset's own aspect — viewBox `0 0 314 50`, so 40 tall is 251.2 wide. */
+.page-home {
+  position: absolute;
+  left: 32px;
+  top: 32px;
+  width: 251.2px;
+  height: 40px;
+  z-index: 6;
+  cursor: pointer;
+  transition: opacity 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .page-home:hover {
+    opacity: 0.75;
+  }
+}
+.page-home svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.page-home svg path {
+  fill: var(--color-link);
+}
+
+/* THE HANDOFF into the main screen. Deliberately EMPTY and with no background
+   of its own: `.page-bg` carries the dawn into the brand blue underneath it.
+   See mainHandoff.ts for the budget behind the height and why the trigger is an
+   interior line rather than scroll-end. */
+.main-handoff {
+  height: calc(var(--handoff-vh, 3.5) * 100%);
+  pointer-events: none;
+}
+
+/* ── the contact form ────────────────────────────────────────────────────── */
+
+/* At least one viewport tall, and that is an INVARIANT rather than a look: it
+   is what keeps the last section's light station clear of the handoff zone. */
+.contact-form {
+  min-height: 100%;
+  color-scheme: dark;
+}
+
+.cf-lead,
+.cf-dept,
+.cf-note {
+  margin: 0 0 1.2em;
+}
+.cf-dept {
+  color: var(--color-text-ondark-secondary);
+}
+/* ROUND 22: the underline used to SNAP — `text-decoration` cannot be
+   transitioned, so the only honest way to animate it is to draw it yourself.
+   `text-decoration-color` from transparent gives the real underline (correct
+   descender skipping, correct thickness) with something to fade. */
+.cf-phone {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.18em;
+  transition: text-decoration-color 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cf-phone:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+.contact-form form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px 24px;
+  margin-top: 40px;
+  max-width: 34em;
+}
+.cf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-field--message {
+  grid-column: 1 / -1;
+}
+.cf-field label {
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
+  color: var(--color-text-ondark-secondary);
+}
+.cf-field input,
+.cf-field textarea {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-text-ondark-secondary);
+  padding: 6px 0;
+  color: var(--color-text-ondark-main);
+  font-family: inherit;
+  /* A FORM CONTROL DOES NOT INHERIT font-weight: the UA default is `normal`
+     = 400, and on Chromius's 50/120/232 axis that clamps to 232 = BLACK.
+     `font-family: inherit` does not carry the weight with it, so this must be
+     stated explicitly — it is the one place the trap survives inheritance. */
+  font-weight: var(--type-base-weight);
+  /* Base Text — and comfortably over the 16px floor below which iOS zooms a
+     focused input */
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  transition: border-color 240ms var(--ease-out);
+}
+.cf-field textarea {
+  resize: none;
+  overflow: hidden;
+}
+.cf-field input:focus,
+.cf-field textarea:focus {
+  outline: none;
+  border-bottom-color: var(--color-text-ondark-main);
+}
+
+/* Safari and Chrome paint their own autofill background and `background-color`
+   CANNOT override it on a dark field — the inset shadow is the only way to
+   repaint it, and the text needs -webkit-text-fill-color to stay legible. */
+.cf-field input:-webkit-autofill,
+.cf-field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-text-ondark-main);
+  -webkit-box-shadow: inset 0 0 0 1000px var(--field-form);
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* ROUND 21: «Отправить» is the shared `.btn` (styles/button.css) — this rule is
+   grid placement only. The component supplies main·ondark, which is what this
+   dark `--field-form` panel wants; its ink therefore goes from near-black to
+   `--color-link`, its horizontal padding 32 → 24, and its `opacity: .85` hover
+   becomes the designer's scale+0.8. All three are the component's spec, not
+   drift. */
+.cf-submit {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.cf-thanks {
+  display: none;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.contact-form form.sent .cf-field,
+.contact-form form.sent .cf-submit {
+  display: none;
+}
+.contact-form form.sent .cf-thanks {
+  display: block;

@@ -65,6 +65,40 @@ are named rather than merged so the duplication stays legible for the designer t
 
 ---
 
+## The page grid (round 23) — `src/styles/grid.css`
+
+**Two columns that MEET at the page centre. There is no gutter.** The metaphor is the layout:
+left column emotional, right column rational, and they touch.
+
+```
+--page-margin: clamp(32px, 6.67vw, 96px);   /* 96 at the 1440 design frame */
+--page-max:    1248px;                       /* 1440 − 2×96 */
+.page-grid  → 1fr 1fr, gap 0, width min(100% − 2×margin, max), centred
+.col-l / .col-r / .col-full
+.anchor-inner / .anchor-outer  (column-aware — "inner" mirrors between columns)
+```
+
+- **Symmetric insets + `1fr 1fr` put the boundary on the viewport centre at ANY margin.** That
+  is what makes "right-column text starts at 720" a rule and not a number that happened to work
+  at one width. Above the design frame the MARGINS grow, not the columns.
+- **Gaps come from content that does not fill its column, never from a gutter.** The News
+  page's 64px gap is a 559px square in a 624px column, anchored outward: 96 + 559 = 655, and
+  720 − 655 = 65. Add a gutter and you double it there and open a seam everywhere else.
+- **Not a 12-col grid, on the numbers.** Three widths exist (half, half, full) and 559 lands on
+  no 12-col boundary — it is 6.8 of an 82px column.
+- **Collapsing to one column takes TWO declarations.** Overriding `grid-template-columns: 1fr`
+  is not enough: `.col-r`'s `grid-column: 2` survives and places the item in column 2 of a
+  one-column grid, **creating an implicit second column** (measured `348px 539px` at 1024).
+  Reset the placement too. It looks exactly like a media query that is not matching.
+- **A long heading can touch the prose, and the fix is the measure, not a gutter.** Centred in
+  a 624 column the «hotel» h2 ended 3px from the centre line; `max-width: min(15em, 80%)`
+  leaves ~62px. Below ~1180 even that fights min-content — «экскурсионных» is 407px
+  unbreakable at 44px — which is why «О Крестах» collapses at 1160, not 900. **The failure is
+  invisible in English and appears in Russian.**
+
+The header, the wordmarks and the main-screen slider keep their own 32px corner rule and are
+outside this grid.
+
 ## Type
 
 **The scale is the designer's six Figma text styles, verbatim:**

@@ -89,6 +89,15 @@
   --type-slide-headline-lh: 64px;
 
   /**
+   * A GLYPH BOX WITH NO LEADING (round 24) — for a single decorative character
+   * standing alone, currently the article's «» quote mark. It is not a text
+   * style: there is no second line for leading to space, and the type scale's
+   * smallest ratio (1.2) would add half a line of air under the glyph and push
+   * the quotation off its own baseline. Do not use it for anything that wraps.
+   */
+  --type-glyph-lh: 1;
+
+  /**
    * MOTION (round 22). Not in the Token Studio export — the designer's set has
    * no motion layer yet, so these are engineering defaults from Emil Kowalski's
    * principles and, like the scrims above, a question filed rather than an answer.

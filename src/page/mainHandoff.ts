@@ -1,4 +1,4 @@
-import { DAWN_MID, MAIN_BG } from './pageSections';
+import { DAWN_MID, MAIN_BG } from './seamColors';
 import type { ColorStop } from './pageBackground';
 
 /**

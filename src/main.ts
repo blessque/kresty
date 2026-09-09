@@ -7,6 +7,9 @@ import './styles/global.css';
 // Shared components, after the element resets in global.css and before the
 // screen sheets — a screen must be able to override the component, not lose to it.
 import './styles/button.css';
+import './styles/grid.css';
+import './styles/page.css';
+import './styles/pages.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
 import './screens/contacts/contacts.css';
@@ -14,6 +17,10 @@ import './screens/contacts/contacts.css';
 import { MainScreen } from './screens/main/MainScreen';
 import { ConceptScreen } from './screens/concept/ConceptScreen';
 import { ContactsScreen } from './screens/contacts/ContactsScreen';
+import { ContactsPage } from './screens/contacts/ContactsPage';
+import { NewsScreen } from './screens/news/NewsScreen';
+import { ArticleScreen } from './screens/news/ArticleScreen';
+import { RentScreen } from './screens/rent/RentScreen';
 import { Router } from './router';
 import { ScrollIntent } from './shared/scrollIntent';
 
@@ -36,17 +43,31 @@ function makeGrain() {
 async function boot() {
   makeGrain();
 
-  const main = new MainScreen(document.getElementById('screen-main')!);
-  const concept = new ConceptScreen(document.getElementById('screen-concept')!);
-  // TEMPORARY: icon showcase for presentation stills (see screens/contacts/)
-  const contacts = new ContactsScreen(document.getElementById('screen-contacts')!);
-  const router = new Router(main, concept, contacts);
+  const el = (id: string) => document.getElementById(id)!;
+  const main = new MainScreen(el('screen-main'));
+
+  // ROUND 24: seven routes, one registry. Adding a page is one entry here and
+  // one in `HASHES` — it used to be five places in router.ts.
+  //
+  // `icons` is the round-12 light-on-arbitrary-SVG showcase. It kept the
+  // `#contacts` hash and a real nav link until now, which TUNING_LOG had flagged
+  // as "must be replaced before the client sees the nav as finished". It moved
+  // to `#icons`, off the nav, keeping `?admin` and `?icon=N` for the deck.
+  const router = new Router(main, {
+    main,
+    concept: new ConceptScreen(el('screen-concept')),
+    contacts: new ContactsPage(el('screen-contacts-page')),
+    news: new NewsScreen(el('screen-news')),
+    article: new ArticleScreen(el('screen-article')),
+    rent: new RentScreen(el('screen-rent')),
+    icons: new ContactsScreen(el('screen-contacts')),
+  });
 
   // Scrolling up at the top of the main screen goes back to wherever the reader
   // came from. Wired HERE, in the composition root, so `MainScreen` never
   // learns that routes exist — it only owns the light and its own DOM.
   const back = new ScrollIntent(
-    document.getElementById('screen-main')!,
+    el('screen-main'),
     () => router.goBackFromMain(),
   );
   back.attach();

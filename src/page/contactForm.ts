@@ -1,5 +1,5 @@
-import { escapeHtml } from '../../shared/escapeHtml';
-import { bindShortWords } from '../../shared/ruTypography';
+import { escapeHtml } from '../shared/escapeHtml';
+import { bindShortWords } from '../shared/ruTypography';
 
 /**
  * The contact form at the foot of «О Крестах» (Figma 727:26).
@@ -25,11 +25,33 @@ import { bindShortWords } from '../../shared/ruTypography';
  * swaps to a thank-you state.
  */
 
-const LEAD = 'Для консультации по типам помещений и возможным форматам сотрудничества:';
-const DEPT = 'Клиентский отдел';
-const PHONE = '+7 812 654-40-11';
-const NOTE =
-  'Либо заполните форму ниже, указав ваши контакты и интересующие форматы сотрудничества';
+/**
+ * ROUND 24 PARAMETERISED THE COPY. It was four module constants and a heading
+ * hard-coded in the markup, which was fine while «О Крестах» was the only page
+ * with a form — «Контакты» and «Аренда» carry the same form with their own
+ * words, and a second copy of this file would be the thing that drifts.
+ *
+ * The defaults are «О Крестах»'s originals verbatim, so a caller that passes
+ * nothing gets exactly what shipped.
+ */
+export interface ContactFormCopy {
+  heading: string;
+  lead: string;
+  dept: string;
+  phone: string;
+  note: string;
+  /** an icon box for the page light. Pages without a light omit it. */
+  icon?: boolean;
+}
+
+export const DEFAULT_CONTACT_COPY: ContactFormCopy = {
+  heading: 'Расскажем о Крестах и возможностях аренды',
+  lead: 'Для консультации по типам помещений и возможным форматам сотрудничества:',
+  dept: 'Клиентский отдел',
+  phone: '+7 812 654-40-11',
+  note: 'Либо заполните форму ниже, указав ваши контакты и интересующие форматы сотрудничества',
+  icon: true,
+};
 
 interface Field {
   name: string;
@@ -47,11 +69,18 @@ const FIELDS: Field[] = [
 
 export class ContactForm {
   readonly el = document.createElement('section');
+  private copy: ContactFormCopy;
   /** called when the textarea grows, so the page can re-measure below it */
   onResize: () => void = () => {};
 
-  constructor(scroller: HTMLElement) {
+  constructor(scroller: HTMLElement, copy: Partial<ContactFormCopy> = {}) {
+    this.copy = { ...DEFAULT_CONTACT_COPY, ...copy };
     this.el.className = 'contact-form';
+    // ROUND 24: the form is a LIGHT STATION now, so it needs an id for the
+    // station-invariant warning to name it. It is deliberately not a
+    // PAGE_SECTION — it has no `bg` and no `paras`, and adding one would put a
+    // colour stop on the run that the colour track does not want.
+    this.el.dataset.section = 'form';
     this.el.innerHTML = this.markup();
     scroller.appendChild(this.el);
 
@@ -86,18 +115,23 @@ export class ContactForm {
         `</div>`
       );
     }).join('');
+    const c = this.copy;
 
     return (
-      `<div class="sec-grid">` +
-      `<div class="sec-col">` +
-      `<div class="sec-icon" aria-hidden="true"></div>` +
-      `<h2 class="sec-h2">${escapeHtml(bindShortWords('Расскажем о Крестах и возможностях аренды'))}</h2>` +
+      // ROUND 24 PUT THE ICON BACK. Round 23 removed it on the grounds that it
+      // was never lit — true, but the fix was to light it, not to delete it.
+      // The design has an icon here; `SectionRun` now carries the form as a
+      // sixth STATION so the box gets the same god-ray the five sections do.
+      `<div class="sec-grid page-grid">` +
+      `<div class="sec-col col-l">` +
+      (c.icon ? `<div class="sec-icon" aria-hidden="true"></div>` : '') +
+      `<h2 class="sec-h2">${escapeHtml(bindShortWords(c.heading))}</h2>` +
       `</div>` +
-      `<div class="sec-body">` +
-      `<p class="cf-lead">${escapeHtml(bindShortWords(LEAD))}</p>` +
-      `<p class="cf-dept">${escapeHtml(DEPT)}<br>` +
-      `<a class="cf-phone" href="tel:${PHONE.replace(/[^+\d]/g, '')}">${escapeHtml(PHONE)}</a></p>` +
-      `<p class="cf-note">${escapeHtml(bindShortWords(NOTE))}</p>` +
+      `<div class="sec-body col-r">` +
+      `<p class="cf-lead">${escapeHtml(bindShortWords(c.lead))}</p>` +
+      `<p class="cf-dept">${escapeHtml(c.dept)}<br>` +
+      `<a class="cf-phone" href="tel:${c.phone.replace(/[^+\d]/g, '')}">${escapeHtml(c.phone)}</a></p>` +
+      `<p class="cf-note">${escapeHtml(bindShortWords(c.note))}</p>` +
       `<form novalidate>${fields}` +
       // ROUND 21: the shared button (styles/button.css). It is a class contract
       // rather than a factory precisely so it reaches this string.

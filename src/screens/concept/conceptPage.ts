@@ -1,9 +1,10 @@
 import { SectionRun } from './sectionRun';
-import { ContactForm } from './contactForm';
-import { MainHandoff } from './mainHandoff';
-import { PageBackground } from './pageBackground';
+import { ContactForm } from '../../page/contactForm';
+import { MainHandoff } from '../../page/mainHandoff';
+import { PageBackground } from '../../page/pageBackground';
 import { FORM_BG } from './pageSections';
 import { getPerfTier } from '../../shared/performanceTier';
+import { MOTION, applyMotionCss } from './motionParams';
 
 /**
  * Everything below the map on «О Крестах»: the section run, the contact form,
@@ -53,13 +54,29 @@ export class ConceptPage {
   private viewW = 0;
   private viewH = 0;
   private warmed = false;
+  /** smoothed icon y, and its clock. `null` = not following (see smoothY) */
+  private lightY: number | null = null;
+  private lightT = 0;
+  /** which icon is on screen (lags `idx` by half a dip), and which is queued */
+  private shownIdx = -1;
+  private pendingIdx = -1;
+  private dipStart = 0;
   private lastBakeIdx = -1;
   private lastBakePx = 0;
 
   constructor(screen: HTMLElement, scroller: HTMLElement) {
+    // ROUND 23: push the layout dials into CSS before anything measures. The
+    // stylesheet's fallbacks ARE these defaults, so the page is correct without
+    // this call — it exists so the two can never disagree once the panel has
+    // written a stored value, and so `measure()` never reads a stale box.
+    applyMotionCss();
     this.bg = new PageBackground(screen);
     this.sections = new SectionRun(scroller);
     this.form = new ContactForm(scroller);
+    // ROUND 24: the form is a sixth light station. Registered AFTER its own
+    // constructor has appended it, because `measure()` reads `offsetTop` in
+    // document order and the form must already sit below the five sections.
+    this.sections.addStation(this.form.el);
     this.handoff = new MainHandoff(scroller);
 
     // The light canvas is viewport-pinned and composites with `screen`, so it
@@ -105,7 +122,10 @@ export class ConceptPage {
     if (!viewH) return;
     if (viewW !== this.viewW || viewH !== this.viewH) this.measure(viewW, viewH);
 
-    // 1. the colour, applied
+    // 1. the colour, applied. ROUND 24: the band is pushed in rather than read
+    // out — `PageBackground` moved to `page/` and must not reach back into this
+    // screen's tuning panel, or every page would depend on «О Крестах»'s dials.
+    this.bg.bandVh = MOTION.bandVh;
     this.bg.update(scrollTop, viewH);
 
     // 2. the light
@@ -121,15 +141,24 @@ export class ConceptPage {
         void light.ensure(Math.min(this.tier.renderScale, LIGHT_RENDER_SCALE_MAX));
       }
       if (light.ready && t.opacity > 0) {
+        // ROUND 23: the swap dip. `envelope()` never reaches 0 between sections
+        // — measured — so without this the mask is replaced at full brightness,
+        // which is the "rude" swap. The icon is held back until the dip bottoms
+        // out, so the change happens at the light's lowest point, which is what
+        // pageLight's header always claimed happened. `swapDip: 0` skips the
+        // whole thing and reproduces the shipped behaviour exactly.
+        const dip = this.swapDip(t.idx);
+        const shown = MOTION.swapDip > 0 ? this.shownIdx : t.idx;
+
         // bake only on a station change — never on scroll (round 16.1)
         // re-bake on a station change OR when the icon box resizes (it flexes
         // with viewport height); `render()`'s lastKey dedupe absorbs the rest
-        if (t.idx !== this.lastBakeIdx || t.px !== this.lastBakePx) {
-          this.lastBakeIdx = t.idx;
+        if (shown !== this.lastBakeIdx || t.px !== this.lastBakePx) {
+          this.lastBakeIdx = shown;
           this.lastBakePx = t.px;
-          light.bake(t.idx, t.x, pointer, t.px);
+          light.bake(shown, t.x, pointer, t.px);
         }
-        light.position(t.y, t.opacity);
+        light.position(this.smoothY(t.y), t.opacity * dip);
       } else {
         light.hide();
       }
@@ -141,6 +170,76 @@ export class ConceptPage {
     //    MainHandoff.update: reversed, a hard flick paints one frame of the
     //    intermediate colour, and that is the only way this seam can flash.
     this.handoff.update(scrollTop, viewH, this.bg.pure, busy);
+  }
+
+  /**
+   * ROUND 23: optional smoothing on the icon's tracked position — the direct
+   * answer to "the swap feels rude".
+   *
+   * The rudeness is NOT the fade. `iconY` is `min(max(flowing, pinned), pushed)`,
+   * so its slope jumps −1 → 0 → −1: the light glides at scroll speed, freezes
+   * dead while the column is pinned, then lurches back into motion. `envelope()`
+   * is smooth in POSITION, so it inherits both corners and the opacity's rate
+   * changes instantaneously with them. A first-order lag rounds them off.
+   *
+   * Frame-rate independent (`1 − exp(−dt/τ)`), the same form the main screen's
+   * hover lerps use — not a naive per-frame coefficient.
+   *
+   * `follow: 0` SHORT-CIRCUITS COMPLETELY, and that is deliberate: above 0 this
+   * writes a transform every frame while the column is pinned, which is exactly
+   * the per-frame compositor work this module's header celebrates suppressing.
+   * The shipped default is 0, so the cost is opt-in and measurable against it.
+   */
+  private smoothY(target: number): number {
+    const tau = MOTION.follow;
+    if (tau <= 0) {
+      this.lightY = null;
+      return target;
+    }
+    const now = performance.now();
+    const dt = this.lightT ? Math.min(0.05, (now - this.lightT) / 1000) : 0;
+    this.lightT = now;
+    if (this.lightY === null) this.lightY = target;
+    // a jump of more than a viewport is a station swap or a scroll restore, not
+    // motion — following it would drag the light across the screen
+    else if (Math.abs(target - this.lightY) > this.viewH) this.lightY = target;
+    else this.lightY += (target - this.lightY) * (1 - Math.exp(-dt / tau));
+    return this.lightY;
+  }
+
+  /**
+   * The swap dip: a half-sine that falls to `1 − swapDip` and back over
+   * `swapMs`, with the ICON CHANGING AT THE BOTTOM. Returns the multiplier.
+   *
+   * The same shape «Слайдер» uses on the main screen (`SLIDE_DIP_S`), and for
+   * the same stated reason — *the light dips, it never flashes*. Round 9 removed
+   * a ×2.4 surge on slide change because a swap-pop fails exactly here.
+   *
+   * `shownIdx` lags `idx` by half the dip, which is what makes the mask change
+   * invisible: at the midpoint the light is at its darkest, so the icon that
+   * arrives is not seen arriving.
+   */
+  private swapDip(idx: number): number {
+    if (MOTION.swapDip <= 0) {
+      this.shownIdx = idx;
+      this.dipStart = 0;
+      return 1;
+    }
+    if (idx !== this.pendingIdx) {
+      this.pendingIdx = idx;
+      // a first paint is not a swap — do not dip on arrival
+      if (this.shownIdx < 0) this.shownIdx = idx;
+      else this.dipStart = performance.now();
+    }
+    if (!this.dipStart) return 1;
+    const k = (performance.now() - this.dipStart) / MOTION.swapMs;
+    if (k >= 1) {
+      this.dipStart = 0;
+      this.shownIdx = this.pendingIdx;
+      return 1;
+    }
+    if (k >= 0.5) this.shownIdx = this.pendingIdx; // past the bottom: show the new one
+    return 1 - MOTION.swapDip * Math.sin(Math.PI * k);
   }
 
   /** where a return from the main screen lands: past the dawn, disarmed */

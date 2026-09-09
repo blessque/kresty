@@ -4805,3 +4805,276 @@ sides of the shared reference, `lint:tokens` + `tokens:check` + `tsc` + build + 
   panel. The other two hexes there (`#cfe3ef`, `#6fb6dd`) are dev-panel chrome with no
   product equivalent and are deliberately left — inventing tokens for a debug tool is what
   `tokens.css`'s "only what the set does not name" rule is meant to prevent.
+
+---
+
+## Round 23 (2026-09-09) — the page grid, and the swap that never dipped
+
+Three requests: a layout grid for every page, a tuning panel for «О Крестах»'s animation
+("the icons swap with this rude motion"), and centred section headings. The second turned up
+the most useful measurement of the round.
+
+### The grid: two columns that MEET, and where the gap really comes from
+
+The metaphor is the layout — left emotional, right rational — so the grid is two halves that
+touch, inside a generous margin. The objection was the News page, which visibly needs a gap
+between the image and the headline. **It does not need a gutter.**
+
+Measured off the designer's News frame (Figma `854:251`): the gap between the image's right
+edge (708) and the headline (772) is **64px**, and the vertical gap between news cards is
+**also 64** (883→947, 1506→1570). With a 96px margin and columns meeting at the centre, a
+**559px square anchored to the outer edge ends at 655 — 65px short of the 720 line.** Figma
+drew 64. Verified in the real DOM afterwards: **65**.
+
+So the News gap is the slack a fixed-size image leaves in its column, not a grid rule. That
+is why one rule serves both pages: where content fills its column the columns meet, and where
+it does not, air appears for free.
+
+**A 12-col grid was considered and rejected on the numbers.** Its value is many distinct
+content widths; this site has three — half, half, full. 559 lands on no sensible 12-col
+boundary (margin 96 + 24 gutter → 82px columns; 559 is 6.8 of them). The half-split explains
+it exactly.
+
+**The property that makes it robust:** with symmetric insets and `1fr 1fr`, the column
+boundary is ALWAYS the viewport centre, whatever the margin is. So the margin can flex and the
+centre line never moves. Asserted at 1600/1440/1320/1240/1180/1161: left column's right edge
+== right column's left edge == `innerWidth / 2`, margins equal, columns 624 at the design frame.
+
+`--page-margin: clamp(32px, 6.67vw, 96px)` (6.67vw is 96/1440, so 1440 needs no special case)
+and `--page-max: 1248px`, so above the design frame the MARGINS grow, not the columns — at
+1600 the margins are 176 and the columns stay 624.
+
+**What it replaced:** `.sec` had `padding: … 32px …` AND `.sec-grid` had `max-width: 1376px`,
+which is exactly `1440 − 2×32` — the margin encoded twice, with only one binding at any given
+width. Plus a 48px gutter straddling the centre. Five distinct gutters existed on that page
+(32 / 24 / 48 / a computed 178 / 0). One now. The intro block also gets fixed as a side
+effect: its comment claimed "the design's frame starts the block at x=720" but its `50%`
+resolved against a flex content box, so it actually landed at **752**. It lands at 720 now.
+
+### Two things the measurements caught that reasoning did not
+
+- **Removing the gutter let a heading touch the prose.** Centred in a 624 column, the «hotel»
+  h2's longest line ended at **717 — three pixels from the centre line.** The old 48px gutter
+  had been hiding it. Fixed the grid's own way, with content that does not fill its column:
+  `max-width: min(15em, 80%)` leaves ~62px each side, one rhythm unit. Do not remove the 80%.
+- **Then the 80% cap fought min-content and OVERFLOWED at narrow widths.** «экскурсионных» in
+  the museum heading is **407px of unbreakable min-content at 44px**, needing a 509px column,
+  needing ~1175px of viewport. Swept live, worst-section clearance: 1440 → 66px, 1320 → 71,
+  1240 → 54, 1180 → 52, 1120 → 30, 1024 → **−7**, 960 → **−32**. So the single-column
+  breakpoint went **900 → 1160**. 900 was only ever safe because the gutter absorbed the
+  overrun. **The failure is invisible in English and appears in Russian** — re-run the sweep
+  before lowering it.
+
+**And a CSS trap worth its own paragraph.** Collapsing to one column takes TWO declarations,
+not one: overriding `grid-template-columns: 1fr` is not enough, because `.col-r`'s explicit
+`grid-column: 2` survives and **places the item in column 2 of a one-column grid, which
+creates an implicit second column.** Measured `348.078px 539.312px` at 1024 — two unequal
+auto-sized columns. It reads exactly like a media query that failed to match, so it sends you
+debugging the wrong thing. Both `grid.css` and `concept.css` now say so at the point of use.
+
+### The swap: the light only half-dipped, and the gap was the cause
+
+**CORRECTED — see round 23.1 below.** The first version of this entry claimed the light never
+dips at all (1.000 at three of four boundaries). That was measured on a build where a
+malformed CSS comment had silently dropped `.sec`'s `padding` declaration entirely, so the
+sections were flush and no icon ever travelled far enough to leave the envelope's flat top.
+**Never trust a measurement taken while an unrelated edit is in flight.** The real numbers are
+in 23.1; the mechanism below is unchanged and is why the gap mattered.
+
+`pageLight.ts`'s comment: *"the light fades out as its own icon leaves the frame and the swap
+happens at zero."* At the shipped 20vh gap it **half** happened — the light bottomed at 0.811
+on two of four boundaries, i.e. the mask was replaced at 81 % brightness. That is the rudeness.
+
+The cause is that the pin holds each icon near `u ≈ 0.22`, close to `envelope()`'s flat top, so
+how far the roll-off engages depends entirely on **how much room the icon has to travel between
+stations** — which is the inter-section gap. `edge` and `curve` can only shape a ramp the icon
+actually reaches.
+
+The fix available in the panel is «Слайдер»'s own shipped rule, which this very file cites:
+**the light dips, it never flashes.** `swapDip` falls to `1 − dip` over `swapMs` on a half-sine
+and **holds the icon back until the bottom**, so the mask changes at the darkest moment.
+Proved: min opacity **1.000** with the dial at 0, **0.049** at 0.7. Default is **0**, so
+nothing shipped changes until a value is chosen.
+
+Three further causes are on dials rather than guessed at:
+
+1. `iconY` is `min(max(flowing, pinned), pushed)` — piecewise linear with two hard corners, so
+   its slope jumps **−1 → 0 → −1**. The light glides, freezes dead, then lurches, and
+   `envelope()` inherits both corners because it is smooth in POSITION. → `follow`, a
+   frame-rate-independent `1 − exp(−dt/τ)` lag. Default 0: above 0 it writes a transform every
+   frame during the hold phase, which is exactly the work `conceptPage`'s header celebrates
+   suppressing, so the cost is opt-in and measurable against the default.
+2. `track()` had no hysteresis — `idx` flips the instant a challenger is nearer the centre, and
+   every flip is a re-bake. → `hysteresis`, a deadband that discounts the incumbent.
+3. `bake()` renders synchronously with the OLD mask still uploaded before the async
+   `maskFor()` resolves. Left alone; the dip covers it.
+
+### The panel — `?admin=1`, `MotionPanel.ts`
+
+Built on `WaterPanel`'s shape (already in this screen, **dynamically imported with its own CSS
+chunk** — verified absent from the production `index` chunk, present as
+`MotionPanel-*.js` + `.css`), plus two things from `ControlPanel`: the segmented row and the
+**versioned** `STORE_KEY`, since `WaterPanel`'s unversioned store shadows changed defaults and
+we are about to change defaults.
+
+**Two invariants are readouts at the top of the panel, not console warnings.** `pin`,
+`padBottom` and `iconSize` all feed `pin + colH + padBottom ≤ viewH`, and a `console.warn`
+nobody is watching is not a guard rail when a slider is what trips it. The second, `gapVh ≥
+0.5 + bandVh/2`, exposed something worth recording: **the shipped default sits exactly ON its
+floor** (gap 0.8, band 0.6 → floor 0.8). There is no headroom, so widening the colour band by
+any amount pushes the crossfade up into the map unless the gap follows.
+
+### Centred headings
+
+`.sec-col` centres, which the form gets for free since `contactForm.ts` reuses `.sec-h2`. The
+ICON had to move with the text — it is a block with an explicit width, so centring only the
+text left the light flush left and split the heading from its beam. **That moves the god-ray**:
+`sectionRun.measure()` reads `iconX` from the icon's rect, so the beam went from x≈102 to the
+column centre (408 at 1440). Deliberate, and `iconAlign` is a panel dial so it can be judged on
+screen. The form's own `.sec-icon` is **deleted** — `SectionRun` builds its stations from
+`PAGE_SECTIONS` only, so it was reserving a 140–220px empty square for a light that never
+arrives, and centring made that conspicuous.
+
+### Round 23.1 — the gap WAS the swap
+
+Reported straight after round 23: "too small gaps between sections, should be something like
+50vh". Chasing it corrected the round's headline finding and fixed the rude swap outright.
+
+**First, a self-inflicted bug worth recording as a class.** Round 23's edit to `.sec` left
+**two `*/` in one comment block**, so the stray middle became CSS garbage and the browser
+dropped the whole `padding` declaration. Sections rendered flush with `padding: 0`. Nothing
+failed: not `tsc`, not `lint:tokens`, not the build, not a screenshot — a page with no vertical
+rhythm looks like a page with a tight design. It was caught only because the client said the
+gaps were too small, and confirmed by reading `getComputedStyle(sec).paddingTop === '0px'`
+against a root that correctly held `--sec-pad-top: 40vh`. **A custom property arriving and the
+declaration that consumes it are two separate facts; check the second one.**
+
+**`padTop` is the free lever, and that is not arbitrary.** The visible gap is
+`padBottom + padTop`, but `padBottom` is one of the three terms of the station invariant
+(`pin + colH + padBottom <= viewH`) and cannot grow far. `padTop` is in neither the invariant
+nor the column. So the default went **20vh → 40vh**, giving 360 + 96 = **456px = 51vh** between
+one section's last line and the next one's first, with the invariant still at 163px of headroom.
+
+**And it fixed the swap.** Measured min light opacity at each boundary, 1440×900:
+
+```
+  gap 20vh   hotel→spa 0.811   spa→restaurant 0.811   restaurant→museum 0.267   museum→office 0.252
+  gap 40vh   hotel→spa 0.000   spa→restaurant 0.000   restaurant→museum 0.000   museum→office 0.000
+```
+
+At 40vh the icon finally has room to travel out of `envelope()`'s flat top before its
+successor arrives, so the light reaches **zero** at every station change and the mask is
+replaced while nothing is on screen — which is exactly what `pageLight.ts` always said it did.
+**The gap and the rude swap were one problem, not two.** `swapDip` is now a fallback for
+narrow viewports rather than the primary fix, and stays defaulted to 0.
+
+Two consequences: the scroller grows 10665 → 13074 at a 900px viewport (about 2.7 more
+viewports of page), and `edge`/`curve` are live dials again, because the ramp is now reached.
+
+---
+
+## Round 24 (2026-09-09) — four pages, a shared shell, and the icon that should have been lit
+
+Three requests: the contact form's missing icon, and «Новости» / «Новость» / «Аренда» /
+«Контакты» built from Figma section `1012:177`. Plus the designer's own motion verdict,
+pasted back through round 23's panel.
+
+### The form's icon — round 23 removed it for the wrong reason
+
+Round 23 deleted `.sec-icon` from the contact form on the grounds that it was never lit. The
+observation was right and the conclusion was backwards: **the fix was to light it.** The
+design has an icon there (`Culture-640.svg`), and the box was dark only because `SectionRun`
+built its light stations from `PAGE_SECTIONS`, which the form is not a member of.
+
+So the form is a **sixth STATION but still not a SECTION**, and that distinction is the whole
+of it: a `PAGE_SECTION` carries a `bg` and `paras` and enters `stops()`, which would have put
+a colour stop on the run that the colour track does not want. `addStation()` takes the element
+only. One consequence to know: `stops()` had to stop mapping over `geom` — with six entries it
+would index `PAGE_SECTIONS[5]`, hand `sectionBg` an `undefined`, and the run's last colour
+would silently become garbage. It iterates the sections and looks up geometry instead.
+
+Verified: peak light opacity **1.000** at the form's station, invariant still passing with six.
+
+### The shell, extracted rather than rewritten
+
+Every one of the designer's four frames ends with the main screen pasted at the bottom, and
+that was confirmed as a requirement — all four scroll into the light. **That single fact is
+what shaped the round.** The seam is the most delicate thing in this codebase (an ordering bug
+in it is the only way the page can flash), so building it four more times by hand was four
+chances to get it wrong.
+
+`pageBackground.ts`, `mainHandoff.ts` and `contactForm.ts` MOVED to a new `src/page/` — not
+rewritten, because their comments carry reasoning that cost whole rounds to learn. New
+alongside them: `seamColors.ts` (`MAIN_BG` and `DAWN_MID` were section-run constants when one
+page seamed; five do now), `homeLink.ts`, `PageShell.ts` and `ContentScreen.ts`.
+
+**Two couplings had to be cut on the way out.** `pageBackground` read `MOTION.bandVh` directly,
+which would have made every page depend on «О Крестах»'s tuning panel — the band is a field on
+the instance now and `ConceptPage` pushes it. And `contactForm`'s copy was four module
+constants plus a heading hard-coded in the markup; it takes an options object, with the
+originals as defaults so «О Крестах» is untouched.
+
+**One self-inflicted scare worth recording.** A regex intended to lift two constants out of
+`pageSections.ts` matched greedily and deleted **190 of its 192 lines**. It was caught
+immediately (`git diff --stat` read `4 insertions, 190 deletions`) and restored from HEAD,
+but the lesson is the general one: **a regex with `.*?` across a file is not an edit, it is a
+gamble.** Redone as two exact string replacements.
+
+### The router became a registry
+
+Seven routes was too many for five hard-coded enumerations. `Route` is a union, `Screen` is a
+four-method interface, and the router holds a `Record<Route, Screen>`; adding a page is one
+entry there and one in `HASHES`.
+
+**The transition generalised in one line, as predicted.** `TransitionController` is only
+*nominally* main-specific — `'toConcept'` never meant concept, it meant "away from main". The
+hard-coded «Контакты» opt-out became `if (from !== 'main' && to !== 'main')`, so main↔any page
+now gets the fly-into-the-light and page↔page cuts, which is correct: there is no light to
+converge when main is not an endpoint.
+
+**`SEAM_HASH` became per-route.** `#main-from-concept` → `#main-from-<route>`, so scrolling
+off «Аренда» and pressing Back returns to «Аренда» rather than to «О Крестах». Verified on all
+four: `#main-from-news`, `#main-from-article`, `#main-from-rent`, `#main-from-contacts`, each
+returning to its own page.
+
+The icon showcase moved to `#icons`, off the nav, keeping `?admin` and `?icon=N`. TUNING_LOG
+had it flagged as "must be replaced before the client sees the nav as finished" since round 12.
+
+### The pages, and the grid rule proving itself
+
+Copy is the designer's own throughout — dates, categories, headlines, the article's body,
+phone numbers, hours, address, the three «Аренда» stats. **The lead paragraph on «Контакты»
+and «Аренда» is placeholder** (both frames carry the identical «Павильон»/«Остров» string from
+another project) and is marked `TODO(copy)` rather than replaced with something invented.
+
+**The News page's 64px gap arrived exactly as derived two rounds ago.** Measured in the live
+DOM: a 559px square anchored to the outer edge at a 96px margin ends at **655**, the headline
+starts at **720**, and the slack is **65px** against the 64 Figma drew. It is not a gutter and
+no rule creates it — it is a fixed-size image not filling its column, which is why `gap: 0`
+survives contact with the one page that looked like a counter-example.
+
+Two places the frames' measures are deliberately not the grid, both typographic rather than
+structural: the article's body copy starts before the centre line (a reading measure is not a
+column, and forcing it onto one makes the lines too short at 24px), and «Читайте также» splits
+the full measure into three — the frame's cards are 364.67 wide and `(1142 − 2×24)/3` is
+364.67 exactly, so that is the designer's own arithmetic, not an invention.
+
+### The designer's motion verdict, shipped
+
+Pasted back through round 23's panel Copy button and now `MOTION_DEFAULTS`. The headline
+change is **`pin: 0`** — the column pins at the very top of the viewport, so the icon's hold
+phase sits higher and the light travels further before its successor arrives — plus
+`padTop: 70` / `padBottom: 112`, giving **82vh** between one section's last line and the
+next's, and `curve: 4` (pow, γ 1.5) with `asymmetry: 0.55` and `edge: 0.31`.
+
+**Measured after: min light opacity `0.000` at ALL FOUR station boundaries.** Round 23.1 got
+that with a 40vh gap; 82vh plus the unpinned column holds it comfortably. The invariant passes
+with 185px of headroom. `swapDip` stays 0 — it is now a fallback for short viewports rather
+than the fix, since the geometry does the work.
+
+Verified: all seven routes cold-load, nav → page → article → back through history, the filter
+row filters (3 → 1 cards with the underline following), all four seams land on
+`rgb(86, 183, 230)` and hand off, `lint:tokens` + `tokens:check` + `tsc` + build + the headline
+probe clean. One new token fell out: `--type-glyph-lh: 1` for a lone decorative character (the
+article's quote mark), because the type scale's smallest ratio adds half a line of air under a
+glyph that has no second line.

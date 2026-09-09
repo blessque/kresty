@@ -1,0 +1,103 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE PAGE GRID (round 23) — two columns that MEET at the page centre.
+
+   The metaphor is the layout: left column emotional, right column rational. So
+   the grid is two halves, not twelve columns, and they touch. A gutter would
+   put a seam down the middle of a spread that is meant to read as one.
+
+   ── why two columns and not a 12-col grid ───────────────────────────────────
+   A 12-col grid earns its complexity when a design uses many distinct content
+   widths. This one uses three: half, half, and full. And the widths that DO
+   appear do not land on a 12-col boundary — the News page's square is 559px,
+   which at margin 96 with a 24 gutter is 6.8 columns of 82. The half-split
+   explains it exactly (see below). Twelve columns would add nine unused
+   positions and a gutter system that fights the centre-line rule.
+
+   ── the property that makes this robust ─────────────────────────────────────
+   With symmetric horizontal insets and `1fr 1fr`, THE COLUMN BOUNDARY IS ALWAYS
+   THE VIEWPORT CENTRE, whatever the margin is. So the margin can flex
+   responsively and the centre line never moves. That is what makes "text in the
+   right column starts at 720" a rule rather than a number that happened to work
+   at one width.
+
+   ── where gaps come from, since there is no gutter ──────────────────────────
+   From content that does not fill its column. Measured off the designer's News
+   frame (Figma 854:251): the gap between the image's right edge and the
+   headline is 64px, and the vertical gap between news cards is ALSO 64. With a
+   96px margin, a 559px square anchored to the outer edge ends at 655 — 65px
+   short of the 720 centre line. That is the gap, and nobody had to author it.
+
+   So: a gap is a consequence of a composition, never a grid rule. Wherever
+   content fills its column, the columns meet.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* 96 at the 1440 design frame, shrinking below it so the text measure never
+     collapses. 6.67vw is 96/1440, so 1440 resolves to exactly 96 with no
+     special case — and the floor is 32, which is the corner rule the header,
+     the wordmark and the main-screen furniture already use. */
+  --page-margin: clamp(32px, 6.67vw, 96px);
+
+  /* 1440 − 2×96. ABOVE the design frame the margins grow, not the columns, so a
+     2560-wide window does not produce a 1184px line length. Below it the margin
+     binds instead. Exactly one of the two is ever in force. */
+  --page-max: 1248px;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* THE RULE. The columns meet; they do not clear. Do not add a gap here — the
+     News page's 64px is image slack, not a gutter, and adding one here would
+     double it there and open a seam everywhere else. */
+  gap: 0;
+  width: min(100% - 2 * var(--page-margin), var(--page-max));
+  margin-inline: auto;
+}
+
+/* COLLAPSING TO ONE COLUMN TAKES TWO DECLARATIONS, NOT ONE. Overriding
+   `grid-template-columns: 1fr` on the grid is not enough: `.col-r`'s explicit
+   `grid-column: 2` survives, and placing an item in column 2 of a one-column
+   grid CREATES AN IMPLICIT SECOND COLUMN. The result is two unequal auto-sized
+   columns — measured `348.078px 539.312px` at a 1024 viewport — which reads
+   exactly like a media query that failed to match, so it sends you debugging
+   the wrong thing. Any page that stacks must also reset the placement:
+
+     @media (…) {
+       .my-grid { grid-template-columns: 1fr; }
+       .my-grid > .col-l, .my-grid > .col-r { grid-column: auto; }
+     }
+*/
+.col-l {
+  grid-column: 1;
+}
+.col-r {
+  grid-column: 2;
+}
+/* Full width means both columns, still inside the margins — a wide photograph,
+   a lead paragraph, an illustration. Never edge-to-edge; that is `.page-bg`. */
+.col-full {
+  grid-column: 1 / -1;
+}
+
+/* A fixed-size child — an image at its authored size, a two-image composition —
+   sits against ONE edge of its column and leaves the rest as air. Which edge is
+   a decision per composition, not a grid rule: the News page anchors its squares
+   OUTWARD, which is what puts the slack against the centre line.
+
+   THESE ARE COLUMN-AWARE ON PURPOSE. "Inner" means the centre line, so it is the
+   RIGHT edge in the left column and the LEFT edge in the right one — a single
+   column-agnostic rule would be correct on one side and mirrored on the other.
+   Direct children only, so a nested figure cannot pick the rule up by accident. */
+.col-l > .anchor-inner {
+  margin-inline-start: auto;
+}
+.col-r > .anchor-inner {
+  margin-inline-end: auto;
+}
+.col-l > .anchor-outer {
+  margin-inline-end: auto;
+}
+.col-r > .anchor-outer {
+  margin-inline-start: auto;
+}

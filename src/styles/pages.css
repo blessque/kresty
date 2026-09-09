@@ -1,0 +1,436 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE CONTENT PAGES (round 24): «Новости», «Новость», «Аренда», «Контакты».
+
+   Four pages, one stylesheet, because they are the same page with different
+   words. Nothing here sets a horizontal position — `.page-grid` does. If a rule
+   below contains a left/right value it is either a fixed-size composition
+   (an image at its authored size) or a bug.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.news-page,
+.article-page,
+.rent-page,
+.contacts-page {
+  background: var(--color-bg-light-main);
+  color: var(--color-text-onlight-main);
+}
+
+/* The film grain is tuned for the main screen's bright blue; over a white
+   editorial page it reads as dirt, exactly as it does over the map. */
+.news-page:not(.hidden) ~ #grain,
+.article-page:not(.hidden) ~ #grain,
+.rent-page:not(.hidden) ~ #grain,
+.contacts-page:not(.hidden) ~ #grain {
+  opacity: 0;
+}
+
+/* ── the masthead ────────────────────────────────────────────────────────── */
+
+.page-head {
+  position: relative;
+  padding: 152px 0 0;
+}
+
+.page-title {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h1-weight);
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-lh);
+  margin: 0;
+}
+
+.page-lead {
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  /* the frames run this to ~792 of the 1142 measure — a lead is not body copy
+     and should not use the full width */
+  max-width: 34em;
+  margin: 24px 0 0;
+}
+
+/* Pinned to the page's 32px corner rule, NOT the content grid — the header and
+   the wordmark are explicitly outside it (the designer's own exception). */
+.page-partner {
+  position: absolute;
+  right: 32px;
+  top: 32px;
+}
+
+/* ── shared blocks ───────────────────────────────────────────────────────── */
+
+.page-block {
+  padding: 96px 0 0;
+}
+
+.page-h2 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 0;
+}
+
+.page-prose {
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  margin: 0;
+}
+
+/* ── «Новости» ───────────────────────────────────────────────────────────── */
+
+.news-filters {
+  padding: 32px 0 0;
+}
+.news-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.news-filters__btn {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  /* the underline is the state, and it is drawn rather than toggled so the
+     transition has something to move */
+  border-bottom: 2px solid transparent;
+  transition: border-color 240ms var(--ease-out);
+}
+.news-filters__btn.on {
+  border-bottom-color: currentColor;
+}
+/* the frame's small four-pointed star between items */
+.news-filters__dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background: var(--color-link);
+  clip-path: polygon(
+    50% 0%,
+    58% 42%,
+    100% 50%,
+    58% 58%,
+    50% 100%,
+    42% 58%,
+    0% 50%,
+    42% 42%
+  );
+}
+
+.news-cards {
+  padding: 64px 0 0;
+}
+.news-card {
+  padding: 0 0 64px;
+  color: inherit;
+  align-items: start;
+}
+.news-card[hidden] {
+  display: none;
+}
+/* A FIXED SQUARE anchored to the outer edge — the air before the centre line is
+   this image not filling its column, which is the whole grid rule. Do not add a
+   gutter to recreate it. */
+.news-card__img {
+  display: block;
+  width: min(559px, 100%);
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+.news-card__body {
+  padding-top: 56px;
+}
+.news-card__title {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 0;
+  max-width: 17em;
+}
+.news-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0 0;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+@media (hover: hover) and (pointer: fine) {
+  .news-card:hover .news-card__title {
+    color: var(--color-link);
+  }
+}
+.news-card__title {
+  transition: color 240ms var(--ease-out);
+}
+
+/* ── «Новость» ───────────────────────────────────────────────────────────── */
+
+.article-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+.article-crumbs a {
+  color: var(--color-link);
+}
+.article-title {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h1-weight);
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-lh);
+  margin: 16px 0 0;
+  /* the frame runs the headline to 909 of 1142 — wider than a column, short of
+     full, because a display line wants to break where the words want to */
+  max-width: 16em;
+}
+
+.article {
+  padding: 64px 0 0;
+}
+.article-rail {
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+.article-date {
+  margin: 0;
+}
+/* THE READING MEASURE, and it is deliberately not the column. The frame starts
+   body copy before the centre line and runs it to the right margin — a measure
+   is a typographic decision, and forcing it onto the column would make the
+   lines too short at this size. It is still anchored to the grid at its right. */
+.article-body {
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  margin-left: calc(-1 * var(--article-outdent, 104px));
+}
+.article-body > p {
+  margin: 0 0 1.2em;
+}
+.article-body h2 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 56px 0 24px;
+}
+.article-body h3 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-caption-big-weight);
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  margin: 48px 0 20px;
+}
+.article-img,
+.article-gallery__img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  margin: 40px 0;
+}
+.article-gallery {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.article-list {
+  margin: 0 0 1.2em;
+  padding-left: 1.2em;
+}
+.article-list li {
+  margin: 0 0 0.6em;
+}
+
+.article-quote {
+  padding: 40px 0 0;
+  align-items: start;
+}
+.article-quote__mark {
+  display: block;
+  font-family: var(--font-family-display);
+  font-size: var(--type-h1-size);
+  /* a lone decorative glyph — see the token's note in tokens.css */
+  line-height: var(--type-glyph-lh);
+  color: var(--color-link);
+}
+.article-quote blockquote {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 16px 0 0;
+  max-width: 15em;
+}
+.article-quote figcaption {
+  margin: 24px 0 0;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+
+.article-related {
+  padding: 120px 0 0;
+}
+.article-related__title {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 0 0 40px;
+}
+/* THREE columns of the full measure, which is the designer's own split: the
+   frame's cards are 364.67 wide, and (1142 − 2×24)/3 is 364.67 exactly. */
+.article-related__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px 24px;
+}
+.article-related__card {
+  color: inherit;
+}
+.article-related__headline {
+  margin: 8px 0 0;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  transition: color 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .article-related__card:hover .article-related__headline {
+    color: var(--color-link);
+  }
+}
+.article-all {
+  display: inline-block;
+  margin: 48px 0 0;
+  color: var(--color-link);
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+}
+
+/* ── «Аренда» ────────────────────────────────────────────────────────────── */
+
+.rent-stats {
+  margin: 0;
+}
+.rent-stat {
+  margin: 0 0 40px;
+}
+.rent-stat dt {
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+.rent-stat dd {
+  margin: 4px 0 0;
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h2-weight);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
+}
+.rent-spaces {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rent-spaces li {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  margin: 0 0 24px;
+}
+.rent-photo {
+  display: block;
+  width: min(559px, 100%);
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+/* ── «Контакты» ──────────────────────────────────────────────────────────── */
+
+.contact-pairs {
+  margin: 0;
+}
+.contact-pair {
+  margin: 0 0 40px;
+}
+.contact-pair dt {
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+.contact-pair dd {
+  margin: 4px 0 0;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+}
+.contacts-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  object-fit: cover;
+}
+
+/* The shared form is dark by default (it was built for «О Крестах»'s dark
+   field). On these light pages it inherits the page's ink instead. */
+.rent-page .contact-form,
+.contacts-page .contact-form {
+  min-height: 0;
+  color-scheme: light;
+  color: var(--color-text-onlight-main);
+  padding: 96px 0 0;
+}
+.rent-page .cf-field input,
+.rent-page .cf-field textarea,
+.contacts-page .cf-field input,
+.contacts-page .cf-field textarea {
+  color: var(--color-text-onlight-main);
+  border-bottom-color: var(--color-text-onlight-tertiary);
+}
+.rent-page .cf-field label,
+.contacts-page .cf-field label {
+  color: var(--color-text-onlight-secondary);
+}
+.rent-page .cf-submit,
+.contacts-page .cf-submit {
+  --btn-color: var(--color-button-onlight);
+  --btn-ink: var(--color-text-ondark-main);
+}
+
+/* Below the two-column breakpoint the pages stack. THE PLACEMENT HAS TO GO TOO,
+   not just the template: `grid-column: 2` in a one-column grid creates an
+   implicit second column and you get two unequal ones. See styles/grid.css. */
+@media (max-width: 1160px) {
+  :is(.news-page, .article-page, .rent-page, .contacts-page) .page-grid {
+    grid-template-columns: 1fr;
+  }
+  /* THE SECOND DECLARATION, and it is not optional */
+  :is(.news-page, .article-page, .rent-page, .contacts-page) .page-grid > :is(.col-l, .col-r) {
+    grid-column: auto;
+  }
+  .article-related__grid {
+    grid-template-columns: 1fr;
+  }
+  .article-body {
+    margin-left: 0;
+  }
+  .article-gallery {
+    grid-template-columns: 1fr;
+  }
+  .news-card__body {
+    padding-top: 24px;
+  }
+}

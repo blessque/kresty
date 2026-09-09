@@ -1,4 +1,4 @@
-import { T } from '../../styles/tokens.gen';
+import { T } from '../styles/tokens.gen';
 
 /**
  * The page's background colour, as a pure function of scroll position.
@@ -25,6 +25,11 @@ import { T } from '../../styles/tokens.gen';
  */
 export const BAND_VH = 0.6;
 
+/* ROUND 24: the band is a FIELD on the instance now, not a module read. It used
+   to reach into `screens/concept/motionParams`, which would have made this
+   shared module depend on one page's tuning panel. The owner sets it; the
+   default is `BAND_VH`, so nothing changes for a page that never touches it. */
+
 /** what the map and the gap sit on, and the colour the first section blends up from */
 export const LEAD_COLOR = T.bgLightMain;
 
@@ -42,6 +47,8 @@ export class PageBackground {
   private stops: ColorStop[] = [];
   private mixSupported = true;
   private last = '';
+  /** crossfade band in viewports; «О Крестах» drives this from its panel */
+  bandVh = BAND_VH;
   /** true when the emitted colour is one stop's exact hex, no blend running */
   pure = true;
   /** index of the stop currently owning the frame; −1 is the lead-in white */
@@ -91,14 +98,14 @@ export class PageBackground {
     let t = 0;
     const next = cur + 1;
     if (next < n) {
-      const band = viewH * (this.stops[next].band ?? BAND_VH);
+      const band = viewH * (this.stops[next].band ?? this.bandVh);
       if (sample > this.stops[next].top - band / 2) {
         to = this.colorOf(next);
         t = smoothstep(this.stops[next].top - band / 2, this.stops[next].top + band / 2, sample);
       }
     }
     if (t === 0 && cur >= 0) {
-      const band = viewH * (this.stops[cur].band ?? BAND_VH);
+      const band = viewH * (this.stops[cur].band ?? this.bandVh);
       if (sample < this.stops[cur].top + band / 2) {
         from = this.colorOf(cur - 1);
         to = this.colorOf(cur);

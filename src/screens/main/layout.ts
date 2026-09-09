@@ -7,6 +7,7 @@
  * angles are measured from rendered DOM rects at runtime (Nav.ts).
  */
 import { asset } from '../../shared/assetUrl';
+import type { Route } from '../../router';
 
 export const STAGE_W = 1440;
 export const STAGE_H = 800;
@@ -25,7 +26,8 @@ export interface NavLinkSpec {
   x: number; // stage px, element center
   y: number;
   rot: number; // deg
-  route: 'concept' | 'contacts' | null;
+  /** ROUND 24: widened from a longhand union — seven routes now */
+  route: Route | null;
 }
 
 /**
@@ -82,15 +84,19 @@ function navSpec(
  * and `kontakty` still carry the `#concept` / `#contacts` routes, so
  * scripts/interact-test.mjs keeps driving `#nav-kontseptsia`.
  *
- * «Музей», «Аренда» and «События» have no page yet, so they route nowhere. The
- * labels are Figma's own: «События» (Events), not «Новости».
+ * ROUND 24: only «Музей» routes nowhere now — «Аренда» and «События» have pages.
+ * The labels are Figma's own: «События» (Events), not «Новости», even though the
+ * page it opens is titled «Новости». That is the designer's distinction between
+ * the nav's voice and the page's, not an inconsistency to tidy.
  */
 export const NAV_LINKS: NavLinkSpec[] = [
-  navSpec(0, 'muzey', 'Музей', null),
+  navSpec(0, 'muzey', 'Музей', null), // no design yet
   navSpec(1, 'kontseptsia', 'О «Крестах»', 'concept'),
   navSpec(2, 'kontakty', 'Контакты', 'contacts'),
-  navSpec(3, 'arenda', 'Аренда', null),
-  navSpec(4, 'sobytia', 'События', null),
+  navSpec(3, 'arenda', 'Аренда', 'rent'),
+  // «События» IS the news page — Figma's own label, and round 11 killed the
+  // main screen's news block because "news lives on its own «События» page"
+  navSpec(4, 'sobytia', 'События', 'news'),
 ];
 
 /**

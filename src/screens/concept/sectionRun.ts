@@ -3,7 +3,8 @@ import { bindShortWords } from '../../shared/ruTypography';
 import { asset } from '../../shared/assetUrl';
 import { PAGE_SECTIONS, sectionBg, type PageSection } from './pageSections';
 import { PageLight } from './pageLight';
-import type { ColorStop } from './pageBackground';
+import { MOTION } from './motionParams';
+import type { ColorStop } from '../../page/pageBackground';
 
 /**
  * The five editorial sections below the map: a pinned left column carrying the
@@ -52,6 +53,10 @@ import type { ColorStop } from './pageBackground';
  * with room to spare — so the same number still serves both, with more margin
  * than it had.
  */
+/* ROUND 23: this derivation now lives on the panel as a readout — `gapFloor()`
+   in motionParams.ts is `0.5 + bandVh/2`, so moving the colour band shows you
+   the minimum gap it demands instead of silently invalidating this comment.
+   The value itself is `MOTION_DEFAULTS.gapVh`. */
 const GAP_VH = 0.8;
 
 export interface SectionGeom {
@@ -76,16 +81,29 @@ export interface SectionGeom {
   sticky: boolean;
 }
 
+/**
+ * ROUND 24: the contact form's icon. It is a light STATION but not a
+ * `PAGE_SECTION` — the form has no background colour and no prose, so it must
+ * not enter `stops()`. The icon list can carry it from construction because
+ * `PageLight` only rasterises a mask when a station is first shown; the
+ * ELEMENT is what has to be registered later, via `addStation()`.
+ */
+const FORM_ICON = 'Culture-640.svg';
+
 export class SectionRun {
-  readonly light = new PageLight(PAGE_SECTIONS.map((s) => s.icon));
+  readonly light = new PageLight([...PAGE_SECTIONS.map((s) => s.icon), FORM_ICON]);
 
   private sections: HTMLElement[] = [];
   private gap = document.createElement('div');
   private geom: SectionGeom[] = [];
+  /** who held the light last frame — the incumbent in the hysteresis test */
+  private owner = 0;
 
   constructor(scroller: HTMLElement) {
     this.gap.className = 'page-gap';
-    this.gap.style.setProperty('--gap-vh', String(GAP_VH));
+    // ROUND 23: `--gap-vh` is written on the ROOT by applyMotionCss() so the
+    // panel can move it. Setting it inline here would win over that and the
+    // slider would look dead. `MOTION_DEFAULTS.gapVh` is GAP_VH.
     scroller.appendChild(this.gap);
 
     for (const s of PAGE_SECTIONS) {
@@ -114,13 +132,17 @@ export class SectionRun {
         `</figure>`
       : '';
 
+    // ROUND 23: the site grid (styles/grid.css) carries the horizontal position;
+    // `.sec-col` / `.sec-body` stay as the JS hooks `measure()` queries for, so
+    // the class that positions and the class that is measured are separate and
+    // neither can be renamed by accident.
     el.innerHTML =
-      `<div class="sec-grid">` +
-      `<div class="sec-col">` +
+      `<div class="sec-grid page-grid">` +
+      `<div class="sec-col col-l">` +
       `<div class="sec-icon" aria-hidden="true"></div>` +
       `<h2 class="sec-h2">${escapeHtml(bindShortWords(s.h2))}</h2>` +
       `</div>` +
-      `<div class="sec-body">${paras}${figure}</div>` +
+      `<div class="sec-body col-r">${paras}${figure}</div>` +
       `</div>`;
     return el;
   }
@@ -171,7 +193,8 @@ export class SectionRun {
       const need = g.pin + g.colH + g.padBottom;
       if (need > viewH) {
         console.warn(
-          `[kresty] section ${PAGE_SECTIONS[i].id}: pin+col+pad = ${need.toFixed(0)}px ` +
+          // `?? 'form'` — the sixth station has no PAGE_SECTIONS entry (round 24)
+          `[kresty] section ${PAGE_SECTIONS[i]?.id ?? 'form'}: pin+col+pad = ${need.toFixed(0)}px ` +
             `exceeds the ${viewH}px viewport — the icon light will pop at a swap. ` +
             `Clamp .sec-h2's font-size.`,
         );
@@ -183,14 +206,37 @@ export class SectionRun {
     return this.geom[0]?.top ?? Infinity;
   }
 
+  /** scroll position that puts section `i`'s icon in the middle of the frame —
+   *  where its light is at full envelope. Used by the motion panel's jumps. */
+  sectionTop(i: number, viewH: number): number {
+    const g = this.geom[i];
+    if (!g) return 0;
+    return g.top + g.toIcon - viewH / 2;
+  }
+
   get lastBottom(): number {
     const g = this.geom[this.geom.length - 1];
     return g ? g.top + g.height : 0;
   }
 
   /** each section contributes one colour stop, keyed to its own measured top */
+  /**
+   * ROUND 24: iterate PAGE_SECTIONS, not `geom`. `geom` has a sixth entry now
+   * (the contact form's station) and mapping over it would index
+   * `PAGE_SECTIONS[5]` — undefined — and hand `sectionBg` nothing to read. The
+   * form's own colour comes from `FORM_BG`, applied by `ConceptPage`.
+   */
   stops(): ColorStop[] {
-    return this.geom.map((g, i) => ({ top: g.top, color: sectionBg(PAGE_SECTIONS[i]) }));
+    return PAGE_SECTIONS.map((s, i) => ({ top: this.geom[i]?.top ?? 0, color: sectionBg(s) }));
+  }
+
+  /**
+   * Register an extra element as a light station — currently just the contact
+   * form. It must already be in the scroller and after the sections, since
+   * `measure()` reads `offsetTop` in document order.
+   */
+  addStation(el: HTMLElement) {
+    this.sections.push(el);
   }
 
   /**
@@ -234,13 +280,20 @@ export class SectionRun {
     let bestY = 0;
     for (let i = 0; i < this.geom.length; i++) {
       const y = this.iconY(i, scrollTop);
-      const d = Math.abs(y - viewH / 2);
+      let d = Math.abs(y - viewH / 2);
+      // ROUND 23: a deadband so the owner cannot chatter at the boundary. The
+      // incumbent gets a discount, so a challenger has to be CLEARLY nearer the
+      // centre before it takes the light — otherwise a slow scroll parked on the
+      // crossover can flip idx back and forth, and every flip is a re-bake.
+      // 0 reproduces the old pure nearest-to-centre test exactly.
+      if (i === this.owner) d -= MOTION.hysteresis * viewH;
       if (d < best) {
         best = d;
         idx = i;
         bestY = y;
       }
     }
+    this.owner = idx;
     return {
       idx,
       x: this.iconX(idx),

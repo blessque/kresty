@@ -1,3 +1,4 @@
+import type { Route } from '../../router';
 import logoSvg from '../../assets/logo.svg?raw';
 import { asset } from '../../shared/assetUrl';
 import { rasterizeMask, maskCoverage, maskToOverlayUrl } from '../../shared/rasterizeMask';
@@ -225,7 +226,7 @@ interface IconMask {
 
 export class ContactsScreen {
   el: HTMLElement;
-  onNavigate: (to: 'main') => void = () => {};
+  onNavigate: (to: Route) => void = () => {};
 
   private canvas!: HTMLCanvasElement;
   private scroller!: HTMLElement;

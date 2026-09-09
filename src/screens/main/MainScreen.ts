@@ -1,3 +1,4 @@
+import type { Route } from '../../router';
 import logoSvg from '../../assets/logo.svg?raw';
 import alsLogoSvg from '../../assets/als-logo.svg?raw';
 import signSvg from '../../assets/sign.svg?raw';
@@ -52,7 +53,7 @@ const SLIDE_DIP_S = 1.1;
 
 export class MainScreen {
   el: HTMLElement;
-  onNavigate: (to: 'concept' | 'contacts') => void = () => {};
+  onNavigate: (to: Route) => void = () => {};
 
   private canvas!: HTMLCanvasElement;
   private stage!: HTMLElement;

@@ -1,3 +1,4 @@
+import type { Route } from '../../router';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -101,7 +102,7 @@ const CREASE_DEG = 35;
 
 export class ConceptScreen {
   el: HTMLElement;
-  onNavigate: (to: 'main') => void = () => {};
+  onNavigate: (to: Route) => void = () => {};
   /**
    * The reader scrolled off the bottom into the main screen. Distinct from
    * `onNavigate` because it is a SEAM, not a click: the router uses it to pick
@@ -124,6 +125,8 @@ export class ConceptScreen {
   private labels!: MapLabels;
   private drawer!: BuildingDrawer;
   private panel?: import('./WaterPanel').WaterPanel;
+  /** type-only import, so neither panel enters the static graph (round 23) */
+  private motionPanel?: import('./MotionPanel').MotionPanel;
 
   private maxShear = MAX_SHEAR;
   private fitMargin = FIT_MARGIN;
@@ -189,6 +192,17 @@ export class ConceptScreen {
     });
     // the GLB may still be loading, in which case `ground` did not exist above
     this.pushWaterParams();
+
+    // The page-motion panel, on the LEFT so it does not fight the water panel's
+    // right edge — both are open at once and tuning the swap means watching the
+    // sections, which the water panel would otherwise cover.
+    const { MotionPanel } = await import('./MotionPanel');
+    this.motionPanel = new MotionPanel(this.el, {
+      remeasure: () => this.page.measure(this.scroll.stageW, this.scroll.viewH),
+      scrollToSection: (i) =>
+        this.scroll.scrollTo(this.page.sections.sectionTop(i, this.scroll.viewH)),
+      renderCount: () => this.page.sections.light.renderCount,
+    });
   }
 
   /** re-push once the model exists, so a stored tuning survives a reload */
@@ -230,7 +244,10 @@ export class ConceptScreen {
       return n;
     };
 
-    const home = add('a', 'concept-home', logoSvg) as HTMLAnchorElement;
+    // ROUND 24: BOTH classes. `.page-home` carries the geometry, now shared with
+    // four other pages (styles/page.css); `.concept-home` carries only what is
+    // concept's — the scroll-driven exit once the intro has gone.
+    const home = add('a', 'page-home concept-home', logoSvg) as HTMLAnchorElement;
     home.href = '#';
     home.setAttribute('aria-label', 'На главную');
     home.addEventListener('click', (e) => {
@@ -558,6 +575,8 @@ export class ConceptScreen {
         this.transitionBusy(),
       );
       if (this.panel) this.reportStats(now);
+      // self-throttled to 4 Hz inside — its readout forces layout
+      this.motionPanel?.tick();
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);

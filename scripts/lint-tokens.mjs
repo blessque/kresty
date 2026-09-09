@@ -49,6 +49,7 @@ const EXEMPT = [
   /styles\/tokens\.gen\.css$/, // generated; guarded by `npm run tokens:check`
   /styles\/fonts\.css$/,
   /waterPanel\.css$/,
+  /motionPanel\.css$/, // round 23 — the page-motion panel, same reasoning
 ];
 
 /**

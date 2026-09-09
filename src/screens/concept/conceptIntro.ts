@@ -24,8 +24,13 @@ export function buildIntro(): HTMLElement {
   const el = document.createElement('header');
   el.className = 'concept-intro';
 
+  // ROUND 23: the intro rides the site grid, so its left edge is the page centre
+  // — the same 720 the sections' right column starts at. The header itself is
+  // the grid; the body is its right column.
+  el.classList.add('page-grid');
+
   const inner = document.createElement('div');
-  inner.className = 'concept-intro__body';
+  inner.className = 'concept-intro__body col-r';
 
   const h1 = document.createElement('h1');
   h1.className = 'concept-intro__title';

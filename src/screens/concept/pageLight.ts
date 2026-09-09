@@ -3,6 +3,27 @@ import { rasterizeMask, maskCoverage } from '../../shared/rasterizeMask';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
+import { MOTION } from './motionParams';
+
+/**
+ * The envelope's shape. `smoothstep` is what shipped and is the default, so the
+ * other four exist only for the panel to compare against it.
+ * `t` is already normalised to 0..1 across one ramp.
+ */
+function shape(t: number): number {
+  switch (MOTION.curve) {
+    case 0:
+      return t; // linear — the reference for "what does easing buy?"
+    case 2:
+      return t * t * t * (t * (t * 6 - 15) + 10); // smootherstep, C²-continuous
+    case 3:
+      return 0.5 - 0.5 * Math.cos(Math.PI * t);
+    case 4:
+      return Math.pow(t, Math.max(0.1, MOTION.gamma));
+    default:
+      return t * t * (3 - 2 * t); // smoothstep
+  }
+}
 
 /**
  * The hero light, lighting one section icon at a time.
@@ -83,26 +104,20 @@ const CONTENT_FRAC = 0.706;
 const REF_COVERAGE = 0.0806;
 
 /**
- * The designer's own «Контакты» settings, handed over verbatim as a "Copy URL"
- * link in round 13 and reused here rather than re-derived.
+ * ROUND 23 MOVED THE LIGHT'S SETTINGS TO `motionParams.ts` and this constant is
+ * down to the one value that is not a dial. They were the designer's own
+ * «Контакты» numbers, handed over verbatim as a "Copy URL" link in round 13;
+ * `MOTION_DEFAULTS` now carries them, so there is still exactly one copy.
  *
- * `freeze` is not represented: there is no clock to stop, because the light is
- * redrawn only when the scroll or the cursor actually moves it. `breathe` and
- * `shimmer` are therefore inert by construction, exactly as they were on the
- * page these numbers were dialled on.
+ * `freeze` was never represented: there is no clock to stop, because the light
+ * is redrawn only when the scroll or the cursor actually moves it. `breathe`
+ * and `shimmer` are therefore inert by construction, exactly as they were on
+ * the page these numbers were dialled on.
  */
 const LIGHT = {
-  dissolve: 0.36,
-  core: 0.45,
-  godrays: 1.75,
-  bloom: 1.05,
-  falloff: 1010,
-  exposure: 1.3,
-  ca: 0.028,
   /** apparent size of the icon ink, CSS px — the DEFAULT; the caller measures
    *  the real box and passes it, since it is responsive (see `bake`) */
   px: 220,
-  parallax: 2,
 } as const;
 
 interface IconMask {
@@ -286,11 +301,21 @@ export class PageLight {
    * change for exactly the reason a swap-pop would fail here.
    */
   static envelope(u: number): number {
-    const EDGE = 0.2;
-    const t = Math.min(u, 1 - u) / EDGE;
+    // ROUND 23: the ramp width, its shape and its symmetry are dials now
+    // (motionParams.ts). The shipped defaults reproduce the old hard-coded
+    // `EDGE = 0.2` + smoothstep exactly, so this is a no-op until something
+    // moves a slider.
+    //
+    // `asymmetry` splits what `min(u, 1 − u)` used to force to be equal: −1
+    // puts all the ramp on the way IN, +1 on the way OUT. The two edges are
+    // measured from opposite ends, so the sign has to flip between them.
+    const { edge, asymmetry } = MOTION;
+    const inEdge = Math.max(0.01, edge * (1 - asymmetry));
+    const outEdge = Math.max(0.01, edge * (1 + asymmetry));
+    const t = Math.min(u / inEdge, (1 - u) / outEdge);
     if (t <= 0) return 0;
     if (t >= 1) return 1;
-    return t * t * (3 - 2 * t); // smoothstep
+    return shape(t);
   }
 
   /**
@@ -359,16 +384,21 @@ export class PageLight {
     this.renderCount++;
 
     const rs = this.renderScale;
-    const gain = this.exposure * LIGHT.exposure;
+    // ROUND 23: read from the live MOTION set, whose defaults ARE the `LIGHT`
+    // constants below — so this is identical until the panel moves something.
+    // `this.exposure` stays a separate factor: it is the per-icon coverage
+    // NORMALISATION (a measurement), not a taste dial, and multiplying the two
+    // is what keeps a solid silhouette matching the hero cross.
+    const gain = this.exposure * MOTION.exposure;
     const p: RayFieldParams = {
       ...SIYANIE,
-      dissolve: LIGHT.dissolve,
-      godrays: LIGHT.godrays * gain,
-      bloom: LIGHT.bloom * gain,
-      coreIntensity: LIGHT.core * gain,
-      falloffL: LIGHT.falloff,
-      ca: LIGHT.ca,
-      parallax: LIGHT.parallax,
+      dissolve: MOTION.dissolve,
+      godrays: MOTION.godrays * gain,
+      bloom: MOTION.bloom * gain,
+      coreIntensity: MOTION.core * gain,
+      falloffL: MOTION.falloff,
+      ca: MOTION.ca,
+      parallax: MOTION.parallax,
       grain: 0,
       // Reference px ARE CSS px here, so the falloff keeps its hero magnitude
       // and the light decays inside the frame exactly as on the main screen.

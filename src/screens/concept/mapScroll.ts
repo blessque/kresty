@@ -180,6 +180,11 @@ export class MapScroll {
     });
   }
 
+  /** jump to an absolute scroller position (the motion panel's section jumps) */
+  scrollTo(top: number) {
+    this.scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
   /** focus mode pins the view: the isometric framing assumes the viewport, and
    *  a scroll fighting the swing has no defined meaning */
   lock(on: boolean) {

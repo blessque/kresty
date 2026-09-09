@@ -82,18 +82,18 @@
    title would stack into the same column. */
 .concept-intro {
   position: relative;
-  display: flex;
-  justify-content: center;
-  padding: 184px 32px 96px;
+  padding: 184px 0 96px;
 }
 
+/* ROUND 23: this is `.col-r` on the page grid now, and that FIXES A BUG the old
+   comment described but did not deliver. It said "the design's 1440-wide frame
+   starts the block at x=720, i.e. the centre" — but the `50%` in the old
+   `margin-right` resolved against the flex container's CONTENT box (1376 at
+   1440), not the viewport, so the block actually started at 752 and its right
+   edge stopped 178px short of the edge every section below it used. On the grid
+   it starts at exactly 720, with the same 478px measure. */
 .concept-intro__body {
-  /* the design's 1440-wide frame starts the block at x=720, i.e. the centre,
-     and runs the text to a 478px measure. Expressed as a centred row with the
-     body in the right half so it holds at any width rather than at 1440. */
-  width: min(478px, 100%);
-  margin-left: auto;
-  margin-right: max(0px, calc(50% - 478px - 32px));
+  max-width: 478px;
 }
 
 .concept-intro__title {
@@ -128,14 +128,13 @@
    children scroll with its content. So it is told to leave once the intro it
    belongs to has gone — it is the page's masthead, and the map underneath has
    its own top-left furniture (the metro chip) that it would otherwise sit on. */
+/* ROUND 24: the geometry moved to `.page-home` in styles/page.css and the
+   element carries BOTH classes. What is left here is concept-only — the
+   scroll-driven exit and the slower clock it runs on.
+   (Checked while moving this: the caption solver does NOT reference the class.
+   `mapLabels.ts` takes its obstacle as a measured rect, so the docs' claim that
+   renaming this would need all seven captions re-verified is stale.) */
 .concept-home {
-  position: absolute;
-  left: 32px;
-  top: 32px;
-  width: 251.2px;
-  height: 40px;
-  z-index: 6;
-  cursor: pointer;
   /* Two clocks on one property, deliberately: the 0.35s leg is the scroll-driven
      exit below (`.past-intro`), the hover is round 22's interaction curve. A
      shorthand can only hold one, so the hover restates its own duration. */
@@ -147,23 +146,6 @@
    the scroll-driven exit: `#screen-concept.past-intro .concept-home` is (1,2,0)
    and still wins over this (0,2,0), so a hover cannot resurrect a masthead that
    has already left. */
-@media (hover: hover) and (pointer: fine) {
-  .concept-home:hover {
-    opacity: 0.75;
-    transition: opacity 240ms var(--ease-out);
-  }
-}
-
-.concept-home svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.concept-home svg path {
-  fill: var(--color-link);
-}
-
 #screen-concept.past-intro .concept-home {
   opacity: 0;
   pointer-events: none;
@@ -525,12 +507,7 @@
 /* The page's colour. The SINGLE source of it — nothing else below may carry a
    background of its own, or it sits as an unfading band across the crossfade
    running underneath (round 16's `.res-gap` shipped exactly that bug). */
-.page-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
+/* `.page-bg` moved to styles/page.css (round 24) — every page has one now. */
 
 /* THE ID-SCOPED RULE ABOVE (`#screen-concept canvas`) OUTRANKS ANY BARE CLASS,
    and round 16.1 lost a debugging round to it: the light simply vanished,
@@ -581,20 +558,32 @@
      The bottom pad is one of the three terms of that invariant, so it flexes
      with the viewport. The TYPE does not: the h2 is a Figma text style at a
      fixed 44px, and shrinking a designer's scale to make a layout fit is the
-     wrong lever. Flex what is ours — pad, pin, icon box — not what is theirs. */
-  padding: 20vh 32px clamp(56px, 12vh, 96px);
+     wrong lever. Flex what is ours — pad, pin, icon box — not what is theirs.
+
+     ROUND 23: the HORIZONTAL inset is gone from here — `.page-grid` owns it now
+     (styles/grid.css), and it was previously encoded TWICE, once as this 32px
+     padding and once as `.sec-grid`'s `max-width: 1376px`, which is exactly
+     1440 − 2×32. Only one of the two ever bound, depending on the width.
+
+     Both remaining pads are custom properties so the motion panel can move them.
+     The fallbacks ARE the shipped values, so the stylesheet stands alone if the
+     JS never writes them.
+
+     ROUND 23.1: `--sec-pad-top` is THE GAP BETWEEN SECTIONS and its default went
+     20vh → 40vh. It is the free lever: `padBottom` is a term of the invariant
+     above, `padTop` is in neither that nor the column. */
+  padding: var(--sec-pad-top, 40vh) 0 var(--sec-pad-bottom, clamp(56px, 12vh, 96px));
   /* MUST stay visible: an `overflow: hidden` ancestor between a sticky element
      and its scrollport silently clips it and it never sticks. */
   overflow: visible;
   color: var(--color-text-ondark-main);
 }
 
+/* ROUND 23: `.sec-grid` is now just `.page-grid` plus the overflow rule sticky
+   needs. The 48px gutter is deleted — the columns MEET at the page centre, so
+   the right column's prose starts at exactly 720 in a 1440 window. See
+   styles/grid.css for why a gap here would be wrong on every page. */
 .sec-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  max-width: 1376px;
-  margin: 0 auto;
   overflow: visible;
 }
 
@@ -610,6 +599,14 @@
   position: sticky;
   top: var(--sec-pin, 14vh);
   align-self: start;
+  /* ROUND 23: centred, per the design. The ICON has to come with it — it is a
+     block with an explicit width, so centring only the text would leave the
+     light flush left and split the heading from the beam that belongs to it.
+     Consequence worth knowing: `sectionRun.measure()` reads the icon's rect for
+     `iconX`, which becomes the god-ray's centre, so the beam moves to the
+     column centre too. That is the point, not a side effect — but it is why
+     `iconAlign` is a dial on the motion panel rather than a hard-coded choice. */
+  text-align: var(--sec-col-align, center);
 }
 
 /* Empty and aria-hidden: it reserves the box the LIGHT draws into, and its
@@ -622,9 +619,11 @@
      640px viewport. The light's `signSize` is MEASURED from this box and
      passed to `bake()` — it does not follow automatically, and a fixed
      signSize drew a 220px icon into a 128px box until it did. */
-  width: clamp(140px, 16vh, 220px);
-  height: clamp(140px, 16vh, 220px);
+  width: var(--sec-icon-size, clamp(140px, 16vh, 220px));
+  height: var(--sec-icon-size, clamp(140px, 16vh, 220px));
   margin-bottom: clamp(20px, 4vh, 40px);
+  /* follows `.sec-col`'s text-align — `auto` centres, `0` sits at the start */
+  margin-inline: var(--sec-icon-inline, auto);
 }
 
 .sec-h2 {
@@ -637,10 +636,23 @@
      names the offending section, rather than quietly shrinking the type. */
   font-size: var(--type-h2-size);
   line-height: var(--type-h2-lh);
-  max-width: 15em;
+  /* ROUND 23: THE 80% IS THE HEADING'S CLEARANCE FROM THE CENTRE LINE, and it is
+     required, not cosmetic. With the gutter gone the column runs to 720, and
+     measured before this the «hotel» heading's longest line ended at 717 — three
+     pixels from the prose. The old 48px gutter had been hiding it.
+     The grid's own rule is the fix: a gap comes from content not filling its
+     column, exactly like the News page's image slack. 80 % of 624 leaves ~62px
+     each side at the design frame — one rhythm unit — and it scales down with
+     the column instead of collapsing at a fixed 64.
+     `min()` so the 15em type cap still wins on very wide columns, and
+     `margin-inline: auto` so the cap re-centres rather than sitting left. */
+  max-width: min(15em, 80%);
+  margin-inline: auto;
 }
 
 .sec-body {
+  /* prose stays left-aligned; only the sticky column centres */
+  text-align: left;
   /* ROUND 20: said `ALS Hauss`, which is NOT LOADED — see main.css's
      .logo-descriptor. This block and every .cf-* element inside it (they
      inherit) had been rendering in system sans. Family and weight move
@@ -673,118 +685,10 @@
 
 /* ── the contact form ────────────────────────────────────────────────────── */
 
-/* At least one viewport tall, and that is an INVARIANT rather than a look: it
-   is what keeps the last section's light station clear of the handoff zone. */
-.contact-form {
-  min-height: 100%;
-  color-scheme: dark;
-}
+/* ROUND 24: every `.contact-form` / `.cf-*` rule moved to `src/styles/page.css`
+   — «Контакты» and «Аренда» use the same form. Nothing concept-specific was
+   left behind; if a rule here needs to differ, override it, do not fork it. */
 
-.cf-lead,
-.cf-dept,
-.cf-note {
-  margin: 0 0 1.2em;
-}
-.cf-dept {
-  color: var(--color-text-ondark-secondary);
-}
-/* ROUND 22: the underline used to SNAP — `text-decoration` cannot be
-   transitioned, so the only honest way to animate it is to draw it yourself.
-   `text-decoration-color` from transparent gives the real underline (correct
-   descender skipping, correct thickness) with something to fade. */
-.cf-phone {
-  color: var(--color-link);
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 0.18em;
-  transition: text-decoration-color 240ms var(--ease-out);
-}
-@media (hover: hover) and (pointer: fine) {
-  .cf-phone:hover {
-    text-decoration-color: currentColor;
-  }
-}
-
-.contact-form form {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px 24px;
-  margin-top: 40px;
-  max-width: 34em;
-}
-.cf-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cf-field--message {
-  grid-column: 1 / -1;
-}
-.cf-field label {
-  font-size: var(--type-caption-sm-size);
-  line-height: var(--type-caption-sm-lh);
-  color: var(--color-text-ondark-secondary);
-}
-.cf-field input,
-.cf-field textarea {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--color-text-ondark-secondary);
-  padding: 6px 0;
-  color: var(--color-text-ondark-main);
-  font-family: inherit;
-  /* A FORM CONTROL DOES NOT INHERIT font-weight: the UA default is `normal`
-     = 400, and on Chromius's 50/120/232 axis that clamps to 232 = BLACK.
-     `font-family: inherit` does not carry the weight with it, so this must be
-     stated explicitly — it is the one place the trap survives inheritance. */
-  font-weight: var(--type-base-weight);
-  /* Base Text — and comfortably over the 16px floor below which iOS zooms a
-     focused input */
-  font-size: var(--type-base-size);
-  line-height: var(--type-base-lh);
-  transition: border-color 240ms var(--ease-out);
-}
-.cf-field textarea {
-  resize: none;
-  overflow: hidden;
-}
-.cf-field input:focus,
-.cf-field textarea:focus {
-  outline: none;
-  border-bottom-color: var(--color-text-ondark-main);
-}
-
-/* Safari and Chrome paint their own autofill background and `background-color`
-   CANNOT override it on a dark field — the inset shadow is the only way to
-   repaint it, and the text needs -webkit-text-fill-color to stay legible. */
-.cf-field input:-webkit-autofill,
-.cf-field input:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--color-text-ondark-main);
-  -webkit-box-shadow: inset 0 0 0 1000px var(--field-form);
-  transition: background-color 9999s ease-in-out 0s;
-}
-
-/* ROUND 21: «Отправить» is the shared `.btn` (styles/button.css) — this rule is
-   grid placement only. The component supplies main·ondark, which is what this
-   dark `--field-form` panel wants; its ink therefore goes from near-black to
-   `--color-link`, its horizontal padding 32 → 24, and its `opacity: .85` hover
-   becomes the designer's scale+0.8. All three are the component's spec, not
-   drift. */
-.cf-submit {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
-.cf-thanks {
-  display: none;
-  grid-column: 1 / -1;
-  margin: 0;
-}
-.contact-form form.sent .cf-field,
-.contact-form form.sent .cf-submit {
-  display: none;
-}
-.contact-form form.sent .cf-thanks {
-  display: block;
 }
 
 /* ── the handoff into the main screen ────────────────────────────────────── */
@@ -792,19 +696,41 @@
 /* Deliberately EMPTY and with no background of its own: `.page-bg` carries the
    dawn into `#56b7e6` underneath it. See mainHandoff.ts for the budget behind
    the height and why the trigger is an interior line rather than scroll-end. */
-.main-handoff {
-  height: calc(var(--handoff-vh, 3.5) * 100%);
-  pointer-events: none;
-}
+/* `.main-handoff` moved to styles/page.css (round 24). */
 
 /* Sticky needs vertical ROOM, so the fallback keys on height as well as width.
    Below either threshold the column simply flows, the station invariant stops
    applying, and the assertion in sectionRun.ts goes quiet with it. A short
-   laptop window is the case that matters — 1280x720 is not a phone. */
-@media (max-width: 900px), (max-height: 720px) {
+   laptop window is the case that matters — 1280x720 is not a phone.
+
+   ROUND 23 RAISED THE WIDTH FROM 900 TO 1160, and the number is measured, not
+   picked. With the gutter gone the left column runs to the page centre, so a
+   heading that outgrows its 80 % measure does not crowd a gutter — it crosses
+   into the prose. The binding constraint is the longest unbreakable Russian
+   word: «экскурсионных» in the museum heading is 407px of min-content at 44px,
+   which needs a 509px column, which needs ~1175px of viewport.
+
+   Swept live, worst-section clearance from the centre line:
+     1440 → 66px    1320 → 71px    1240 → 54px    1180 → 52px
+     1120 → 30px    1024 → −7px    960 → −32px   (overflows the prose)
+
+   So two columns hold to ~1180 and fail below it. 900 was safe only because the
+   old 48px gutter absorbed the overrun. Do not lower this without re-running
+   that sweep — the failure is invisible in English and appears in Russian. */
+@media (max-width: 1160px), (max-height: 720px) {
   .sec-grid,
   .contact-form form {
     grid-template-columns: 1fr;
+  }
+  /* THE TEMPLATE IS NOT ENOUGH — the PLACEMENT has to go too. `.col-r`'s
+     `grid-column: 2` survives the collapse and creates an IMPLICIT second
+     column, so instead of one stacked column you get two unequal ones.
+     Measured at 1024 before this line: `348.078px 539.312px`. It looks like
+     the media query simply is not matching, which is the wrong thing to go
+     and debug. See styles/grid.css. */
+  .sec-grid > .col-l,
+  .sec-grid > .col-r {
+    grid-column: auto;
   }
   .sec-col {
     position: static;
