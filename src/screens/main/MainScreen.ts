@@ -147,15 +147,20 @@ export class MainScreen {
     this.hoverScene.appendChild(dark);
     // Index-aligned with NAV_LINKS (positional coupling — keep the order, and
     // keep the LENGTH: `lastHovered` indexes straight into this, so a link
-    // without an entry would hover to `undefined`). «О «Крестах»» gets its own
-    // plan render, fixed by Figma frame 340:594; the rest borrow the closest
-    // slide photo by meaning.
+    // without an entry would hover to `undefined`).
+    //
+    // ROUND 21: the client re-paired all five. Round 11 had picked them by
+    // "closest slide photo by meaning" and gave «О «Крестах»» the plan render
+    // on the strength of Figma frame 340:594; the client's set instead reads
+    // the render as the whole COMPLEX, which is what «Аренда» is letting. It is
+    // a clean permutation — every photo was already in the set, and
+    // `kids-playground.webp` drops out of the hover layer (it stays slide 2).
     const hoverImages = [
-      '/resources/atrium-roof.webp', // Музей — the cross-shaped block from above
-      '/resources/concept-plan.webp', // О «Крестах» — hover-only, never a slide
-      '/resources/forum.webp', // Контакты
-      '/resources/table.webp', // Аренда
-      '/resources/kids-playground.webp', // События
+      '/resources/skies.webp', // Музей — sky over the water
+      '/resources/atrium-roof.webp', // О «Крестах» — the cross-shaped block from above
+      '/resources/table.webp', // Контакты — people around the table
+      '/resources/concept-plan.webp', // Аренда — the full complex, hover-only, never a slide
+      '/resources/forum.webp', // События — the speaker at a meetup
     ];
     for (const src of hoverImages) {
       const img = document.createElement('img');
@@ -203,7 +208,11 @@ export class MainScreen {
     // Round 11: «Связаться», top right (Figma 840:40). `.corners` is
     // pointer-events: none, so an interactive child has to opt back in.
     const cta = document.createElement('a');
-    cta.className = 'contact-cta';
+    // ROUND 21: the designer's button component (styles/button.css). `.btn`
+    // alone is main·ondark — a white plate with blue ink — which is exactly what
+    // this corner needs on the blue field. `.contact-cta` now carries POSITION
+    // only.
+    cta.className = 'btn contact-cta';
     cta.href = '#contacts';
     cta.textContent = CONTACT_CTA;
     cta.addEventListener('click', (e) => {

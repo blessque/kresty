@@ -99,7 +99,9 @@ export class ContactForm {
       `<a class="cf-phone" href="tel:${PHONE.replace(/[^+\d]/g, '')}">${escapeHtml(PHONE)}</a></p>` +
       `<p class="cf-note">${escapeHtml(bindShortWords(NOTE))}</p>` +
       `<form novalidate>${fields}` +
-      `<button type="submit" class="cf-submit">Отправить</button>` +
+      // ROUND 21: the shared button (styles/button.css). It is a class contract
+      // rather than a factory precisely so it reaches this string.
+      `<button type="submit" class="btn cf-submit">Отправить</button>` +
       `<p class="cf-thanks">Спасибо, мы свяжемся с вами.</p>` +
       `</form>` +
       `</div></div>`

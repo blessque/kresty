@@ -63,7 +63,7 @@
   --type-h2-size: var(--fs-h2);  --type-h2-lh: var(--lh-1-1);  --type-h2-weight: var(--font-weight-medium); /* H2 */
   --type-h3-size: var(--fs-lead);  --type-h3-lh: var(--lh-1-2);  --type-h3-weight: var(--font-weight-medium); /* H3 */
   --type-base-size: var(--fs-base);  --type-base-lh: var(--lh-1-45);  --type-base-weight: var(--font-weight-regular); /* Base Text */
-  --type-caption-big-size: var(--fs-base);  --type-caption-big-lh: var(--lh-1-2);  --type-caption-big-weight: var(--font-weight-medium); /* Caption Big */
+  --type-caption-big-size: var(--fs-base);  --type-caption-big-lh: var(--lh-1-2);  --type-caption-big-weight: var(--font-weight-regular); /* Caption Big */
   --type-caption-sm-size: var(--fs-small);  --type-caption-sm-lh: var(--lh-1-2);  --type-caption-sm-weight: var(--font-weight-regular); /* Caption Small */
 }
 

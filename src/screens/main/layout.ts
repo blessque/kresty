@@ -127,8 +127,9 @@ export const SHOWREEL_IMAGES = [
  * that file's order — the same seven the «О Крестах» page unwraps at length
  * under a different h2.
  *
- * `concept-plan.webp` is deliberately absent: it is a nav-hover image only
- * (Figma 340:594), never a slide.
+ * `concept-plan.webp` is deliberately absent: it is a nav-hover image only,
+ * never a slide. (Round 21 moved it from «О «Крестах»» to «Аренда» — still
+ * hover-only, just on a different link. See `hoverImages` in MainScreen.ts.)
  */
 export interface SliderSlide {
   photo: string;
@@ -137,9 +138,12 @@ export interface SliderSlide {
 
 export const SLIDER_SLIDES: SliderSlide[] = [
   {
-    // TODO(photos): awaiting a real Причал (pier) photograph in new-photos/.
-    // `skies.webp` is a stand-in — it is the only water-and-sky frame we have.
-    photo: '/resources/skies.webp',
+    // ROUND 22: the real Причал frame landed — an aerial of a passenger boat moored
+    // at the embankment, which is the headline's subject rather than a stand-in for
+    // it. Encoded by the round-8 recipe (centre-crop 3:2, cap the long edge at 2400,
+    // cwebp -q 82): 2896×2172 → 2400×1600, 398KB. `skies.webp`, the stand-in it
+    // replaces, is not orphaned — round 21 made it the «Музей» hover image.
+    photo: '/resources/pier.webp',
     headline: 'Свобода строить новые маршруты по воде',
   },
   {
@@ -148,7 +152,12 @@ export const SLIDER_SLIDES: SliderSlide[] = [
     headline: 'Свобода строить культурные планы на выходные',
   },
   {
-    photo: '/resources/hotel.webp',
+    // ROUND 22.1: `atrium-floor.webp`, not `hotel.webp`. The hotel frame is an
+    // exterior elevation; the headline is about staying, so the room-side view
+    // is the illustration. `hotel.webp` is not orphaned — it is still the
+    // «Отели» section image (pageSections.ts) and both hotels' drawer hero
+    // (buildingsInfo.ts), which is also why this had to be the slide that moved.
+    photo: '/resources/atrium-floor.webp',
     headline: 'Свобода остановиться там, где хочется',
   },
   {

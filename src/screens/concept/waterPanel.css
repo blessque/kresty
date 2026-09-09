@@ -20,7 +20,7 @@
   font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 400;
   backdrop-filter: blur(6px);
-  transition: transform 0.25s cubic-bezier(0.3, 0, 0.12, 1);
+  transition: transform 0.25s var(--ease-move);
 }
 .water-panel.hidden {
   transform: translateX(100%);
@@ -99,7 +99,9 @@
 .wp-row input[type='color'] {
   grid-column: 1 / -1;
   width: 100%;
-  accent-color: #56b7e6;
+  /* the brand blue, and it was written raw here — this file is lint-exempt, so
+     nothing caught the one duplicate of the exact value the token layer owns. */
+  accent-color: var(--color-link);
 }
 .wp-row select {
   background: rgba(255, 255, 255, 0.08);

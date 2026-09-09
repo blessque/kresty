@@ -259,7 +259,7 @@
     "$type": "typography",
     "$value": {
       "fontFamily": "{fontFamilies.als-chromius}",
-      "fontWeight": "{fontWeights.als-chromius-0}",
+      "fontWeight": "{fontWeights.als-chromius-1}",
       "lineHeight": "{lineHeights.2}",
       "fontSize": "{fontSize.1}",
       "letterSpacing": "{letterSpacing.0}",

@@ -78,8 +78,10 @@ button {
   pointer-events: none;
 }
 
-@media (pointer: coarse) {
-  :root {
-    --hover-disabled: 1;
-  }
-}
+/* ROUND 22 DELETED `--hover-disabled` from here. It was set under
+   `@media (pointer: coarse)` and NOTHING in any stylesheet or module ever read
+   it, so touch devices were getting the full hover set with no suppression: a
+   tap fires `:hover` and then has nothing to clear it, leaving the button
+   permanently swollen. A flag only works if something reads it — the rules that
+   must not fire on touch are now gated at the point of use with
+   `@media (hover: hover) and (pointer: fine)`. See button.css. */

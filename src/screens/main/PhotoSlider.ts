@@ -3,15 +3,23 @@ import { IdleWatcher } from '../../shared/idle';
 import { bindShortWords } from '../../shared/ruTypography';
 
 /*
- * Idle delay before the slider takes over. ROUND 11 cut this 7000 → 1000: the
- * headlines are now the page's permanent copy, not a reward for waiting.
+ * Idle delay before the slider takes over. Round 11 cut this 7000 → 1000 (the
+ * headlines are the page's permanent copy, not a reward for waiting); ROUND 22
+ * gave half of it back — 1000 read as the slider snatching the screen out of a
+ * pause rather than answering one.
  *
- * This makes the round-18.3 activation gate load-bearing rather than
- * theoretical — every hover-out re-arms a 1 s countdown instead of a 7 s one,
- * so the path that used to bring the headline back word by word is now walked
- * constantly. Do not relax `setHoverBlocked`/`tryActivate` below.
+ * It is still short enough that the round-18.3 activation gate is load-bearing
+ * rather than theoretical: every hover-out re-arms the countdown, so the path
+ * that used to bring the headline back word by word is walked constantly. Do not
+ * relax `setHoverBlocked`/`tryActivate` below.
+ *
+ * TWO THINGS ARE COUPLED TO THIS NUMBER and must move with it:
+ *  - `OUT_MS + 100` (700) is the exit cleanup, and round 21 depends on IDLE_MS
+ *    being the LONGER of the two — the words must be back at rest before a wake.
+ *  - `scripts/headline-probe.mjs` waits out this delay twice. Its guard fails
+ *    closed (exit 2) rather than passing vacuously, but it does have to be told.
  */
-const IDLE_MS = 1000;
+const IDLE_MS = 2000;
 const WORD_STAGGER_MS = 80; // per-word reveal delay
 
 /* ── the slide-change timeline (round 9) ──────────────────────────────────────
@@ -235,6 +243,11 @@ export class PhotoSlider {
     this.firstThrow = true;
     clearTimeout(this.cleanupTimer);
     this.headline.classList.remove('show', 'out');
+    // ROUND 21: and drop the spans, not just the classes. `.out .word` sets
+    // `opacity: 1` to freeze the words VISIBLE through the melt — correct when
+    // they were up, and a flash when they were not. Leaving last run's spans in
+    // the DOM is what let the next `.out` re-light them over a blank screen.
+    this.headline.replaceChildren();
     // An interrupted cycle can leave a layer mid-fade. Reset BOTH to hidden
     // while the whole layer is still faded out — in particular the old front
     // must lose `visible`, or it would sit opaque on the upper layer with its
@@ -261,7 +274,16 @@ export class PhotoSlider {
 
     // ── t=0: the old text leaves and the scrim opens together, so the photo is
     // already unobstructed by the time the text is gone.
-    this.retireHeadline();
+    //
+    // ROUND 21: only retire a headline that is actually UP. On a run's FIRST
+    // throw there is nothing to retire — `activate()` has just cleared it — and
+    // `.out` on an empty/hidden headline is not a no-op: it re-freezes stale
+    // words at `opacity: 1` and holds the block open for 540ms over a photo
+    // layer that is still near 0 (its fade-in takes 1100ms). That is the
+    // "heading appears on blue and melts away" the client kept reporting; it
+    // fired on EVERY idle wake, because IDLE_MS is longer than the 700ms
+    // cleanup below, so the words were always back at rest by then.
+    if (!this.firstThrow) this.retireHeadline();
     restartAnim(this.overlay, this.firstThrow ? 'scrim-open-first' : 'scrim-open', [
       'scrim-open',
       'scrim-open-first',
@@ -351,6 +373,11 @@ export class PhotoSlider {
     clearTimeout(this.cleanupTimer);
     this.cleanupTimer = window.setTimeout(() => {
       this.headline.classList.remove('out');
+      // ROUND 21: the melt has landed, so the words have no further job. Both
+      // statements are in the SAME task on purpose — one style recalc, so the
+      // parent returning to its (now hidden) resting state and the spans going
+      // away are never separated by a frame.
+      this.headline.replaceChildren();
       // stop the drift so a re-entry starts from a known scale
       this.layers.forEach((l) => l.classList.remove('drifting'));
     }, OUT_MS + 100);

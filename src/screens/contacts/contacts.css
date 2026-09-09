@@ -137,6 +137,18 @@
   fill: var(--color-link);
 }
 
+/* ROUND 22: the wordmark is a home LINK here too and had no hover state — same
+   gap, same fix, same numbers as `.concept-home`. There is no scroll-driven
+   opacity on this page, so it needs no specificity dance. */
+@media (hover: hover) and (pointer: fine) {
+  .fx-home:hover {
+    opacity: 0.75;
+  }
+}
+.fx-home {
+  transition: opacity 240ms var(--ease-out);
+}
+
 /* ------------------------------------------------------------ admin panel
 
    TEMPORARY dev tool, not product UI. Styled after the main screen's

@@ -136,7 +136,22 @@
   height: 40px;
   z-index: 6;
   cursor: pointer;
+  /* Two clocks on one property, deliberately: the 0.35s leg is the scroll-driven
+     exit below (`.past-intro`), the hover is round 22's interaction curve. A
+     shorthand can only hold one, so the hover restates its own duration. */
   transition: opacity 0.35s ease;
+}
+
+/* ROUND 22: the wordmark is a home LINK on this page and had no hover state at
+   all — nothing told the reader it was clickable except the cursor. Safe against
+   the scroll-driven exit: `#screen-concept.past-intro .concept-home` is (1,2,0)
+   and still wins over this (0,2,0), so a hover cannot resurrect a masthead that
+   has already left. */
+@media (hover: hover) and (pointer: fine) {
+  .concept-home:hover {
+    opacity: 0.75;
+    transition: opacity 240ms var(--ease-out);
+  }
 }
 
 .concept-home svg {
@@ -177,9 +192,12 @@
   z-index: 8;
   background: var(--color-bg-light-main);
   color: var(--color-text-onlight-main);
-  /* the airy curve used across the project (rounds 6-7) */
-  transition: transform 0.55s cubic-bezier(0.3, 0, 0.12, 1),
-    opacity 0.4s cubic-bezier(0.3, 0, 0.12, 1);
+  /* the airy curve used across the project (rounds 6-7), named `--ease-move` in
+     round 22 — same value, no retune. It is the curve for things that TRAVEL,
+     as opposed to `--ease-out` for things that respond in place. */
+  transition:
+    transform 0.55s var(--ease-move),
+    opacity 0.4s var(--ease-move);
   transform: translateX(-100%);
   opacity: 0;
   pointer-events: none;
@@ -311,10 +329,26 @@
   border-radius: 50%;
   background: rgba(18, 58, 92, 0.28);
   color: var(--color-text-ondark-main);
-  transition: background 0.2s ease;
+  transition:
+    background 240ms var(--ease-out),
+    transform 240ms var(--ease-out);
 }
-.bld-close:hover {
-  background: rgba(18, 58, 92, 0.45);
+@media (hover: hover) and (pointer: fine) {
+  .bld-close:hover {
+    background: rgba(18, 58, 92, 0.45);
+  }
+}
+/* ROUND 22: a press state, ungated — a touch press should feel pressed. This one
+   dips BELOW rest (0.94, from Kowalski's 0.95-0.98 band) rather than the button's
+   1.02, because there is no hover swell here to fall back from. */
+.bld-close:active {
+  transform: scale(0.94);
+  transition-duration: 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bld-close:active {
+    transform: none;
+  }
 }
 .bld-close svg {
   display: block;
@@ -654,12 +688,21 @@
 .cf-dept {
   color: var(--color-text-ondark-secondary);
 }
+/* ROUND 22: the underline used to SNAP — `text-decoration` cannot be
+   transitioned, so the only honest way to animate it is to draw it yourself.
+   `text-decoration-color` from transparent gives the real underline (correct
+   descender skipping, correct thickness) with something to fade. */
 .cf-phone {
   color: var(--color-link);
-  text-decoration: none;
-}
-.cf-phone:hover {
   text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.18em;
+  transition: text-decoration-color 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cf-phone:hover {
+    text-decoration-color: currentColor;
+  }
 }
 
 .contact-form form {
@@ -699,7 +742,7 @@
      focused input */
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
-  transition: border-color 0.2s ease;
+  transition: border-color 240ms var(--ease-out);
 }
 .cf-field textarea {
   resize: none;
@@ -721,21 +764,15 @@
   transition: background-color 9999s ease-in-out 0s;
 }
 
+/* ROUND 21: «Отправить» is the shared `.btn` (styles/button.css) — this rule is
+   grid placement only. The component supplies main·ondark, which is what this
+   dark `--field-form` panel wants; its ink therefore goes from near-black to
+   `--color-link`, its horizontal padding 32 → 24, and its `opacity: .85` hover
+   becomes the designer's scale+0.8. All three are the component's spec, not
+   drift. */
 .cf-submit {
   grid-column: 1 / -1;
   justify-self: start;
-  padding: 14px 32px;
-  background: var(--color-button-ondark);
-  color: var(--color-text-onlight-main);
-  font-family: inherit;
-  font-weight: var(--type-caption-big-weight); /* Caption Big is Medium */
-  font-size: var(--type-caption-big-size);
-  line-height: var(--type-caption-big-lh);
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-.cf-submit:hover {
-  opacity: 0.85;
 }
 .cf-thanks {
   display: none;

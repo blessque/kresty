@@ -4507,3 +4507,301 @@ rasterises at 640×640 with no `mask failed` warning. Page background still roun
   `mapPixelRatio` in `shared/performanceTier.ts`, not a material rework.
 - ~~**Status: map v2 awaiting user verdict**~~ — superseded: round 5 rebuilt the
   map's geometry, framing, response curve and materials. Awaiting a fresh verdict.
+
+---
+
+## Main round 21 (2026-09-09) — the button becomes a component, and the headline stops coming back
+
+Five client corrections. Four are small; the third took the round.
+
+### The headline that appeared on blue, for the third time
+
+Reported for the third round running: *"slider is active, heading appears word by word (okay).
+User moves a mouse, slider and heading disappear (okay). Right after it, on blue background,
+for a fraction of a second heading appears and disappears again, word by word."* Rounds 18.3
+and 11 had each closed a path into that symptom. This was a third, and it was not a race —
+**it fired on every single idle wake, deterministically**, which is why "fixed" kept not
+holding.
+
+**The probe came first**, and it is `scripts/headline-probe.mjs` (`npm run probe:headline`).
+The client's rule — *headings only visible when photo visible* — is stated as an invariant
+sampled every frame:
+
+> `headline ≤ photo`, where `headline = parentOpacity × max(word opacity)`
+
+That formulation matters, because two moments are CORRECT and a cruder rule flags both. On the
+exit the block melts over 540 ms while the photo layer takes 1100 ms, so the headline is
+strictly ahead of its photo all the way down; on the entrance the words rise 950 ms after the
+layer began fading in, by which time it is at 0.97. "Words visible ⇒ photo > 0.5" fails both.
+
+**It is a PRODUCT, and neither factor alone can see the bug.** `.slider-headline.out .word`
+pins every span at `opacity: 1` on purpose — the exit is a block melt, so only the parent's
+opacity falls — and the first version of this probe, sampling the spans alone, read a flat
+1.000 across the entire exit. Sampling the parent alone is the trap round 18.3 already
+recorded (it sits at opacity 1 with no `.show` and no children). Run against the unpatched
+build the probe fails on **31 of 210 frames, window 733–1231 ms, worst frame
+`headline 1.000 / photo 0.006`**. After the fix: zero.
+
+**Two causes, and the interesting one is a CSS transition that nobody would call a transition.**
+
+1. **A zero-duration transition still honours its delay.** `setHeadline` writes an INLINE
+   `transition-delay: i × 80ms` on each word span. When `.out` is stripped, the after-change
+   style for `.word` is `transition-property: all` (initial) + `duration: 0s` + that inline
+   delay — and Chrome does not treat it as a no-op: it waits out the delay and then snaps. So
+   the reset the CSS comment had always described as "instant" actually drained the words one
+   at a time on the 80 ms stagger. Measured, word[0] at 722 ms through word[4] at ~1040 ms.
+   **That is literally the "word by word" in the client's report.** The old code already
+   fought this with `transition-delay: 0ms !important` inside `.out .word` — but an
+   `!important` declared in a class leaves when the class does. Fixed at the source: the base
+   `.slider-headline .word` rule now says `transition: none`, which is what its own comment
+   had claimed for three rounds.
+2. **`.slider-headline`'s resting state was VISIBLE.** Base opacity was 1; the block only
+   looked hidden because the spans inside it were at 0. So the instant anything removed
+   `.out`, the parent did not ease back — the transition declaration leaves with the class, so
+   it *snapped* from 0 to 1. Now the base is `opacity: 0` and `.show` lifts it to 1. The
+   client's rule is expressed in CSS instead of in timer ordering, and all three historical
+   paths to the snap are closed at once.
+
+Two supporting JS changes, both in `PhotoSlider.ts`. `showSlide()` now retires the headline
+only `if (!this.firstThrow)` — on a run's first throw there is nothing up, and `.out` on an
+empty headline is not a no-op, it re-freezes stale words at opacity 1 and holds the block open
+for 540 ms over a photo layer still near 0. And `activate()` plus the 700 ms cleanup timer both
+`replaceChildren()`, so no stale spans survive for the next `.out` to re-light. The cleanup's
+two statements sit in the SAME task deliberately: one style recalc, so the parent returning to
+its (now hidden) resting state and the spans going away are never a frame apart.
+
+Worth stating plainly for the next round: **`IDLE_MS` (1000) is longer than the cleanup
+(`OUT_MS + 100` = 700)**, so the words were always back at rest before the wake. Any future
+change to either constant changes which of these paths is live.
+
+### The button is a component now (Figma 898:336)
+
+The designer built it: two colours × two hierarchies, and a 2px ledge on the bottom and right.
+`src/styles/button.css`, a **class contract rather than a TS factory** — `contactForm.ts`
+builds its submit button inside an `innerHTML` string, which a factory could not reach.
+
+**Reading the exported SVGs is what collapsed the matrix.** Figma ships the ledge as three
+separate assets, and their strokes are `white` on both ONDARK variants and `#56B7E6` on both
+ONLIGHT ones. So the ledge is never a fixed white line — it is always the button's OWN colour.
+One `--btn-color` therefore drives plate, border and ledge together, and only the ink differs
+by hierarchy: MAIN inverts, SECONDARY uses `--btn-color` as its ink. Every value already
+existed in the token set; `--color-button-onlight` had been sitting unused since round 20 and
+this is what it was exported for.
+
+- **The ledge cannot be a `box-shadow`,** which is what round 11's plate used. Figma's line
+  does not start at the plate's corner — it begins 3 px down and 8 px in and runs 6 px past the
+  bottom-right. A pseudo-element with two borders draws exactly that and costs no layout.
+- **No `rem`.** The sketch this came from used `0.25rem` / `0.5rem`; this document's root is
+  **21px**, so those land at 5.25 and 10.5. Same reason the token build emits px.
+- **The secondary's border is paid for out of its padding.** Measured before that line: 61 px
+  tall against main's 57. `box-sizing: border-box` does not help — it only constrains an
+  explicit width/height, and these buttons are sized by their content. Figma does not show the
+  difference because a stroke there does not affect auto-layout; a browser's border does.
+  All four variants now measure an identical **175.9 × 56.8**.
+- Figma's `inset` numbers for the secondary's ledge are measured off the BORDER box, and CSS
+  resolves `inset` against the PADDING box — which the 2 px border has already moved. They are
+  re-derived (`-1 / -10 / -10 / 4`), not reused.
+- **Weight is stated, never inherited.** A form control does not inherit `font-weight` through
+  `font-family: inherit`, and the UA's `normal` (400) clamps to 232 = Black on Chromius's
+  50/120/232 axis. Verified `150` on both adopters.
+
+Adopted on `.contact-cta` (main) and `.cf-submit` («О Крестах»); both rules are now position
+only. Three deliberate consequences: the CTA's box goes 172×55 fixed → 175.9×56.8 intrinsic
+(top-right corner unmoved), its type goes Caption Small → Caption Big, and `.cf-submit`'s ink
+goes near-black → `--color-link` with padding 32 → 24. All three are the component's spec.
+
+### Smaller decisions
+
+- **The nav and the CTA now yield COMPLETELY under the slider** (`opacity: 0`, was Figma's
+  40%). `pointer-events` is deliberately untouched: on desktop the `pointermove` that wakes the
+  screen precedes the `pointerenter`, and on touch the `pointerdown` that would be swallowed is
+  the very one that wakes it. `.contact-cta` restates its opacity transition at 0.5s so it
+  finishes with the nav rather than on the component's 0.22s — one clock, at the cost of a
+  slower hover alpha there.
+- **The descriptor moves to Caption Big, and the WIDTH had to move with it.** The whole style
+  travels, weight included, so it also goes Regular 120 → Medium 150. At 24/150 «Открытое
+  городское пространство» does not fit two lines in Figma's 275 — it wrapped to three and ran
+  toward the nav circle. 380 restores the two-line set, and it is the same measure in ems the
+  16 px version had. Verified two lines and no collision with any nav link or the CTA at
+  1280×720, 1440×800, 1440×900, 1728×1080 and 1920×1080.
+- **All five nav-hover photographs re-paired** — Музей → `skies`, О «Крестах» → `atrium-roof`,
+  Контакты → `table`, Аренда → `concept-plan`, События → `forum`. A clean permutation: every
+  photo was already loaded, and `kids-playground` drops out of the hover layer (it stays slide
+  2). Round 11 had given «О «Крестах»» the plan render on the strength of Figma frame 340:594;
+  the client reads that render as the whole COMPLEX, which is what «Аренда» is letting.
+- **`CLAUDE.md`'s type table was wrong and the tokens are right.** It records Caption Small as
+  16/130 and H3 as 32/115; the Token Studio export carries only three ratios (1.1 / 1.2 / 1.45)
+  and both ship at **120**. Corrected in the guide. A question for the designer, not a bug.
+
+Verified: probe fails-then-passes, build + `tsc --noEmit` + `lint:tokens` clean, smoke test
+clean, all four button variants measured and shot, five hover pairings read back from
+`currentSrc`.
+
+---
+
+## Main round 22 (2026-09-09) — a motion vocabulary, a lighter Caption Big, and the pier
+
+Five client notes. Two of them ("hover looks too linear" and "the scale curve should grow
+very dramatic at the start and slowly bend with a long tail") are the same request at two
+altitudes, and answering it properly meant looking at what the site had rather than at the
+one button.
+
+### The curve, and why the whole site was on one
+
+An inventory of every interaction rule found **`ease` authored 25 times, across nine
+different durations, with no shared vocabulary** — and the only exceptions were the drawer
+and the water panel on the project's own `cubic-bezier(0.3, 0, 0.12, 1)`. That is not a
+decision, it is the absence of one, and it is measurably the complaint:
+
+| progress at t = | 0.05 | 0.1 | 0.2 | 0.3 | 0.5 |
+|---|---|---|---|---|---|
+| `ease` (what shipped) | 0.033 | 0.095 | **0.295** | 0.513 | 0.802 |
+| `cubic-bezier(0.23, 1, 0.32, 1)` | 0.210 | 0.398 | **0.682** | 0.843 | 0.966 |
+
+**68 % against 29.5 % at a fifth of the duration.** The client's words describe that column.
+CSS's built-in easings are too weak to read as intentional — that is Kowalski's point and
+the numbers are why.
+
+Two curves are now named in `tokens.css`, and only two:
+
+- **`--ease-out: cubic-bezier(0.23, 1, 0.32, 1)`** — things that RESPOND IN PLACE: hovers,
+  presses, focus. Never `ease-in` on an interaction; it delays the first moment, which is
+  exactly the moment being watched.
+- **`--ease-move: cubic-bezier(0.3, 0, 0.12, 1)`** — things that TRAVEL: the building
+  drawer, the water panel. This is the project's own rounds 6–7 curve, **named, not
+  re-picked.** Its value is settled and this entry does not touch it.
+
+**Durations are deliberately NOT tokenised**, on the same reasoning that keeps layout out of
+the token set: the drawer's 0.55 s and the nav's 0.5 s yield each carry a paragraph, and a
+shared number could not carry either. The vocabulary problem was the curve.
+
+Measured on the shipped build, sampling `transform` per frame from the last at-rest frame:
+
+```
+  +  0ms  scale=1.0000   0.0%
+  + 18ms  scale=1.0200  28.6%
+  + 51ms  scale=1.0490  70.0%   <- the request, in one number
+  + 84ms  scale=1.0622  88.9%
+  +134ms  scale=1.0685  97.9%
+```
+
+**The duration went UP (0.22 s → 240 ms) and it feels quicker.** The curve is doing the work,
+which is the whole lesson.
+
+### Three gaps the inventory found, none of them asked for
+
+- **There was not a single `:active` rule on the site.** Every press was a hover that
+  persisted; the interface never acknowledged a click. `.btn` presses to **1.02**, not
+  Kowalski's 0.97 — that 0.97 is measured from REST, and this plate is already at 1.07 when
+  you press it, so 1.07 × 0.95 ≈ 1.02 is the same proportional dip and reads as pushing back
+  toward the surface rather than punching through it. `.bld-close`, which has no hover swell
+  to fall from, uses 0.94. Press states are **ungated** — a touch press should feel pressed
+  — and state `transition-duration: 120ms` themselves, so the press is fast while the release
+  inherits the hover clock.
+- **`--hover-disabled` was dead.** `global.css` set it under `@media (pointer: coarse)` and
+  **nothing anywhere read it**, so touch devices got the full hover set with nothing to clear
+  it: one tap and the button sat permanently swollen and translucent. A flag only works if
+  something reads it. Deleted; the rules that must not fire on touch are now gated at the
+  point of use with `@media (hover: hover) and (pointer: fine)`. Verified with a
+  `hasTouch` context — after `tap()`, `transform` is `none` and the main screen is still up
+  (that second assertion matters: the real CTA navigates on click, so a naive tap test reads
+  a hidden element and passes vacuously).
+- **`nav-shine` had no reduced-motion block** — an *infinite* 2.4 s pulse, the one animation
+  on the site that never stops. It now holds at its rest keyframe. The echo's slide goes too,
+  but **the echo keeps its 4px offset**: the offset IS the effect, so a doubled label with no
+  displacement is just a translucent copy hiding under a solid one. Movement goes, geometry
+  stays.
+
+Also on the curve now: the nav's doubled-label echo (was two clocks, 0.35 s and 0.3 s), the
+CTA's transform leg, the form field's focus, and `.cf-phone` — whose underline used to
+**snap**, because `text-decoration` cannot be transitioned. Drawing it as an underline with a
+transparent `text-decoration-color` gives something to fade while keeping real descender
+skipping. The wordmark home links on both subpages had **no hover state at all**; they have
+one now, and `.concept-home`'s is safe against the scroll-driven exit because
+`#screen-concept.past-intro .concept-home` is (1,2,0) against the hover's (0,2,0) — verified
+by hovering it past the intro and reading opacity 0.
+
+**Deliberately not touched:** the JS-side hover lerps in `MainScreen.ts` (`sceneDim`
+τ 0.1/0.22, the per-link lean τ 0.06/0.13, `modeMix` τ 0.3). They drive the hero gallery-dark
+scene and the shader, they were tuned across several rounds, and they already use the
+frame-rate-independent `1 - exp(-dt/τ)` form correctly.
+
+### Caption Big goes Regular — and the trap is a shared reference
+
+The designer's call: Medium felt too bold, so Caption Big now carries Base Text's weight and
+the two styles differ **only** in line-height (24/1.2/120 against 24/1.45/120).
+
+Changed at the SOURCE — `tokens/colors/Mode 1.json`, `"Caption Big".$value.fontWeight`:
+`{fontWeights.als-chromius-0}` → `{fontWeights.als-chromius-1}` — then regenerated. **Do not
+"simplify" this by editing `fontWeights.als-chromius-0`'s value from "Medium" to "Regular".**
+It would look like the same edit and would silently take **H1, H2 and H3** with it: all three
+reference that same weight. The generated diff must be exactly one line; anything else means
+the wrong edit. Asserted after: `.logo-descriptor` and both buttons at **120**, `h1`/`h2`
+still at **150**.
+
+**Round 21's 380px descriptor width was scaffolding and it is gone.** That width existed only
+because the string wrapped to three lines at *Medium*; measured at Regular the widest line is
+247px, so Figma's authored **275** sets the same two lines with the same break. A width chosen
+to defeat a weight is not a layout decision, and its reason left with the weight.
+
+⚠️ **`tokens/` is the designer's Token Studio export.** Hand-editing it keeps `tokens:check`
+consistent, but **the next re-export from Figma reverts it** unless the text style is changed
+there too. The same caveat applies to the button, which now diverges from Figma component
+898:336 — that component states ALS Chromius Medium, and this token says otherwise.
+
+### Smaller decisions
+
+- **`IDLE_MS` 1000 → 2000.** 1000 read as the slider snatching the screen out of a pause
+  rather than answering one. Round 21's invariant (`IDLE_MS` > the 700 ms exit cleanup) still
+  holds with room. **`scripts/headline-probe.mjs` is coupled to this constant** and now
+  mirrors it with both waits derived — its guard fails closed (exit 2) rather than passing
+  vacuously, but it still has to be told.
+- **The pier landed.** `references/pier.png` is **actually a JPEG**, 2896×2172. Encoded by the
+  round-8 recipe verbatim — centre-crop to 3:2 (y-offset 121), cap the long edge at 2400,
+  `cwebp -q 82` → 2400×1600, 398 KB, in line with the other slides. Slide 1 has run on
+  `skies.webp` as a stand-in since round 11; `skies` is not orphaned, round 21 made it the
+  «Музей» hover image. **Checked past the encode**: at 1440×800 `object-fit: cover` discards
+  another 17 % of the height, and the boat sits low in the frame — it survives, and at a
+  2.4-aspect window (visible band y 300–1300 of 1600, boat ≈ 833–1099) it still does.
+
+### Open issues opened by this round
+
+- **[OPEN] The contact form's submit is instant.** `form.sent` swaps `display: none`, so the
+  fields vanish and the thank-you appears in one frame. `display` is not animatable, so it
+  needs `@starting-style` or a two-step — a round of its own, not a retune.
+- **[OPEN] `nav-shine` still stops abruptly.** Removing `:hover` yanks the keyframe animation
+  mid-cycle and the `text-shadow` snaps to nothing wherever it was. Kowalski's "transitions,
+  not keyframes, for interruptible UI" applies exactly, but rebuilding the hero's shine is
+  its own round.
+- **[OPEN] The dev panels were excluded** — `?admin`'s ControlPanel and WaterPanel and the
+  V-key variant switcher still carry their own curves and durations. Deliberate: they are
+  tools, not product.
+
+Verified: probe passes at the new delay, curve trajectory measured frame by frame, press and
+release measured on a scratch button (the real CTA navigates on click and tears down the
+screen it is being measured on), touch tap leaves no stuck hover, weights asserted on both
+sides of the shared reference, `lint:tokens` + `tokens:check` + `tsc` + build + smoke clean.
+
+### Round 22.1 (same day) — two corrections
+
+- **Slide 3 goes `hotel.webp` → `atrium-floor.webp`.** «Свобода остановиться там, где
+  хочется» is about staying; `hotel.webp` is an exterior elevation, `atrium-floor` is the
+  room-side view. `hotel.webp` is **not orphaned** — it is still the «Отели» section image
+  (`pageSections.ts`) and both hotels' drawer hero (`buildingsInfo.ts`), which is exactly why
+  it had to be the slide that moved rather than the file that went. After this and the pier,
+  nothing in `public/resources/` is unreferenced.
+- **The main screen's blue was already correct, and the check is worth recording.**
+  `#screen-main { background: var(--color-field-main) }` → `--ref-blue` → `rgb(86, 183, 230)`,
+  identical to `--color-link` and to `MAIN_BG` on the JS side; round 20 tied the CSS field and
+  the JS constant to the same primitive so they cannot drift. **But the PAINTED pixel is
+  `rgb(101, 190, 233)`, not `rgb(86, 183, 230)`** — the ray canvas composites over it with
+  `mix-blend-mode: screen` and `#grain` sits at 7% overlay, so the light reaches even a corner
+  at low intensity. Sampling a screenshot is therefore the WRONG test for "does the field
+  match the token": the field is the token, and the light is added on top by design. Read the
+  computed `background-color`, not the pixel.
+  One real duplicate did turn up: `waterPanel.css` wrote `accent-color: #56b7e6` raw. That
+  file is on the lint's EXEMPT list, so nothing caught it — **the exempt list is where raw
+  values hide.** Now `var(--color-link)`; verified resolving inside the dynamically imported
+  panel. The other two hexes there (`#cfe3ef`, `#6fb6dd`) are dev-panel chrome with no
+  product equivalent and are deliberately left — inventing tokens for a debug tool is what
+  `tokens.css`'s "only what the set does not name" rule is meant to prevent.

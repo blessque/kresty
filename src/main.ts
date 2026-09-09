@@ -4,6 +4,9 @@ import './styles/fonts.css';
 import './styles/tokens.gen.css';
 import './styles/tokens.css';
 import './styles/global.css';
+// Shared components, after the element resets in global.css and before the
+// screen sheets — a screen must be able to override the component, not lose to it.
+import './styles/button.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
 import './screens/contacts/contacts.css';

@@ -1,0 +1,172 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE BUTTON (round 21) — the designer's Figma component, node 898:336.
+
+   A CLASS CONTRACT, not a TS factory, and that is a decision: `contactForm.ts`
+   builds its submit button inside an `innerHTML` string, which a factory could
+   not reach. Markup is whatever the call site already has — `<a>` on the main
+   screen, `<button type="submit">` in the contact form — and the site keeps its
+   own class for POSITION only. Look, type and states live here.
+
+     .btn                     main    · ondark   (the default, both in Figma)
+     .btn.btn--onlight        main    · onlight
+     .btn.btn--secondary      secondary · ondark
+     .btn.btn--onlight.btn--secondary   secondary · onlight
+
+   "ondark" / "onlight" describe the FIELD the button sits on, not the button:
+   ondark is the white plate, onlight the blue one. That is Figma's own naming
+   and it matches the tokens (`--color-button-ondark` is #ffffff).
+
+   ── the four variants are ONE colour ────────────────────────────────────────
+   Figma exports the ledge as three separate SVGs, and reading their strokes is
+   what collapses the matrix: `stroke="white"` on both ONDARK variants,
+   `stroke="#56B7E6"` on both ONLIGHT ones. So the ledge is never a fixed white
+   line — it is always the button's OWN colour. One `--btn-color` therefore
+   drives plate, border and ledge together, and only the ink differs by
+   hierarchy: MAIN inverts (ink = the other colour), SECONDARY uses
+   `--btn-color` as the ink.
+
+   Every value here already existed in the token set. `--color-button-onlight`
+   had been sitting unused since round 20; this is what it was exported for.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.btn {
+  --btn-color: var(--color-button-ondark); /* plate AND border AND ledge */
+  --btn-ink: var(--color-link); /* main inverts */
+
+  /* The ledge, measured off Figma's own frame: inset [3, −6, −6, 8] at 2px.
+     NOT `rem` — the sketch this came from used 0.25rem/0.5rem, and this
+     document's root is 21px, not 16, so those would land at 5.25 and 10.5. The
+     whole token set emits px for the same reason (CLAUDE.md). */
+  --btn-line-weight: 2px;
+  --btn-line-top: 3px;
+  --btn-line-left: 8px;
+  --btn-line-gap: 6px;
+
+  position: relative; /* the ledge's containing block */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  border: 0;
+  border-radius: 0;
+  -webkit-appearance: none;
+  cursor: pointer;
+  text-decoration: none; /* it is an <a> on the main screen */
+  background: var(--btn-color);
+  color: var(--btn-ink);
+  font-family: var(--font-family-display);
+  /* Caption Big — and the weight is stated, not inherited. A form control does
+     not inherit `font-weight` through `font-family: inherit`, and on Chromius's
+     50/120/232 axis the UA's `normal` (400) CLAMPS TO 232 = Black, silently.
+     That exact bug has shipped twice on this project. */
+  font-weight: var(--type-caption-big-weight);
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  /* ROUND 22: `ease` is why this read as linear. It is 29.5% complete at 20% of
+     its duration; `--ease-out` is 68%, so at 240ms the plate has done two thirds
+     of its travel inside the first 48ms and spends the rest settling. The
+     duration went UP and it feels quicker — the curve is doing the work. */
+  transition:
+    transform 240ms var(--ease-out),
+    opacity 240ms var(--ease-out);
+}
+
+/* The bottom+right ledge. A BORDER cannot express it (a border rings all four
+   sides) and a `box-shadow` — which is what the round-11 plate used — cannot
+   either: the ledge does not start at the plate's corner. It begins 3px down
+   and 8px in, and runs 6px past the bottom-right. Two borders on a pseudo
+   element draw exactly the two visible edges and cost no layout. */
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: var(--btn-line-top) calc(-1 * var(--btn-line-gap)) calc(-1 * var(--btn-line-gap))
+    var(--btn-line-left);
+  border-right: var(--btn-line-weight) solid var(--btn-color);
+  border-bottom: var(--btn-line-weight) solid var(--btn-color);
+  pointer-events: none;
+}
+
+.btn--onlight {
+  --btn-color: var(--color-button-onlight);
+  --btn-ink: var(--color-text-ondark-main);
+}
+
+/* AFTER --onlight on purpose: equal specificity, so source order decides, and a
+   button carrying both must take its ink from here. */
+.btn--secondary {
+  background: transparent;
+  border: var(--btn-line-weight) solid var(--btn-color);
+  color: var(--btn-color);
+  /* The border is PAID FOR OUT OF THE PADDING, so a secondary sits in exactly
+     the same box as a main one and the two can stand side by side. Measured
+     before this line: 61px tall against main's 57. `box-sizing: border-box` does
+     not help — it only constrains an explicit width/height, and these buttons
+     are sized by their content. Figma does not show the difference because a
+     stroke there does not affect auto-layout; a browser's border does. */
+  padding: calc(14px - var(--btn-line-weight)) calc(24px - var(--btn-line-weight));
+  /* Figma nudges the ledge 2px outward on this variant so it clears the border.
+     Its numbers are measured off the BORDER box; CSS resolves `inset` against
+     the PADDING box, which the 2px border has already moved inward — so they
+     are re-derived here rather than reused. (`box-sizing: border-box` is
+     global, so the outer box still matches the main variant's, which is also
+     how Figma behaves: a stroke does not affect its auto-layout.) */
+  --btn-line-top: -1px;
+  --btn-line-left: 4px;
+  --btn-line-gap: 10px;
+}
+
+/* +7% and 80% alpha (round 22 trimmed the scale from the designer's 10%). The
+   ledge and the border scale with it, which is the point — it is one plate, not
+   a plate and a line.
+
+   GATED BEHIND A REAL POINTER. A touch device fires `:hover` on tap and then has
+   nothing to clear it with, so the plate would sit permanently swollen and
+   translucent after the first tap. `global.css` used to declare a
+   `--hover-disabled` flag under `(pointer: coarse)` for this and nothing ever
+   read it; round 22 deleted the flag and gated the rule instead. */
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    transform: scale(1.07);
+    opacity: 0.8;
+  }
+}
+
+/* PRESS. Nothing on this site had one — not a single `:active` rule existed —
+   so every press was a hover that simply persisted, and the interface never
+   acknowledged the click.
+
+   1.02 rather than Kowalski's 0.97, because that 0.97 is measured from REST and
+   this plate is already at 1.07 when you press it: 1.07 x 0.95 ≈ 1.02 is the
+   same proportional dip, and it reads as the plate pushing back toward the
+   surface instead of punching through it. Ungated by `(hover: hover)` on
+   purpose — a touch press should feel pressed.
+
+   AFTER `:hover`, and that is load-bearing: both are (0,2,0), so source order
+   decides, and while pressing you are also hovering. The duration is stated
+   here only, so the press is fast (120ms, Kowalski's 100-160 band) while the
+   release inherits the hover clock — fast where the system responds, unhurried
+   where the eye is following. */
+.btn:active {
+  transform: scale(1.02);
+  transition-duration: 120ms;
+}
+
+/* Nothing on this site had a focus ring except `.nav-link`. A shared component
+   is the place to fix that, and `outline` is the one property that can ring a
+   box without disturbing the ledge's geometry. */
+.btn:focus-visible {
+  outline: var(--btn-line-weight) solid var(--btn-color);
+  outline-offset: 4px;
+}
+
+/* Reduced motion means fewer and gentler, not none: the movement goes, the
+   opacity step stays, because it is what carries the state change. */
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: opacity 240ms var(--ease-out);
+  }
+  .btn:hover,
+  .btn:active {
+    transform: none;
+  }
+}

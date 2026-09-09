@@ -8,6 +8,7 @@
     "build": "npm run tokens:check && tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint:tokens": "node scripts/lint-tokens.mjs",
+    "probe:headline": "node scripts/headline-probe.mjs",
     "lint:tokens:update": "node scripts/lint-tokens.mjs --update",
     "tokens": "node scripts/build-tokens.mjs",
     "tokens:check": "node scripts/build-tokens.mjs --check"

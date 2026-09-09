@@ -87,4 +87,31 @@
    */
   --type-slide-headline-size: 56px;
   --type-slide-headline-lh: 64px;
+
+  /**
+   * MOTION (round 22). Not in the Token Studio export — the designer's set has
+   * no motion layer yet, so these are engineering defaults from Emil Kowalski's
+   * principles and, like the scrims above, a question filed rather than an answer.
+   *
+   * The vocabulary is the point. Before this the site authored `ease` in 25
+   * interaction rules across nine durations, which is not a decision, it is an
+   * absence of one — and it is measurably why the button hover read as linear:
+   * plain `ease` is only 29.5% complete at 20% of its duration.
+   *
+   * DURATIONS ARE DELIBERATELY NOT TOKENISED, on the same reasoning as layout:
+   * the drawer's 0.55s and the nav's 0.5s yield each have a paragraph beside
+   * them, and a shared number could not carry either.
+   */
+
+  /* The interaction curve — hovers, presses, focus. 68% complete at 20% of its
+     duration, against `ease`'s 29.5%: dramatic at the start, then a long tail.
+     NEVER use `ease-in` on an interaction; it delays the first moment, which is
+     exactly the moment the user is watching. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Things that TRAVEL across the screen rather than respond in place — the
+     building drawer, the water panel. This is the project's own airy curve from
+     rounds 6-7, NAMED here rather than re-picked. Its value is settled; see
+     TUNING_LOG before touching it. */
+  --ease-move: cubic-bezier(0.3, 0, 0.12, 1);
 }
