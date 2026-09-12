@@ -49,6 +49,10 @@ const ICONS = [
   'Restaurant-640.svg',
   'SPA-640.svg',
   'Window-640.svg',
+  // LAST, and not a client icon: a plain 4-point star, for testing. Every other
+  // entry is artwork with a verdict attached; this one is a probe. It stays at
+  // the end so `?icon=N` keeps its meaning for all the real ones.
+  'Star-640.svg',
 ];
 
 /**
