@@ -22,4 +22,8 @@ memory/
 /after-transition.png
 /map-tilt-*.png
 /back-on-main.png
+# ...and when a one-off script interpolates an UNSET $OUT, JS stringifies it and
+# `page.screenshot` creates a literal `undefined/` directory. Harmless, but it
+# shows up as an untracked folder every time.
+/undefined/
 tokens.zip
