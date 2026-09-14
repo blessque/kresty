@@ -189,8 +189,10 @@ interaction**; it delays the first moment, which is the moment being watched.
 `.btn` · `.btn--onlight` · `.btn--secondary`; `.btn` alone is main·ondark.
 
 **A class contract, not a TS factory** — `contactForm.ts` builds its submit inside an
-`innerHTML` string a factory could not reach. Call sites (`.contact-cta`, `.cf-submit`) carry
-**position only**; do not re-declare fill, ink, type or the ledge there.
+`innerHTML` string a factory could not reach. Call sites (`.cf-submit`, `.page-partner`) carry
+**position only**; do not re-declare fill, ink, type or the ledge there. (Round 25 deleted the
+main screen's `.contact-cta`, the component's first adopter; the component itself is unchanged
+and still serves the form submit and the page heads.)
 
 - **The ledge is the button's OWN colour, never a fixed white.** Figma's three exported SVGs
   stroke `white` on ondark and `#56B7E6` on onlight, so one `--btn-color` drives plate,
@@ -200,6 +202,6 @@ interaction**; it delays the first moment, which is the moment being watched.
 - **No `rem` anywhere** — this root is 21px, so `0.25rem` lands at 5.25.
 - **The secondary's border is paid for out of its padding**, or it measures 4px larger than
   main (`box-sizing: border-box` only constrains an explicit width/height; these are
-  content-sized). All four variants must measure identically — 171.9×56.8 for «Связаться».
+  content-sized). All four variants must measure identically at a given label.
 - Press is `scale(1.02)`, not Kowalski's 0.97: that 0.97 is measured from REST and this plate
   is already at 1.07 on hover, so 1.07 × 0.95 is the same proportional dip.

@@ -9,7 +9,6 @@ import {
   CENTER_Y,
   NAV_LINKS,
   LOGO_DESCRIPTOR,
-  CONTACT_CTA,
   stageScale,
 } from './layout';
 import { asset } from '../../shared/assetUrl';
@@ -38,11 +37,17 @@ function quad(a: number[]): [number, number, number, number] {
 
 /**
  * Slow continuous rotation of the whole light cross, rad/s (round 7).
- * ~0.6°/s — a quarter turn in ≈2.5 min: alive, never distracting. Drives the
+ * ~0.72°/s — a quarter turn in ≈2.1 min: alive, never distracting. Drives the
  * slit-mask sampling (signRot) AND the procedural beam base angles, so every
  * variant turns in lockstep; cursor wind/parallax stay screen-true on top.
+ *
+ * ROUND 25: 0.0105 → 0.0126, +20 % at the client's request. Note this was
+ * raised in the same round that FIXED the rotation on WebGL2 (`u_signRot` was
+ * missing from the renderer's uniform name list, so the value never reached the
+ * shader). If it ever reads as stopped again, check that list before this number
+ * — a dead uniform and a slow constant look identical on screen.
  */
-const ROT_SPEED = 0.0105;
+const ROT_SPEED = 0.0126;
 
 /**
  * Length of the light's dip on a slide throw, seconds. A half-sine, so it peaks
@@ -206,21 +211,19 @@ export class MainScreen {
     descriptor.textContent = bindShortWords(LOGO_DESCRIPTOR);
     corners.appendChild(descriptor);
 
-    // Round 11: «Связаться», top right (Figma 840:40). `.corners` is
-    // pointer-events: none, so an interactive child has to opt back in.
-    const cta = document.createElement('a');
-    // ROUND 21: the designer's button component (styles/button.css). `.btn`
-    // alone is main·ondark — a white plate with blue ink — which is exactly what
-    // this corner needs on the blue field. `.contact-cta` now carries POSITION
-    // only.
-    cta.className = 'btn contact-cta';
-    cta.href = '#contacts';
-    cta.textContent = CONTACT_CTA;
-    cta.addEventListener('click', (e) => {
-      e.preventDefault();
-      this.onNavigate('contacts');
-    });
-    corners.appendChild(cta);
+    // ROUND 25: the «Связаться» CTA (rounds 11/21) is DELETED. The main screen
+    // carries the wordmark, the descriptor, the nav and the corner mark — the
+    // nav already reaches «Контакты», so the plate was a second door to the same
+    // room standing on the hero.
+    //
+    // It was reported as "appears only when the URL has a hash", i.e. only when
+    // you arrive by scrolling off a page. There was never any hash-conditional
+    // code: the button was unconditional, and the only rule touching it hid it
+    // under `.slider-on`, which PhotoSlider adds after 2s of pointer idle. Cold
+    // load → you sit still → the slider arms → it disappears. Seam arrival → you
+    // have just been scrolling, so the idle watcher keeps resetting and it is
+    // still there. Same DOM both times. Worth keeping written down: the state
+    // that LOOKS conditional here is almost always the idle watcher.
 
     NAV_LINKS.forEach((spec, i) => {
       const a = document.createElement('a');

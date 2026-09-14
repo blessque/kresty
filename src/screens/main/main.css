@@ -483,8 +483,7 @@
    returning before it can be hovered; on touch, the `pointerdown` that would be
    swallowed is the very one that wakes it. `pointer-events: none` here would
    eat the first tap. */
-#screen-main.slider-on .nav-link,
-#screen-main.slider-on .contact-cta {
+#screen-main.slider-on .nav-link {
   opacity: 0;
 }
 
@@ -527,35 +526,11 @@
   color: var(--color-text-ondark-main);
 }
 
-/* «Связаться» (Figma 840:40), top right, mirroring the logo's 32/32.
-   ROUND 21: THE LOOK MOVED OUT. The plate, its ink, its type and the offset
-   ledge are `.btn` in styles/button.css — the designer's component, node
-   898:336 — and this rule is now position only.
-
-   Two things the component changed, both intended. The box was a fixed 172×55
-   with the ledge faked as a zero-blur `box-shadow`; it is intrinsic now
-   (24+24 padding, Caption Big at 24/1.2 → ≈167×57), and the ledge is a real
-   pseudo-element, because Figma's line does not start at the plate's corner —
-   it begins 3px down and 8px in, which a shadow cannot say. And the type went
-   Caption Small → Caption Big, which is what the component specifies. The
-   top-right corner is unmoved.
-
-   The opacity transition is restated at 0.5s so this yields with the nav under
-   `.slider-on` (`.nav-link` is 0.5s at line ~290) instead of on the component's
-   own 0.22s. One clock, not two — at the cost of a slower hover alpha here. */
-.contact-cta {
-  position: absolute;
-  right: 32px;
-  top: 32px;
-  pointer-events: auto; /* .corners is pointer-events: none */
-  /* The transform leg tracks the component (round 22's `--ease-out` at 240ms).
-     The OPACITY leg deliberately does not: it is a yield, not an interaction —
-     it rides one clock with `.nav-link` at 0.5s under `.slider-on` (see the
-     rule near line 460), and the cost is a slower hover alpha here. */
-  transition:
-    transform 240ms var(--ease-out),
-    opacity 0.5s ease;
-}
+/* ROUND 25 DELETED «Связаться» from the main screen (rounds 11/21, Figma
+   840:40) along with its `.contact-cta` position rule. The nav already reaches
+   «Контакты»; the plate was a second door to the same room, standing on the
+   hero. The designer's button component itself is untouched and still in use —
+   `styles/button.css` serves the page heads and the form submit. */
 
 /* bottom-right ARTLEBEDEV mark (Figma node 340:574). Figma's odd decimals
    (32.49 / 33.7) were replaced by the round-10 corner rule: a flat 32/40 on

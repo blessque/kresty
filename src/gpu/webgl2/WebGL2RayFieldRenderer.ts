@@ -105,9 +105,31 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
       'u_signMask',
       'u_layers',
       'u_octaves',
+      // ROUND 25: `u_signRot` was MISSING here since round 7 — uploaded every
+      // frame at `render()` and silently discarded, so the cross's rotation was
+      // dead on WebGL2 and correct on WebGPU, which is why it read as "disabled"
+      // on some machines and not others. The note above was already written and
+      // the trap still landed, so the list now checks itself (below).
+      'u_signRot',
       ...PARAM_UNIFORMS.map((k) => `u_${k}`),
     ];
     for (const n of names) this.uniforms.set(n, gl.getUniformLocation(program, n));
+
+    // A registration this list forgets is invisible: `u()` returns null and
+    // `gl.uniform*(null, …)` is a no-op with no error, no warning and often no
+    // visible artefact. The shader source is right here as a string, so the
+    // shader itself is the authority on what must be registered — anything it
+    // declares and this list omits is a silent no-op waiting to happen.
+    if (import.meta.env.DEV) {
+      const declared = [...fragSrc.matchAll(/^\s*uniform\s+\w+\s+(u_\w+)/gm)].map((m) => m[1]);
+      const missing = declared.filter((n) => !this.uniforms.has(n));
+      if (missing.length) {
+        console.error(
+          `[kresty] ${missing.length} uniform(s) declared in rayField.frag.glsl but not in the ` +
+            `name list — every upload to them is a SILENT no-op: ${missing.join(', ')}`,
+        );
+      }
+    }
     gl.uniform1i(this.uniforms.get('u_signMask') ?? null, 0); // sampler on unit 0
 
     // bufferless triangle still needs a bound VAO on some drivers

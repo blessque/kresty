@@ -105,8 +105,12 @@ export const NAV_LINKS: NavLinkSpec[] = [
  */
 export const LOGO_DESCRIPTOR = 'Открытое городское пространство';
 
-/** Top-right call to action (Figma 840:40). */
-export const CONTACT_CTA = 'Связаться';
+/*
+ * ROUND 25 DELETED `CONTACT_CTA` («Связаться», Figma 840:40) with the button
+ * itself — the nav already reaches «Контакты». Deleted, not commented out, for
+ * the same reason as the news block below: a second copy is the thing that
+ * drifts.
+ */
 
 /*
  * ROUND 11 KILLED THE NEWS BLOCK on the main screen. `NEWS_ITEMS` and

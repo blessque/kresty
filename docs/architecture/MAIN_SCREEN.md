@@ -24,7 +24,10 @@ and legacy presets. The `V` key reveals the switcher.
 - The canvas composites via CSS `mix-blend-mode: screen` (light-on-black output). Anything
   that must **darken** the backdrop belongs to the eclipse composite mode, not to a blending
   change.
-- **The whole light cross slowly rotates** at ~0.6°/s — `signRot` state → `u_signRot` / `p9.w`.
+- **The whole light cross slowly rotates** at ~0.72°/s (round 25; was 0.6) — `signRot` state →
+  `u_signRot` / `p9.w`. **This was dead on WebGL2 from round 7 to round 25** because
+  `u_signRot` was missing from `WebGL2RayFieldRenderer`'s name list — see the silent-failure
+  note below. A dead uniform and a slow constant look identical on screen; check the list first.
   Wind and parallax stay screen-true on top of it. This is also why a screenshot diff can
   never isolate an interaction here: every frame differs anyway.
 - The 4 primary beams strike **BETWEEN the links** — bisector angles derived from link
@@ -46,9 +49,15 @@ and legacy presets. The `V` key reveals the switcher.
   no-op** — `u()` returns `null` and `gl.uniform*(null, …)` does nothing. No error, no visual
   artefact. Adding a uniform means adding it to that list, and **verifying hover on EVERY
   link**: the first four looking right is exactly what a missed fifth slot looks like.
+  **This trap caught `u_signRot` for eighteen rounds with the warning written inside the very
+  array that was missing it**, and the symptom was backend-split — correct on WebGL, frozen on
+  WebGL2 — so it read as a machine quirk rather than a bug. Round 25 made the list check
+  itself: in DEV the renderer greps `rayField.frag.glsl` for `uniform … u_*` declarations and
+  errors on anything it declares but the list omits. **The shader is the authority, not the
+  list.**
 - **Probing the light needs uniform interception, not pixels.** `drawImage` on the ray canvas
   returns empty (no `preserveDrawingBuffer`), and pixel-diffing screenshots cannot isolate an
-  interaction because the light rotates at ~0.6°/s and the slider cycles — every frame differs
+  interaction because the light rotates at ~0.72°/s and the slider cycles — every frame differs
   anyway. Intercept `getUniformLocation` to map location → name, then wrap the `uniform*` call
   and read what is actually sent.
 
@@ -76,8 +85,13 @@ its sums are reduced **on the CPU** into `hoverDir`/`hoverAmt`. The `vec4` slots
 four-wide for «Призма» only.
 
 **The wordmark is ONE box sitewide: 251.2×40 at (32, 32)** — `.logo`, `.concept-home`,
-`.fx-home`. A descriptor sits under it (Caption Big since round 21) and a «Связаться» button
-top-right.
+`.fx-home`. A descriptor sits under it (Caption Big since round 21).
+
+**Round 25 deleted the top-right «Связаться» button** — the nav already reaches «Контакты».
+It was reported as appearing "only when the URL has a hash": there was never any
+hash-conditional code, it was unconditional and hidden by `.slider-on` after 2 s of pointer
+idle, so a cold load lost it and a seam arrival (where you have just been scrolling) kept it.
+**A main-screen element that looks route-conditional is almost always the idle watcher.**
 
 ---
 
@@ -147,5 +161,5 @@ on stand-in photography (marked TODO): slide 2 wants a real culture/events frame
 Russian short words are bound with U+00A0 via `shared/ruTypography.ts` — that is also what
 makes the headline rags match Figma. **Split on the PLAIN space only.**
 
-While the slider runs, the nav and the «Связаться» button go **fully transparent** (round 22;
-was Figma's 40 %) and return on any input.
+While the slider runs, the nav goes **fully transparent** (round 22; was Figma's 40 %) and
+returns on any input.
