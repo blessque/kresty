@@ -344,11 +344,20 @@ export class PageLight {
    * Run the shader. Called on a section change, a resize, or a cursor move —
    * NEVER on scroll, which is the whole point (see the header).
    *
+   * UNTIL ROUND 25 THE CURSOR CLAUSE ABOVE WAS FICTION: the only call site
+   * compared the station and the icon box, so no cursor movement ever reached
+   * here, and `MOTION.parallax` was 0 besides. Both are live now, quantised to
+   * 20 cells so scroll still costs zero GPU work. A doc comment describing an
+   * intent rather than the code is how that went unnoticed — this one is now
+   * true, and `conceptPage.update()` is the place to check it stays true.
+   *
    * `anchorX` is the icon's x in CSS px; y is always the canvas's middle.
-   * `pointer` is in CANVAS-LOCAL px, because `u_parallax` deforms the field
-   * toward the cursor (`q * 0.06 + hoverDir * 26.0`, plus swirl, wind and
-   * arm-length terms) — it is a relationship between the two points, not a
-   * translation, which is why it cannot be faked with a transform.
+   * `pointer` is in CANVAS-LOCAL px — the caller must subtract the canvas's own
+   * translate, which is `iconY − viewH`. Passing window coordinates was a real
+   * bug, inert only while parallax was 0. `u_parallax` deforms the field toward
+   * the cursor (`q * 0.06 + hoverDir * 26.0`, plus swirl, wind and arm-length
+   * terms) — it is a relationship between two points, not a translation, which
+   * is why it cannot be faked with a transform.
    */
   bake(idx: number, anchorX: number, pointer: [number, number], px: number) {
     if (!this.renderer) return;

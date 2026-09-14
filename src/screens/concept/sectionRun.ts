@@ -149,6 +149,37 @@ export class SectionRun {
 
   /** re-measure section geometry; call on resize, on font swap and on image load */
   measure(viewH: number) {
+    // ROUND 25: CENTRING IS A PER-SECTION PIN, computed before any rect is read.
+    //
+    // The pin that centres a block is `(viewH − colH)/2`, and `colH` swings by
+    // 400px+ across this run — the headings are wrapped Russian and the museum
+    // one takes nine lines where «Аренда» takes four — so a single `vh` would
+    // centre exactly one section. Each gets its own `--sec-pin` in px instead,
+    // which wins over the root value by proximity.
+    //
+    // THE CLAMP IS THE STATION INVARIANT, and centring fights it directly:
+    // centring wants pin large, the invariant caps it at `viewH − colH −
+    // padBottom`. Where the cap binds the block sits above centre, which is the
+    // correct trade — the alternative is the halo pop the invariant prevents.
+    // Writing `top` cannot change `colH` (sticky does not affect height), so
+    // this does not feed back into its own input.
+    if (MOTION.centre >= 0.5) {
+      for (const el of this.sections) {
+        const col = el.querySelector('.sec-col') as HTMLElement;
+        if (getComputedStyle(col).position !== 'sticky') {
+          el.style.removeProperty('--sec-pin');
+          continue;
+        }
+        const colH = col.offsetHeight;
+        const padBottom = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+        const centred = (viewH - colH) / 2;
+        const ceiling = viewH - colH - padBottom;
+        el.style.setProperty('--sec-pin', `${Math.max(0, Math.min(centred, ceiling))}px`);
+      }
+    } else {
+      for (const el of this.sections) el.style.removeProperty('--sec-pin');
+    }
+
     this.geom = this.sections.map((el) => {
       const col = el.querySelector('.sec-col') as HTMLElement;
       const icon = el.querySelector('.sec-icon') as HTMLElement;

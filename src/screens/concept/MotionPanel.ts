@@ -59,7 +59,7 @@ export interface MotionPanelHost {
  * keep seeing the old tuning and report the change as not landing. That is a
  * real bug this project has shipped once (contacts panel, round 18).
  */
-const STORE_KEY = 'kresty.concept.motion.v1';
+const STORE_KEY = 'kresty.concept.motion.v2';
 
 export class MotionPanel {
   private el = document.createElement('aside');
@@ -177,8 +177,11 @@ export class MotionPanel {
       {
         title: 'Layout — where the gaps are',
         rows: [
+          { kind: 'choice', key: 'centre', label: 'hold', options: ['pin vh', 'centred'] },
           { kind: 'range', key: 'pin', label: 'pin', min: 0, max: 30, step: 1,
-            note: 'sticky offset in vh — the hold phase position' },
+            note: 'sticky offset in vh — IGNORED while hold is «centred»' },
+          { kind: 'range', key: 'bodyLead', label: 'lead', min: 0, max: 90, step: 2,
+            note: 'how far the body starts below the heading, vh — the left column leads' },
           { kind: 'range', key: 'padTop', label: 'gap', min: 0, max: 90, step: 1,
             note: 'THE gap between sections, vh. padBottom is invariant-bound; this is not.' },
           { kind: 'range', key: 'padBottom', label: 'pad btm', min: 0, max: 200, step: 4,
@@ -415,7 +418,9 @@ function emit(p: MotionParams): string {
     n('parallax'),
     '',
     '  // layout',
+    `  centre: ${p.centre}, // ${p.centre >= 0.5 ? 'centred' : 'pin vh'}`,
     n('pin'),
+    n('bodyLead'),
     n('padTop'),
     n('padBottom'),
     n('iconSize'),

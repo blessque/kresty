@@ -59,11 +59,51 @@ Layout dials reach CSS through `applyMotionCss()`, which writes custom propertie
 so they inherit to all five sections and the form at once. **The stylesheet's fallbacks are the
 same defaults**, so the page is correct with no JS.
 
+## Round 25 — the icons react to the cursor, and hold centred
+
+- **Render scale 1 → 2**, closing the standing Retina-softness open issue. The client's "too
+  grainy" and the log's "53 % sharpness" were the same measurement: at cap 1 the canvas renders
+  one device pixel per CSS pixel and the compositor doubles it, and `hash21(fragPx)` seeds from
+  ABSOLUTE fragment position, so every dither speck becomes a 2×2 smear. Measured after:
+  mean |∇luminance| over lit pixels **4.28 → 5.68**.
+- **`?ls=<k>` now exists.** It was documented here since round 16.1 and never built (nothing
+  read `ls`; the constant also lives in `conceptPage.ts`, not `ConceptScreen.ts`).
+- **The cursor moves the light again, in 5 × 4 = 20 quantised cells.** Three things were off,
+  not one: `MOTION.parallax` was 0 (which zeroes every consumer of `q`), `bake()` was never
+  called on cursor movement despite its own doc comment saying it was, and **the pointer was
+  passed in WINDOW coordinates where `render()` expects canvas-local** — an error of up to a
+  full viewport, inert only because parallax was 0. Canvas-local is `cursorY − (iconY − viewH)`.
+- **A bake needs the cursor to SETTLE (90 ms), and that is what makes full scale affordable.**
+  Baking on every cell crossing put 28 of 65 frames over 30 ms; with the settle a fast flick
+  costs 0 bakes during and 1 after, and a reader's four deliberate moves cost four bakes with
+  **0 of 98 frames over 30 ms**. So the hitch was never one bake's price — it was bakes arriving
+  faster than they complete. Round 16.1's property is intact: **60 scrolling frames still make 0
+  GPU submissions.**
+
 ## The two sticky columns
 
 **The left column is `position: sticky`, NEVER a rAF transform.** A transform runs on the main
 thread while the right column scrolls on the compositor, which is round 16.1's "10 fps, jumps
 20px" exactly.
+
+**The icon + h2 hold VERTICALLY CENTRED (round 25), and the pin is per section.** The pin that
+centres is `(viewH − colH)/2`, and `colH` swings 400px+ across the run — these are wrapped
+Russian headings, nine lines for the museum against four for «Аренда» — so one `vh` would centre
+exactly one section. `sectionRun.measure()` writes each section's own `--sec-pin` in px, clamped
+by the station invariant; where the clamp binds the block sits above centre, which is the right
+trade. `MOTION.centre = 0` restores a flat `pin` in vh.
+
+**`--sec-body-lead` (50vh) starts the body below the heading**, so the icon and h2 are on screen
+and pinned before the first paragraph arrives. Layout, not animation — a rAF transform on
+`.sec-col` is round 16.1's defect, and a `transform`/`filter`/`will-change` on any ancestor
+steals sticky's containing block.
+
+**`measure()` now re-runs on `document.fonts.ready`.** Its own header always said "call on
+resize, on font swap and on image load" and the font-swap call was never wired, so every
+measurement was taken against the fallback face. Round 25's centring made it visible — colH 458
+under the fallback against 506 under Chromius, putting the pin 24px high on four of five
+sections — but `colH` is also a term of the station invariant and of `iconY`'s `pushed` phase, so
+it was never harmless. A constant pin simply hid it.
 
 Three silent breakages, all commented in `concept.css`:
 

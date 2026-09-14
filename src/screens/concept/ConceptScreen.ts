@@ -528,6 +528,20 @@ export class ConceptScreen {
       this.scroll.restore(Math.min(restore, cap));
     }
     addEventListener('resize', this.resize);
+
+    // RE-MEASURE ONCE THE REAL FONT IS IN. `sectionRun.measure()`'s own header
+    // has always said "call on resize, on font swap and on image load", and the
+    // font-swap call was never wired — so every measurement was taken against
+    // the fallback face. Round 25 made that visible: the centring pin is
+    // `(viewH − colH)/2`, and these headings are wrapped Russian, so a fallback
+    // face that sets «Остановиться…» in fewer lines gives colH 458 where
+    // Chromius gives 506. Measured before this line: pin 221 against the 197
+    // that centres it — 24px high, on four of five sections.
+    //
+    // It was never harmless: `colH` is also a term of the station invariant and
+    // of `iconY`'s `pushed` phase. A constant pin simply hid the error.
+    if (document.fonts?.status !== 'loaded') void document.fonts?.ready.then(() => this.resize());
+
     let last = performance.now();
     const loop = (now: number) => {
       if (!this.running) return;

@@ -79,14 +79,44 @@ export interface MotionParams {
 
   // ── layout: where the gaps actually are ───────────────────────────────────
   /**
-   * Sticky offset, vh — drives `--sec-pin`.
+   * Sticky offset, vh — drives `--sec-pin`. **Ignored when `centre` is 1.**
    *
-   * ROUND 24 ships 0, which is a real change of behaviour and not a disabled
-   * dial: the column pins at the very top of the viewport now, so the icon's
-   * hold phase sits higher and the light travels further before its successor
-   * arrives. That is part of why the swap reads better than it did.
+   * ROUND 24 shipped 0: the column pinned at the very top of the viewport, so
+   * the icon's hold phase sat higher and the light travelled further before its
+   * successor arrived.
    */
   pin: number;
+  /**
+   * 1 = the icon + heading hold VERTICALLY CENTRED in the viewport (round 25,
+   * the client's request); 0 = use `pin` as a flat vh offset.
+   *
+   * IT CANNOT BE A FIXED vh, which is why this is a mode rather than a number.
+   * The pin that centres a block is `(viewH − colH) / 2`, and `colH` varies by
+   * more than 400px across the run — these headings are wrapped Russian and the
+   * museum one takes nine lines where «Аренда» takes four. One vh value would
+   * centre exactly one section. So the pin is computed PER SECTION in
+   * `sectionRun.measure()` and written to that section's own `--sec-pin`.
+   *
+   * It is also clamped by the station invariant (`pin + colH + padBottom ≤
+   * viewH`), which centring fights directly: centring wants `pin` big, and the
+   * invariant caps it at `viewH − colH − padBottom`. On a short viewport with a
+   * tall heading the cap binds first and the block sits above centre — correct,
+   * because the alternative is the halo pop the invariant exists to prevent.
+   */
+  centre: number;
+  /**
+   * How far the BODY column starts below the heading column, vh — drives
+   * `--sec-body-lead`.
+   *
+   * The client's note: "the h2 block should appear earlier on scroll than its
+   * text, the left column goes like 50% pre- the right". This is that, done with
+   * LAYOUT rather than animation, and the reason is a hard constraint: a
+   * rAF-driven transform on `.sec-col` is bit-for-bit round 16.1's reported
+   * defect (main thread vs compositor), and `transform`/`filter`/`will-change`
+   * on any ancestor steals sticky's containing block. Offsetting the body costs
+   * nothing per frame and cannot break either.
+   */
+  bodyLead: number;
   /**
    * Section top padding, vh — and this is THE GAP BETWEEN SECTIONS.
    *
@@ -135,9 +165,15 @@ export const MOTION_DEFAULTS: MotionParams = {
 
   follow: 0.01,
   hysteresis: 0,
-  parallax: 0,
+  // ROUND 25: the cursor moves the light again. It was 0 — which zeroes every
+  // consumer of `q` in the shader, so the cursor did literally nothing here. The
+  // «Контакты» showcase runs the same light at 2; 1.2 is deliberately gentler,
+  // because this is a reading page rather than a stills set.
+  parallax: 1.2,
 
   pin: 0,
+  centre: 1,
+  bodyLead: 50,
   padTop: 70,
   padBottom: 112,
   iconSize: 228,
@@ -187,7 +223,11 @@ export function gapFloor(bandVh: number): number {
  */
 export function applyMotionCss(p: MotionParams = MOTION) {
   const s = document.documentElement.style;
+  // The ROOT value is the fallback and the `centre: 0` behaviour. When centring
+  // is on, `sectionRun.measure()` overrides it per section with a px value —
+  // which wins by proximity, since `.sec-col` reads the nearest ancestor.
   s.setProperty('--sec-pin', `${p.pin}vh`);
+  s.setProperty('--sec-body-lead', `${p.bodyLead}vh`);
   s.setProperty('--sec-pad-top', `${p.padTop}vh`);
   s.setProperty('--sec-pad-bottom', `${p.padBottom}px`);
   s.setProperty('--sec-icon-size', `${p.iconSize}px`);

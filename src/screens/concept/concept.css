@@ -703,6 +703,21 @@
 }
 
 .sec-body {
+  /* ROUND 25: THE BODY STARTS BELOW THE HEADING, so the icon and h2 are on
+     screen and pinned before the first paragraph arrives — the client's "the
+     left column goes ~50% pre- the right".
+
+     It is padding rather than motion on purpose. The obvious implementation is
+     a scroll-driven transform on `.sec-col`, and that is forbidden twice over:
+     a rAF transform there is bit-for-bit round 16.1's reported defect (main
+     thread racing the compositor), and a `transform`/`filter`/`will-change` on
+     any ancestor of a sticky element steals its containing block, which breaks
+     the pin silently. Padding costs nothing per frame and cannot break either.
+
+     Note this lengthens the section, so `iconY`'s `pushed` phase starts later —
+     the boundary opacities must be re-measured after changing it, never
+     assumed. `measure()` reads live rects, so the geometry follows by itself. */
+  padding-top: var(--sec-body-lead, 50vh);
   /* prose stays left-aligned; only the sticky column centres */
   text-align: left;
   /* ROUND 20: said `ALS Hauss`, which is NOT LOADED — see main.css's

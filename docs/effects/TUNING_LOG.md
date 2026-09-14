@@ -3809,15 +3809,20 @@ frame at the swap **max Δ 1** on 0.000% of pixels — better than round 19's Δ
 
 ## Open issues
 
-- **[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**
-  Shipped in round 16.1 to remove a 70–117 ms bake hitch at every section boundary. Measured
-  sharpness (mean |∇luminance| over lit pixels) retains **53 %** of the full-tier render, and
-  the difference is visible on the icon silhouette at 2×. `LIGHT_RENDER_SCALE_MAX` in
-  `ConceptScreen.ts` is the single dial; 1.5 was measured and is the worst of both (57 ms
-  hitch AND 63 % sharpness). Wants a designer's eye on a real Retina screen — the honest
-  alternative is full sharpness with a hitch in the background crossfade once per section.
-  **`?ls=<k>` overrides it live** (`?ls=2` is the full tier), so the comparison needs no
-  rebuild.
+- ~~**[OPEN] The section light's render scale is capped at 1, which softens it on Retina.**~~
+  **RESOLVED (round 25):** raised to 2. The client reported the icons as "clunky, low fidelity,
+  too grainy", which is this issue seen from the other side — at cap 1 the canvas renders one
+  device pixel per CSS pixel and the compositor doubles it, and both `hash21(fragPx)` sites seed
+  from ABSOLUTE fragment position, so each dither speck becomes a 2×2 bilinear smear. **The
+  grain and the softness were one measurement.** After: mean |∇luminance| over lit pixels
+  **4.28 → 5.68**.
+  **The hitch was not what round 16.1 thought it was.** Baking on every cursor-cell crossing put
+  28 of 65 frames over 30 ms, but four full-resolution bakes spaced by a reader's own pauses
+  cost **0 of 98 frames over 30 ms** — so the cost was bakes arriving faster than they complete,
+  not the price of one bake. A 90 ms cursor settle is what pays for full scale; lowering the
+  scale was treating the symptom. Two corrections to the entry above: the constant lives in
+  `conceptPage.ts`, not `ConceptScreen.ts`, and **`?ls=` did not exist** — nothing read it. It
+  does now.
 - **[OPEN] Round 16's `.res-bg` plate re-antialiases the two ROTATED street captions.**
 ## Map round 17 (2026-08-11) — the designer's caption layer, 1:1
 

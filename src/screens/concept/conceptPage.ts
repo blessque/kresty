@@ -30,20 +30,84 @@ import { MOTION, applyMotionCss } from './motionParams';
  */
 
 /**
- * The section light's render scale, capped at 1 — round 16.1's shipped trade,
- * kept as a NAMED policy rather than a literal buried in `pageLight.ts`.
+ * The section light's render scale. ROUND 25 RAISES IT 1 → 2, closing the
+ * standing open issue about Retina softness.
  *
- * Measured then: cap 2 costs a 70–117 ms bake hitch at every section boundary
- * for 100 % sharpness; 1.5 costs 57 ms for 63 %; 1 has no hitch over 30 ms at
- * 53 %. The hitch matters because a bake lands near a colour crossfade, and a
- * stutter there is visible in a way softness is not.
+ * Round 16.1 capped it at 1 and measured the trade: cap 2 costs a 70–117 ms bake
+ * for 100 % sharpness, 1.5 costs 57 ms for 63 %, 1 has no bake over 30 ms at
+ * 53 %. The client's report — the icons look "clunky, low fidelity, too grainy"
+ * — is that 53 % seen from the other side, and the two are literally the same
+ * measurement: at cap 1 on a 2× display the canvas renders one device pixel per
+ * CSS pixel and the compositor doubles it, so `hash21(fragPx)`, which seeds from
+ * ABSOLUTE fragment position, becomes a 2×2 smear per speck. The dither is the
+ * grain, and the upscale is what makes it visible.
  *
- * This is the dial for the standing open issue about Retina softness.
+ * The hitch is paid for by throttling instead — see `bakePointer()`. Bakes are
+ * suppressed while the page is scrolling, so the expensive frame lands on a
+ * still page where 100 ms is a delay rather than a stutter.
  */
-const LIGHT_RENDER_SCALE_MAX = 1;
+const LIGHT_RENDER_SCALE_MAX = renderScaleOverride() ?? 2;
+
+/**
+ * `?ls=<k>` — the live override TUNING_LOG has documented since round 16.1 and
+ * which never actually existed (nothing read `ls`; the log also placed the
+ * constant in `ConceptScreen.ts`, and it is here). It is the A/B tool for a
+ * designer eye on sharpness-versus-hitch, and the way back to 1 on a slow
+ * machine without a rebuild.
+ */
+function renderScaleOverride(): number | null {
+  const raw = new URLSearchParams(location.search).get('ls');
+  if (raw === null) return null;
+  const k = Number(raw);
+  return Number.isFinite(k) && k > 0 ? Math.min(k, 3) : null;
+}
 
 /** warm the GPU this far ahead of the first section, in viewports */
 const WARM_VH = 1.5;
+
+/**
+ * ROUND 25: the cursor moves the light again, in 5 × 4 = 20 quantised positions.
+ *
+ * THE POINT IS WHAT IS *NOT* HERE. Round 16.1's fix was that scrolling must cost
+ * zero GPU work — the canvas is two viewports tall with the icon baked at its
+ * middle and moved by `translate3d` alone, which is why 60 scrolling frames make
+ * 0 submissions. A live per-frame pointer would undo that outright. Quantising
+ * to 20 cells means the whole viewport costs at most 20 bakes, a bake happens
+ * only when the cursor crosses a cell boundary, and scroll still costs nothing.
+ *
+ * `render()`'s `lastKey` already included the rounded pointer, so the dedupe for
+ * this existed from the start and was simply never fed a moving cursor — the
+ * trigger in `update()` only ever compared the station and the icon box.
+ */
+const BUCKETS_X = 5;
+const BUCKETS_Y = 4;
+
+/**
+ * How long the cursor must REST in a new cell before that cell is baked, ms.
+ *
+ * Cell-crossing alone is not enough throttling at render scale 2, and this was
+ * measured rather than assumed. Sweeping the cursor across the viewport with a
+ * bake on every crossing:
+ *
+ *   scale 1    median 16.7ms   p95 18.8   max 18.9   frames >30ms:  0 / 109
+ *   scale 1.5  median 16.6ms   p95 18.8   max 19.1   frames >30ms:  0 / 101
+ *   scale 2    median 16.6ms   p95 67.0   max 71.8   frames >30ms: 28 / 65
+ *
+ * A fast sweep must therefore not bake the cells it passes THROUGH, only the one
+ * it stops in. After the settle, on the same 2880×3600 canvas:
+ *
+ *   fast flick, ~12 cells in 360ms   0 bakes during, 1 after   0 / 38 frames >30ms
+ *   reader, 4 deliberate moves       4 bakes                   0 / 98 frames >30ms
+ *
+ * THE SECOND ROW IS THE INTERESTING ONE: four full-resolution bakes, spaced by a
+ * reader's own pauses, cost nothing measurable. So the hitch was never the price
+ * of ONE bake — it was back-to-back bakes arriving faster than they complete.
+ * Spacing them is what makes full sharpness affordable, not making them cheaper.
+ *
+ * This is the lever to reach for if the hitch is ever reported again, together
+ * with `?ls=`. Lowering the render scale is the other end of the same trade.
+ */
+const CURSOR_SETTLE_MS = 90;
 
 export class ConceptPage {
   readonly sections: SectionRun;
@@ -63,6 +127,13 @@ export class ConceptPage {
   private dipStart = 0;
   private lastBakeIdx = -1;
   private lastBakePx = 0;
+  /** the quantised cursor cell the current bake was rendered for (see BUCKETS) */
+  private lastBakeCell = -1;
+  /** the cell the cursor is in now, and when it entered — see CURSOR_SETTLE_MS */
+  private hoverCell = -1;
+  private hoverSince = 0;
+  /** previous scrollTop, so a bake can be suppressed while the page is moving */
+  private lastScrollTop = -1;
 
   constructor(screen: HTMLElement, scroller: HTMLElement) {
     // ROUND 23: push the layout dials into CSS before anything measures. The
@@ -150,15 +221,48 @@ export class ConceptPage {
         const dip = this.swapDip(t.idx);
         const shown = MOTION.swapDip > 0 ? this.shownIdx : t.idx;
 
-        // bake only on a station change — never on scroll (round 16.1)
-        // re-bake on a station change OR when the icon box resizes (it flexes
-        // with viewport height); `render()`'s lastKey dedupe absorbs the rest
-        if (shown !== this.lastBakeIdx || t.px !== this.lastBakePx) {
+        // The smoothed y is needed TWICE now — to place the canvas, and to
+        // convert the cursor into canvas-local space below. `smoothY` advances
+        // its own filter, so it must be called exactly once per frame.
+        const y = this.smoothY(t.y);
+
+        // THE POINTER HAS TO BE CONVERTED, and this was a live bug: the caller
+        // passes WINDOW coordinates while `render()` documents and treats them
+        // as canvas-local. The canvas is 2 viewports tall and sits at
+        // `translate3d(0, y − viewH, 0)`, so its top edge in window space is
+        // `y − viewH` and the local point is `cursorY − (y − viewH)`. The error
+        // was up to a full viewport, and it was invisible only because
+        // `MOTION.parallax` was 0 — which zeroes every consumer of `q` in the
+        // shader. Turning parallax on without this makes the light lean toward a
+        // cursor that is nowhere near where the reader's actually is.
+        const local: [number, number] = [pointer[0], pointer[1] - (y - viewH)];
+
+        // Suppress cursor bakes while the page is moving. Scroll owns the frame
+        // budget — at render scale 2 a bake is 70–117 ms, which is a delay on a
+        // still page and a stutter on a scrolling one. A station change is NOT
+        // suppressed: it must land on the frame it is due.
+        const scrolling = scrollTop !== this.lastScrollTop;
+        const cell = this.pointerCell(pointer, viewW, viewH);
+
+        // The cursor must SETTLE in a cell before that cell is baked, or a flick
+        // across the viewport bakes every cell it passes through — 28 of 65
+        // frames over 30ms, measured. See CURSOR_SETTLE_MS.
+        const now = performance.now();
+        if (cell !== this.hoverCell) {
+          this.hoverCell = cell;
+          this.hoverSince = now;
+        }
+        const settled = now - this.hoverSince >= CURSOR_SETTLE_MS;
+
+        const stationChanged = shown !== this.lastBakeIdx || t.px !== this.lastBakePx;
+        const cursorMoved = !scrolling && settled && cell >= 0 && cell !== this.lastBakeCell;
+        if (stationChanged || cursorMoved) {
           this.lastBakeIdx = shown;
           this.lastBakePx = t.px;
-          light.bake(shown, t.x, pointer, t.px);
+          this.lastBakeCell = cell;
+          light.bake(shown, t.x, local, t.px);
         }
-        light.position(this.smoothY(t.y), t.opacity * dip);
+        light.position(y, t.opacity * dip);
       } else {
         light.hide();
       }
@@ -166,10 +270,26 @@ export class ConceptPage {
       light.hide();
     }
 
+    this.lastScrollTop = scrollTop;
+
     // 3. the handoff — AFTER the colour is applied, in the same task. See
     //    MainHandoff.update: reversed, a hard flick paints one frame of the
     //    intermediate colour, and that is the only way this seam can flash.
     this.handoff.update(scrollTop, viewH, this.bg.pure, busy);
+  }
+
+  /**
+   * Which of the BUCKETS_X × BUCKETS_Y cursor cells the pointer is in, or −1 off
+   * screen. Quantised in WINDOW space rather than canvas-local, deliberately: the
+   * canvas slides with the icon, so a canvas-local cell boundary would drift past
+   * a stationary cursor as the page scrolls and fire a bake with nobody moving.
+   */
+  private pointerCell(pointer: [number, number], viewW: number, viewH: number): number {
+    const [px, py] = pointer;
+    if (px < 0 || py < 0 || px > viewW || py > viewH) return -1;
+    const cx = Math.min(BUCKETS_X - 1, Math.floor((px / viewW) * BUCKETS_X));
+    const cy = Math.min(BUCKETS_Y - 1, Math.floor((py / viewH) * BUCKETS_Y));
+    return cy * BUCKETS_X + cx;
   }
 
   /**
