@@ -59,7 +59,7 @@ export interface MotionPanelHost {
  * keep seeing the old tuning and report the change as not landing. That is a
  * real bug this project has shipped once (contacts panel, round 18).
  */
-const STORE_KEY = 'kresty.concept.motion.v2';
+const STORE_KEY = 'kresty.concept.motion.v3';
 
 export class MotionPanel {
   private el = document.createElement('aside');
@@ -184,6 +184,8 @@ export class MotionPanel {
             note: 'how far the body starts below the heading, vh — the left column leads' },
           { kind: 'range', key: 'padTop', label: 'gap', min: 0, max: 90, step: 1,
             note: 'THE gap between sections, vh. padBottom is invariant-bound; this is not.' },
+          { kind: 'range', key: 'firstPadTop', label: 'first gap', min: 0, max: 90, step: 1,
+            note: 'the FIRST section only — .page-gap above it is already a viewport of white' },
           { kind: 'range', key: 'padBottom', label: 'pad btm', min: 0, max: 200, step: 4,
             note: 'a term of the station invariant — watch the readout above' },
           { kind: 'range', key: 'iconSize', label: 'icon', min: 100, max: 320, step: 4 },
@@ -422,6 +424,7 @@ function emit(p: MotionParams): string {
     n('pin'),
     n('bodyLead'),
     n('padTop'),
+    n('firstPadTop'),
     n('padBottom'),
     n('iconSize'),
     `  iconAlign: ${p.iconAlign}, // ${p.iconAlign >= 0.5 ? 'center' : 'left'}`,

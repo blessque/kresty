@@ -582,6 +582,21 @@
   color: var(--color-text-ondark-main);
 }
 
+/* ROUND 26: THE FIRST SECTION DOES NOT NEED THE INTER-SECTION GAP. Above it is
+   `.page-gap`, a full viewport of white that already is the pause after the
+   map, so `padTop`'s 70vh was a second helping of the same thing — the run from
+   map-clear to the first pinned icon measured ~145vh and the client asked for
+   half.
+
+   Done here rather than on `gapVh`, which is the tempting dial and the wrong
+   one: it is 1.0 against a `gapFloor()` of 1.0, so there is no room at all, and
+   lowering it runs the colour crossfade behind the still-opaque map — the
+   round-16 defect the gap exists to prevent. A per-element custom property
+   beats the root value by proximity, the same mechanism `--sec-pin` uses. */
+.sec:first-of-type {
+  --sec-pad-top: var(--sec-first-pad-top, 0vh);
+}
+
 /* ROUND 23: `.sec-grid` is now just `.page-grid` plus the overflow rule sticky
    needs. The 48px gutter is deleted — the columns MEET at the page centre, so
    the right column's prose starts at exactly 720 in a 1440 window. See

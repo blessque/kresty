@@ -132,6 +132,23 @@ export interface MotionParams {
    * through the panel's Copy button — they are chosen, not derived.
    */
   padTop: number;
+  /**
+   * The FIRST section's own top pad, vh — drives `--sec-first-pad-top`.
+   *
+   * Separate from `padTop` because the first gap is not the same thing as the
+   * gaps between sections. Above it sits `.page-gap`, a full viewport of white
+   * that already IS the breathing room after the map; `padTop`'s 70vh on top of
+   * that made the map → first-section run ~145vh, which the client called too
+   * long by about half.
+   *
+   * THIS IS THE LEVER, NOT `gapVh`. `gapVh` is 1.0 and `gapFloor(bandVh)` is
+   * also 1.0 — it sits exactly on a hard floor. Dropping it opens the colour
+   * crossfade BEFORE the map has cleared, so the first half of the fade happens
+   * behind an opaque canvas and is simply lost; the reader meets an
+   * already-half-coloured page the instant the map goes. That is the round-16
+   * defect the gap was introduced to fix, and the motion panel flags it red.
+   */
+  firstPadTop: number;
   /** section bottom padding, px — a term of the station invariant */
   padBottom: number;
   /** icon box, px */
@@ -175,6 +192,7 @@ export const MOTION_DEFAULTS: MotionParams = {
   centre: 1,
   bodyLead: 50,
   padTop: 70,
+  firstPadTop: 0,
   padBottom: 112,
   iconSize: 228,
   iconAlign: 1,
@@ -229,6 +247,7 @@ export function applyMotionCss(p: MotionParams = MOTION) {
   s.setProperty('--sec-pin', `${p.pin}vh`);
   s.setProperty('--sec-body-lead', `${p.bodyLead}vh`);
   s.setProperty('--sec-pad-top', `${p.padTop}vh`);
+  s.setProperty('--sec-first-pad-top', `${p.firstPadTop}vh`);
   s.setProperty('--sec-pad-bottom', `${p.padBottom}px`);
   s.setProperty('--sec-icon-size', `${p.iconSize}px`);
   s.setProperty('--gap-vh', String(p.gapVh));
