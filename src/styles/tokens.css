@@ -51,10 +51,16 @@
   --map-ink-margin: #b2cad1; /* off-sheet features, and .bld-floor */
   --map-hero-tint: #dfe7ee; /* drawer photo placeholder — a surface, not a bg */
 
-  /** «О Крестах» intro title. A fourth blue with no semantic home: it is a
-   *  heading, so `--color-link` is the wrong role, and `--color-text-onlight-
-   *  main` (ink-1000) would render it near-black. Question filed. */
-  --accent-intro-heading: #44abde;
+  /*
+   * ROUND 25 DELETED `--accent-intro-heading` (#44abde, the «О Крестах» intro
+   * title). It was filed as an open question — "a fourth blue with no semantic
+   * home: it is a heading, so `--color-link` is the wrong role" — and the client
+   * has now answered it as a rule for the whole site: BLUE MEANS INTERACTIVE.
+   * A heading that is not a link takes ink; a heading that IS a link may be blue,
+   * which is why `.news-card__title` keeps its hover. So the token had no
+   * semantic home because the colour was wrong, not because the set was missing
+   * a name — and near-black was the right answer all along.
+   */
 
   /**
    * The contact form's field, and the darkest point of the colour run (Figma

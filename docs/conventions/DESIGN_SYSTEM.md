@@ -35,8 +35,28 @@ corner rule are *decisions*: a number alone cannot carry why. They live in code 
 reasoning (`layout.ts`'s `STAGE_W`/`CENTER_X`, the geometry in `sectionRun.ts`). The rule is
 single-sourcing, not centralising for its own sake. Motion durations follow the same rule.
 
-Colour is **consolidated but not re-picked**. Near-duplicate blues (`#36a0ff`, `#44abde`)
-are named rather than merged so the duplication stays legible for the designer to settle.
+Colour is **consolidated but not re-picked**. Near-duplicate blues are named rather than
+merged so the duplication stays legible for the designer to settle. (`#44abde` is gone —
+see the rule below.)
+
+### BLUE MEANS INTERACTIVE (round 25, the client's rule, site-wide)
+
+**Colour follows interactivity, not tag.** A heading that is not a link takes ink
+(`--color-text-onlight-main`) on light and white (`--color-text-ondark-main`) on dark. A
+heading that **is** a link may be blue — which is why `.news-card__title`, an `<h2>` inside an
+`<a>`, keeps its `--color-link` hover, while «12 августа» beside it stays ink and «СМИ о нас»,
+a filter link, is blue. The designer's own frame draws exactly that.
+
+This retired `--accent-intro-heading` (`#44abde`), a fourth blue the token file carried with
+the note *"no semantic home: it is a heading, so `--color-link` is the wrong role"*. It had no
+home because the **colour** was wrong, not because the set lacked a name.
+
+Worth auditing rather than eyeballing, because a linked heading and an unlinked one look
+identical in a screenshot: walk `h1,h2,h3` on every route and assert
+`colour !== --color-link || el.closest('a')`. Two things it will legitimately report as
+non-violations: `.article-related__headline` is a `<p>`, not a heading, and
+`.article-quote__mark` is a decorative `aria-hidden` span at H1 *size* — blue, but neither is
+a heading.
 
 ### Silent traps in the token layer
 

@@ -105,7 +105,10 @@
   /* Figma text style H1 (was a one-off 48/1.1 — the 1.1 already matched) */
   font-size: var(--type-h1-size);
   line-height: var(--type-h1-lh);
-  color: var(--accent-intro-heading);
+  /* ROUND 25: was `--accent-intro-heading` (#44abde). Blue is reserved for
+     interactive elements site-wide now, and this h1 is not a link — it takes the
+     same ink as the lead directly below it. */
+  color: var(--color-text-onlight-main);
   margin: 0 0 20px;
 }
 
