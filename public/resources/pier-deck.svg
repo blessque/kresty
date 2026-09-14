@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 368 136" fill="none">
+  <!-- «Причал «Кресты»» — the pier deck, traced from Figma 1120:30 group
+       1120:445 and reduced to the three shapes that actually draw it.
+
+       The frame has five rounded rectangles, but two of them are duplicates
+       offset by 8px (85/89 at y1190/1198 and 86/88 at y1262/1270) — a soft
+       drop-shadow pair, not structure. Flattened here, because this ships as a
+       MASK (concept.css .map-pier): one coverage channel, no room for a shadow,
+       and a shadow under a white shape on water would not read at this size
+       anyway.
+
+       Coordinates are the frame's, translated so the group's own box is the
+       viewBox: stem 168×56 at x144, connector 16×32 at x224, deck 368×56 at
+       y80. -->
+  <rect x="144" y="0" width="168" height="56" rx="28" fill="#fff" />
+  <rect x="224" y="48" width="16" height="40" fill="#fff" />
+  <rect x="0" y="80" width="368" height="56" rx="28" fill="#fff" />
+</svg>

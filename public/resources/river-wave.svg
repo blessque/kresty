@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 200" preserveAspectRatio="none">
+  <!-- The Neva band's silhouette: a wavy top edge over a solid body.
+
+       Used as a CSS mask (see .map-river in concept.css), so only coverage
+       matters here. The colour comes from the element behind this shape; white
+       simply means "keep".
+
+       CAREFUL EDITING THIS COMMENT: an XML comment may not contain a double
+       hyphen, so a CSS custom property cannot be named in one. The first
+       version of this file mentioned the river's colour token by name and was
+       not well formed — which does NOT surface as a parse error anywhere. The
+       file still serves as 200 image/svg+xml, the mask silently resolves to
+       nothing, and the band renders fully transparent. It took an Image()
+       decode in the page to say so.
+
+       preserveAspectRatio is none because the mask is sized to the box: the
+       wave stretches with the viewport rather than tiling, which is why the
+       crest count is low. Four crests across 1440 read as a river edge; a dozen
+       would read as a decorative scallop.
+
+       The curve is deliberately shallow, 14px of amplitude on a 200px band.
+       The designer's frame masks a screenshot of the old shader into a wave
+       whose top edge wanders by about that much. -->
+  <path fill="#fff" d="
+    M0,22
+    C 180,4 300,40 480,26
+    S 820,2 1000,22
+    S 1280,40 1440,18
+    L1440,200 L0,200 Z" />
+</svg>

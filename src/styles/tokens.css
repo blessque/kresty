@@ -51,6 +51,74 @@
   --map-ink-margin: #b2cad1; /* off-sheet features, and .bld-floor */
   --map-hero-tint: #dfe7ee; /* drawer photo placeholder — a surface, not a bg */
 
+  /* ── ROUND 26: the navigation designer's map (Figma 1120:30) ──────────────
+     READ OFF THE FRAME, not picked: the render was decoded and each caption's
+     DARKEST pixel taken, because anti-aliasing only ever lightens a glyph
+     toward its background, so the extreme is the ink and the mean is a lie.
+     Five separate plan captions returned #7373a2 to the byte and two accent
+     captions returned #081b5a, which is what says these are flat fills rather
+     than a sampling artefact.
+
+     TWO OF THE THREE INKS TURNED OUT TO ALREADY BE IN THE SET, and that is the
+     interesting part: the accent ink is `--ref-navy` exactly, and the
+     wayfinding ink is `--ref-blue` — the main screen's own field. So round 25's
+     rule holds here without being asked to: the marks that are BLUE on this map
+     are the entrances and the parking, i.e. the wayfinding tier. Only the third
+     ink is new, which is why only it is written out below. */
+
+  /** The plan register (ALS Span): building names, streets, the pier, the metro.
+   *  A muted violet-blue with no relative in the set's neutral on-light ramp. */
+  --map-ink-plan: #7373a2;
+
+  /** The field the plate floats in. NOT `--color-bg-light-main` (#ffffff): the
+   *  designer's page here is a hair blue, and the plate below is a further step
+   *  in the same direction — the two only read as separate surfaces together. */
+  --map-field: #f9fcff;
+
+  /** The floor plate — the blue rectangle the site stands on, ten grid columns
+   *  wide. Replaces the GLB's ground surfaces entirely (round 26 stage 5). */
+  --map-plate: #f0f8ff;
+
+  /** The Neva band below the plate. `waterParams.ts` keeps its own colour for
+   *  the shader, which no longer runs on this screen — do not sync them by hand;
+   *  they are two different drawings of the same river now. */
+  --map-river: #74b0de;
+
+  /**
+   * The map's own two text styles — Figma "Map Medium" and "Map Tiny", read
+   * from the designer's variables via `get_variable_defs`:
+   *
+   *   fs-map-medium: 20 · Map Medium: Chromius Medium 20 / 1.2 / tracking 0
+   *   Map Tiny:           12 / 1.2 / tracking 25
+   *
+   * They are HERE rather than in `tokens.gen.css` because the export does not
+   * carry them yet: `fs-map-medium` exists as a variable but the two composite
+   * styles are not in `tokens/`, and "Map Tiny" additionally names the wrong
+   * family (see fonts.css). A Token Studio re-export retires this block.
+   *
+   * Tracking 25 is PERCENT — 0.25em, 3px at 12px. The check is the frame's own
+   * measure: «УЛИЦА КОМСОМОЛА» is 344.553px wide there.
+   *
+   * Weights: Chromius Medium is 150 on its own axis and `500` would clamp to
+   * Black (fonts.css). Span ships as a single static Bold face and takes 700 —
+   * the axis trap does not apply to it, and must not be copied onto it.
+   */
+  /** The plan register's family. Not in the generated layer because the token
+   *  set does not know about it: Figma's own "Map Tiny" style still claims
+   *  Chromius, and `build-tokens.mjs` asserts a single family on that basis.
+   *  The designer supplied the woff2 separately — see fonts.css. */
+  --font-family-map-plan: 'ALS Span', sans-serif;
+
+  --fs-map-medium: 20px;
+  --fs-map-tiny: 12px;
+  --type-map-medium-size: var(--fs-map-medium);
+  --type-map-medium-lh: var(--lh-1-2);
+  --type-map-medium-weight: var(--font-weight-medium);
+  --type-map-tiny-size: var(--fs-map-tiny);
+  --type-map-tiny-lh: var(--lh-1-2);
+  --type-map-tiny-weight: 700;
+  --type-map-tiny-tracking: 0.25em;
+
   /*
    * ROUND 25 DELETED `--accent-intro-heading` (#44abde, the «О Крестах» intro
    * title). It was filed as an open question — "a fourth blue with no semantic
@@ -129,4 +197,19 @@
      rounds 6-7, NAMED here rather than re-picked. Its value is settled; see
      TUNING_LOG before touching it. */
   --ease-move: cubic-bezier(0.3, 0, 0.12, 1);
+}
+
+/* The map styles' mobile sizes (round 26): 13 and 10, the designer's own.
+   767.98 mirrors `tokens.gen.css` exactly — the generated scale switches there
+   and a map caption stepping down at a different width than the page around it
+   is the kind of half-responsive that reads as a bug.
+
+   ONLY THE SIZES SWITCH. The leading is a unitless ratio and follows its size
+   for free, and the tracking is in `em`, so it follows too — which is the whole
+   argument for both being relative rather than px. */
+@media (max-width: 767.98px) {
+  :root {
+    --fs-map-medium: 13px;
+    --fs-map-tiny: 10px;
+  }
 }

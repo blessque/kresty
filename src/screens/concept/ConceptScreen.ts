@@ -6,10 +6,11 @@ import logoSvg from '../../assets/logo.svg?raw';
 import { getPerfTier } from '../../shared/performanceTier';
 import { asset } from '../../shared/assetUrl';
 import { MAP_BG } from './mapLooks';
-import { buildStudioEnv, buildGround, buildLights } from './mapStudio';
+import { buildStudioEnv, buildLights } from './mapStudio';
 import { buildEdgeLines } from './edgeLines';
-import { splitConnectedParts } from './buildingSplit';
+import { splitConnectedParts, type BuildingPart } from './buildingSplit';
 import { GroundPlan, FLAT_RATIO, type FlatSurface } from './groundPlan';
+import { applyLayout } from './buildingLayout';
 import { MapLabels } from './mapLabels';
 import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
@@ -93,7 +94,9 @@ const FIT_MARGIN = 1.03;
 
 const CAMERA_DIST = 400;
 const MODEL_SPAN = 300; // model normalized to this max horizontal dimension
-const GROUND_SIZE = MODEL_SPAN * 5;
+// `GROUND_SIZE` (MODEL_SPAN × 5) went with the ground plate in round 26 — the
+// floor is a DOM rectangle now and its size is a grid position, not a multiple
+// of the model.
 
 /** dihedral angle above which the exporter's smoothed normals are re-hardened.
  *  map.glb ships primitive 1 at 73.9% smooth-shaded — normals averaged across
@@ -218,7 +221,11 @@ export class ConceptScreen {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(getPerfTier().mapPixelRatio);
-    this.renderer.setClearColor(MAP_BG, 1);
+    // ROUND 26: alpha 0, not MAP_BG. The canvas is a transparent sheet over the
+    // DOM floor now, so the field colour is a CSS decision and this clear must
+    // not paint over it. `MAP_BG` survives as the colour `GroundPlan.setFocus`
+    // fades the plan toward — keep the import.
+    this.renderer.setClearColor(MAP_BG, 0);
     // NOT NoToneMapping: the environment probe alone lands around 3.8 linear
     // (base 3.5 × envMapIntensity), so without a shoulder every lit face clips
     // flat to white and the key light can add brightness but no gradation —
@@ -229,7 +236,8 @@ export class ConceptScreen {
     // built below stays a direct child of the screen and therefore stays
     // pinned. See mapScroll.ts.
     this.scroll = new MapScroll(this.el, this.stageVh);
-    this.scroll.stage.appendChild(this.renderer.domElement);
+    // into the PLATE (round 26), which is the canvas's box now — see mapScroll
+    this.scroll.plate.appendChild(this.renderer.domElement);
     this.scroll.setIntro(buildIntro());
 
     // everything below the map: sections, form, handoff, colour, icon light
@@ -254,9 +262,14 @@ export class ConceptScreen {
       e.preventDefault();
       this.onNavigate('main');
     });
-    // in the STAGE, not the screen: a caption is welded to the map and has to
-    // scroll with it
-    this.labels = new MapLabels(this.scroll.stage);
+    // in the PLATE, not the screen: a caption is welded to the map and has to
+    // scroll with it, and it projects into the camera's own box.
+    //
+    // The layer must NOT be clipped by the plate — round 17 letters both streets
+    // and the metro in the margin BAND outside the drawing, so those marks
+    // deliberately project to negative and over-size coordinates. `.map-labels`
+    // carries no overflow rule and `.map-plate` must never gain one.
+    this.labels = new MapLabels(this.scroll.plate);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
     this.picker.onHoverChange = (id) => {
@@ -317,7 +330,17 @@ export class ConceptScreen {
     pmrem.dispose();
 
     for (const l of buildLights()) this.scene.add(l);
-    this.scene.add(buildGround(GROUND_SIZE));
+    // ROUND 26 REMOVED THE GROUND PLATE. The floor is a DOM element now — ten
+    // grid columns of `--map-plate` behind a transparent canvas (concept.css).
+    //
+    // Safe to drop precisely BECAUSE `MAP_LOOK.transmission` is 0: the look is
+    // alpha blending, not glass, so nothing in the scene was refracting this
+    // plate. It was only ever the tone the volumes sat on, and that job now
+    // belongs to a rectangle that can align to the page grid — which a mesh
+    // fitted to the model never could.
+    //
+    // `buildGround` stays in mapStudio.ts. It is the only record of the
+    // designer's #dde6e9 sampling and of why the plate needed its own vignette.
 
     new GLTFLoader().load(
       encodeURI(MODEL_GLB),
@@ -390,8 +413,22 @@ export class ConceptScreen {
     // traversal, and the plan must not get them — a white contour is invisible
     // on the near-white roads and far too loud on the water.
     const buildings = new THREE.Group();
-    const parts = splitConnectedParts(volumes);
+    // ROUND 26: the designer's composition is applied BETWEEN the split and
+    // everything that reads a part. The split must run first — it is what
+    // assigns the ids, and every id sorts on triangle count, so a merge or a
+    // move done earlier would renumber the set and silently re-key
+    // `buildingsInfo.ts`. See buildingLayout.ts.
+    //
+    // `siteSpan` here is the pre-normalize model span, the same unit the
+    // placement fractions and `mapMarks` offsets are expressed in. It has to be
+    // measured BEFORE the move, or moving the crosses apart would widen the span
+    // that the move itself is denominated in — a placement that changes its own
+    // ruler does not converge.
+    const split = splitConnectedParts(volumes);
     for (const g of volumes) g.dispose();
+    const preBox = massedBox(split);
+    const preSize = preBox.getSize(new THREE.Vector3());
+    const parts = applyLayout(split, Math.max(preSize.x, preSize.z));
     for (const part of parts) {
       const mesh = new THREE.Mesh(part.geometry);
       this.picker.add(mesh, part);
@@ -405,6 +442,7 @@ export class ConceptScreen {
     console.info(
       `[kresty] map: ${parts.length} buildings, ${flats.length} flat surfaces`
     );
+    if (new URLSearchParams(location.search).has('parts')) logParts(parts);
 
     // Normalize on the BUILDINGS alone. The plan spans ~3× their footprint (the
     // Neva slab reaches far off-site), so measuring the whole root would
@@ -425,9 +463,18 @@ export class ConceptScreen {
     // entire mechanism keeping the plan undistorted (see groundPlan.ts). Take
     // it from the flat surfaces themselves, not from the buildings' minimum, so
     // an export whose foundations dip below grade cannot drag the plan off it.
-    const groundY = flats.length
-      ? new THREE.Box3().setFromObject(this.ground.group).min.y
-      : box.min.y;
+    //
+    // ROUND 26 HAD TO FIX HOW THIS IS MEASURED, and the bug it would otherwise
+    // have shipped is worth stating: this read `setFromObject(ground.group)`,
+    // which measures the MESHES the plan built. Round 26 hides every flat
+    // surface class, so that group is now empty while `flats.length` is still
+    // non-zero — and `Box3.setFromObject` on an empty group returns the EMPTY
+    // box, whose `min.y` is `+Infinity`. The model would have been seated at
+    // infinity and the screen would have gone blank with no error at all.
+    //
+    // Measuring the GEOMETRIES is what the line always meant: grade is a
+    // property of the exported surfaces, not of whether we chose to draw them.
+    const groundY = flats.length ? flatMinY(flats) : box.min.y;
 
     root.scale.setScalar(scale);
     root.position.set(-center.x * scale, -groundY * scale, -center.z * scale);
@@ -447,6 +494,8 @@ export class ConceptScreen {
     this.model = root;
     this.shearGroup.add(root);
     this.resize(); // frustum now fits the real bounds
+    // after the fit, so the projection is the one the marks are authored against
+    if (new URLSearchParams(location.search).has('parts')) this.logFootprints(parts);
     // the panel may have opened before the GLB arrived — its stored tuning has
     // nothing to write to until now
     this.pushWaterParams();
@@ -482,24 +531,81 @@ export class ConceptScreen {
     // and teleporting the reader to the top of the page on every resize is not a
     // behaviour worth keeping on its own.
     this.scroll.measureIntro();
-    // The canvas is the STAGE, 1.5x the window's height (mapScroll.ts) — but
-    // the camera's FIT stays measured against the window, or the taller aspect
-    // would silently re-zoom the map. setOverscan carries the difference.
-    const { stageW, stageH } = this.scroll;
-    this.renderer.setSize(stageW, stageH);
-    this.picker.setResolution(stageW, stageH);
+    // ROUND 26: THE CANVAS IS THE PLATE, so the fit is measured against the
+    // plate too and the three quantities finally agree.
+    //
+    // Rounds 14–18 had to keep them apart: the canvas was 1.5× the window's
+    // height so the Neva could sit below the fold, the FIT had to stay on the
+    // window or the taller aspect flipped it width-bound and rendered the
+    // buildings ~35% larger, and `setOverscan` carried the difference. With the
+    // river out of the model that whole arrangement has nothing left to do —
+    // the canvas is a bounded box, the camera frames into that box, and the
+    // overscan is 1.
+    const { plateW, plateH } = this.scroll;
+    this.renderer.setSize(plateW, plateH);
+    this.picker.setResolution(plateW, plateH);
     // the drawer's real width, so the focus framing tracks the CSS (incl. its
     // max-width: 86vw clamp on narrow viewports)
-    this.mapCam.setViewport(innerWidth, innerHeight, this.drawer.width);
-    this.mapCam.setOverscan(this.scroll.overscan);
+    this.mapCam.setViewport(plateW, plateH, this.drawer.width);
+    this.mapCam.setOverscan(1);
     this.mapCam.snap();
     // AFTER measureIntro: every section top below the intro moves with it.
     this.page.measure(this.scroll.stageW, this.scroll.viewH);
   };
 
-  /** the canvas the captions and the picker work in — never the window */
+  /**
+   * `?parts`, second half: every building's FOOTPRINT in plate pixels.
+   *
+   * The client's rule for round 26 is "16px gap from a building's footprint",
+   * and that is a screen measure, so it needs the footprint as the screen has
+   * it — projected through the live camera, at grade. `mapMarks` offsets are
+   * fractions of the site span, so this also reports the scale that converts
+   * between the two, which is the number every placement decision divides by.
+   *
+   * At GRADE (y = 0), not the bbox: the offsets are measured from the footprint
+   * precisely because it is the shear's fixed point, so it is drawn in one place
+   * rather than two (round 18). Projecting the roof would reintroduce the lean
+   * the design was mistakenly measured against the first time.
+   */
+  private logFootprints(parts: BuildingPart[]) {
+    const cam = this.mapCam.camera;
+    const { w, h } = this.view;
+    const m = this.model!.matrix;
+    const v = new THREE.Vector3();
+    const rows = parts.map((p) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0; i < 4; i++) {
+        v.set(i & 1 ? p.bbox.max.x : p.bbox.min.x, p.bbox.min.y, i & 2 ? p.bbox.max.z : p.bbox.min.z);
+        v.applyMatrix4(m).project(cam);
+        const px = (v.x * 0.5 + 0.5) * w;
+        const py = (-v.y * 0.5 + 0.5) * h;
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px);
+        y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+      }
+      return {
+        id: p.id,
+        cx: +((x0 + x1) / 2).toFixed(1),
+        cy: +((y0 + y1) / 2).toFixed(1),
+        w: +(x1 - x0).toFixed(1),
+        h: +(y1 - y0).toFixed(1),
+      };
+    });
+    // px per 1.0 of a `mapMarks` offset — the conversion every `at` divides by
+    const box = massedBox(parts);
+    const s = box.getSize(new THREE.Vector3());
+    const span = Math.max(s.x, s.z);
+    const a = new THREE.Vector3(0, 0, 0).applyMatrix4(m).project(cam);
+    const b = new THREE.Vector3(span, 0, 0).applyMatrix4(m).project(cam);
+    console.info(
+      `[kresty] plate ${Math.round(w)}×${Math.round(h)} · px-per-at ` +
+        `${(Math.abs(b.x - a.x) * 0.5 * w).toFixed(1)} · footprints ${JSON.stringify(rows)}`
+    );
+  }
+
+  /** the canvas the captions and the picker work in — the plate, never the
+   *  window and, since round 26, no longer the whole stage either */
   private get view() {
-    return { w: this.scroll.stageW, h: this.scroll.stageH };
+    return { w: this.scroll.plateW, h: this.scroll.plateH };
   }
 
   /**
@@ -564,10 +670,20 @@ export class ConceptScreen {
         this.waterT += dt * this.timeScale;
         this.ground?.update(this.waterT);
         this.updateShear();
-        // WINDOW → STAGE. `stageOffset` is negative while the intro is still on
-        // screen, which puts a cursor in the intro above the map's top edge and
-        // makes the picker miss — which is correct. See mapScroll.stageOffset.
-        this.picker.setPointer(this.cursor.x, this.cursor.y + this.scroll.stageOffset);
+        // WINDOW → STAGE → PLATE. `stageOffset` is negative while the intro is
+        // still on screen, which puts a cursor in the intro above the map's top
+        // edge and makes the picker miss — which is correct. See
+        // mapScroll.stageOffset.
+        //
+        // The second step is round 26's: the picker raycasts in the CANVAS's
+        // coordinates and the canvas is the plate, which is inset from the stage
+        // on both axes. Getting this wrong is the silent kind of wrong — the map
+        // still highlights buildings, just the wrong ones (buildingPicker.ts
+        // records the round-14 version of exactly this).
+        this.picker.setPointer(
+          this.cursor.x - this.scroll.plateLeft,
+          this.cursor.y + this.scroll.stageOffset - this.scroll.plateTop
+        );
         this.picker.update(this.scene, this.mapCam.camera);
         this.labels.update(
           this.mapCam.camera,
@@ -681,6 +797,61 @@ function massedBox(parts: { bbox: THREE.Box3 }[]): THREE.Box3 {
   // a model of nothing but slabs would leave this empty — fall back to all of it
   if (box.isEmpty()) for (const p of parts) box.union(p.bbox);
   return box;
+}
+
+/**
+ * `?parts` — the id audit, and the only honest way to answer two questions this
+ * project keeps having to re-answer: did the ids move, and which volumes are off
+ * the site grid?
+ *
+ * It prints the ROTATION-INVARIANT fingerprint (triangle count, centroid height,
+ * vertical extent) that CONCEPT_MAP.md names, so two runs can be diffed across a
+ * yaw change or a GLB swap — AABB dimensions and AABB-centre radius look like
+ * fingerprints and are not, because neither survives a rotation.
+ *
+ * `axis` is the footprint's principal angle folded into ±45°: how far this
+ * volume sits off square. `aspect` is what says whether to believe it — the
+ * principal axis of a near-square footprint is the ratio of two nearly equal
+ * second moments, so its angle is noise, and a cross is four-fold symmetric and
+ * has no principal axis at all. Read `axis` only where `aspect` is comfortably
+ * above 1.
+ */
+function logParts(parts: BuildingPart[]) {
+  const rows = parts.map((p) => {
+    const s = p.bbox.getSize(new THREE.Vector3());
+    const long = Math.max(s.x, s.z);
+    const short = Math.min(s.x, s.z);
+    const deg = (p.axisAngle * 180) / Math.PI;
+    // fold into ±45: squaring to the grid is a quarter-turn question
+    const off = ((((deg + 45) % 90) + 90) % 90) - 45;
+    return {
+      id: p.id,
+      tris: p.triCount,
+      axis: +off.toFixed(2),
+      aspect: +(long / Math.max(short, 1e-6)).toFixed(2),
+      h: +(p.bbox.max.y - p.bbox.min.y).toFixed(3),
+      cy: +p.centroid.y.toFixed(3),
+      size: `${long.toFixed(2)}×${short.toFixed(2)}`,
+    };
+  });
+  console.info('[kresty] parts ' + JSON.stringify(rows));
+}
+
+/**
+ * Grade, measured from the flat surfaces' GEOMETRY.
+ *
+ * Reads the exported plan whether or not any of it is drawn — which is the
+ * whole point since round 26 hid all of it. `buildingSplit` has already computed
+ * each bounding box during the bake, so this is a min over numbers, not a
+ * traversal of a scene graph that may legitimately be empty.
+ */
+function flatMinY(flats: { geometry: THREE.BufferGeometry }[]): number {
+  let y = Infinity;
+  for (const f of flats) {
+    f.geometry.computeBoundingBox();
+    y = Math.min(y, f.geometry.boundingBox!.min.y);
+  }
+  return y;
 }
 
 /** the GLTF material name — the only per-surface identity this export carries */

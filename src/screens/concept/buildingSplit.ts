@@ -216,7 +216,15 @@ export function connectedComponents(geo: THREE.BufferGeometry): MeshComponent[] 
  * this model are rotated, so their axis-aligned box says nothing about which
  * way the building actually faces. The covariance's dominant eigenvector does.
  */
-function footprintAxis(p: Float32Array): number {
+/**
+ * Exported since round 26: `buildingLayout.ts` moves and turns individual
+ * volumes, and a part whose geometry changed needs its axis DERIVED again
+ * rather than adjusted. Re-running the same second-moment fit is the only way
+ * the answer is in the same convention as everything already keyed off it —
+ * `MapCamera` reads this as a world angle, so a sign slip would swing the focus
+ * camera to the wrong façade with nothing to show it was wrong.
+ */
+export function footprintAxis(p: Float32Array): number {
   const n = p.length / 3;
   let mx = 0;
   let mz = 0;
@@ -239,7 +247,9 @@ function footprintAxis(p: Float32Array): number {
   return 0.5 * Math.atan2(2 * sxz, sxx - szz);
 }
 
-function concat(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
+/** Exported since round 26 so `buildingLayout.ts` can fold two parts the split
+ *  separated into one, using the same concatenation the split already trusts. */
+export function concat(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
   let pn = 0;
   for (const g of list) pn += g.getAttribute('position').count;
   const p = new Float32Array(pn * 3);

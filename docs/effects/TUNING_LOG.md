@@ -5083,3 +5083,130 @@ row filters (3 → 1 cards with the underline following), all four seams land on
 probe clean. One new token fell out: `--type-glyph-lh: 1` for a lone decorative character (the
 article's quote mark), because the type scale's smallest ratio adds half a line of air under a
 glyph that has no second line.
+
+---
+
+## Map round 26 (2026-09-14) — the navigation designer's map: two registers, a DOM floor, and a collage that had to be measured before it could be believed
+
+Figma `1120:30`. Six changes at once: a bounded blue floor plate, the Neva detached as a wavy
+full-bleed band, buildings moved and individually squared, captions split into two type
+registers, icons on the important zones, and corrected copy.
+
+### The frame is a COLLAGE, and that had to be established first
+
+Every building in it is a `Mask group`: a vector silhouette masking **its own copy** of a
+screenshot of this app. Subtracting each copy's offset from its mask's position recovers where
+that building stood in the capture. The two crosses are one cutout used twice at identical size
+(395.394287×390.478729), so the arithmetic is unambiguous:
+
+| | in the screenshot | in the frame | moved |
+|---|---|---|---|
+| west cross | (177.6, 120.7) | (232.7, 495.7) | |
+| east cross | (594.5, 264.2) | (814.5, 666.5) | |
+| **separation** | **(416.9, 143.5)** | **(581.8, 170.9)** | **+164.9, +27.4** |
+
+Two other copies are scaled **non-uniformly** (1.187 across, 1.402 down). A frame that rescales
+a building on one axis is not a survey. **The client confirmed the re-arrangement is
+intentional** — a navigation designer's call — and asked for it in code pending a renewed
+model.
+
+The consequence is the one to carry: **where the design's gap was made BY the spread, there is
+no gap on the real plan to put a caption in.** Three accent captions still cannot clear their
+neighbours without either more of the designer's moves or his own positions.
+
+### The tier is one field, and that is the whole of "only Chromius moves"
+
+`accent` = Chromius Medium 20/1.2 navy, anchored on the ROOF. `plan` = ALS Span Bold 12/1.2
+uppercase at 0.25em, anchored at GRADE. Typeface and anchor height are the same decision; two
+independent fields could disagree, and a disagreement would read as a rendering bug.
+
+Rounds 17–18 had this half-built without knowing: `on` meant both "which building" and "rides
+the roof", which is fine until a building caption is a HISTORICAL name. «Ледник» and
+«Котельная» would have floated off their own walls.
+
+**Measured, rest → full lean: all 12 plan marks travel `0.000px`.** Accent travel is
+proportional to building height to within 0.2% — crosses (h 2.517) 50.36px, `b06` (h 2.178)
+43.57px (ratio 0.865 against a height ratio of 0.865), `b08` (h 1.052) 21.08px.
+
+**The grade zero goes AFTER the model matrix.** `bbox` is in model space where grade is
+`groundY`, not 0.
+
+### Two of the three inks were already in the token set
+
+The render was decoded and each caption's DARKEST pixel taken — anti-aliasing only lightens a
+glyph toward its background, so the extreme is the ink and the mean is a lie. Five plan
+captions returned `#7373a2` to the byte and two accent captions `#081b5a`, which is what says
+these are flat fills rather than a sampling artefact.
+
+`#081b5a` is `--ref-navy` exactly. `#56b7e6` — the wayfinding ink on the entrances and the
+parking — is `--ref-blue`, **the main screen's own field**, so round 25's «blue means
+interactive» already covered this without being asked. Only `--map-ink-plan` is new.
+
+Note what is NOT in the blue tier: «Причал» and «м. Площадь Ленина» carry icons and name
+destinations, and both measure at the plain plan ink. Having an icon is not the rule.
+
+### Five things that produced no error
+
+- **`groundY` would have gone to `+Infinity`.** It read `setFromObject(ground.group).min.y`
+  guarded by `flats.length`. Hiding every flat surface leaves `flats.length` non-zero and the
+  GROUP empty, and `Box3.setFromObject` on an empty group returns the empty box. The model
+  would have been seated at infinity and the screen gone blank, silently. Measure the
+  geometries, which is what the line always meant.
+- **An XML comment cannot contain `--`, so a CSS custom property cannot be named in one.** The
+  first `river-wave.svg` did. It still serves as `200 image/svg+xml`, the mask silently
+  resolves to nothing, and the band renders fully transparent. An `Image()` decode in the page
+  is what said so.
+- **A CSS mask clips descendants.** The pier nested inside the masked band had its stem sliced
+  along the wave — which looks like a shorter pier, not like clipping.
+- **Every zone icon is `fill="white"`**, drawn for round 12's black «Контакты» field. On the
+  new light plate they are invisible, and it reads as a failed load rather than a wrong colour.
+  Masking them with `currentColor` makes each take its own tier's ink — one artwork set, both
+  registers.
+- **`buildingSplit` reports a `bbox`/`centroid`/`axisAngle` that exclude absorbed slivers**
+  while the geometry includes them. Found because squaring `b13` changed its HEIGHT under a
+  Y-rotation, which is impossible.
+
+### The squaring rule, and why the sign is a measurement
+
+«Some buildings are rotated individually, not the whole model» — so the turn is derived from
+`axisAngle`, gated on footprint aspect because a principal axis is noise on a square footprint
+and absent on a four-fold symmetric one (the crosses read −41.55° and +42.84°; acting on those
+would fling both 42° off the site).
+
+Turning by `-off` came back at exactly TWICE the original angle on every volume. A three.js +Y
+rotation is a rotation by −θ in the (x, z) plane the fit reads, so the cancellation is `+off`.
+Both signs produce a plausible map full of tilted buildings.
+
+**The independent check:** this measures the parking deck at −4.02° off square; round 17
+hand-authored `turn: -4.47` on its caption off the designer's frame to match "the parking
+roof's slight list". Two derivations sharing no inputs, half a degree apart.
+
+### Placement is arithmetic now, not nudging
+
+`?parts` prints the id fingerprint, each axis with its aspect, and — after the fit — every
+footprint in plate pixels plus the px-per-`at` scale. At 1440: plate **1143×718**, one unit of
+`at` is **893.2px** (derived from the camera and, independently, by solving three marks on
+`b02` — agreeing to 0.08%), site origin on the plate centre. The designer's plate is 1142×717.5,
+i.e. ours to within a pixel, so a frame coordinate converts by subtracting (149, 392) and
+dividing. Every mark landed on its computed target to within 0.1px.
+
+**Verified:** 21 marks, 0 unplaced, **0 caption overlaps**; picker 8/8 identical across a 300px
+scroll at `?ob=0`; all seven routes cold-load clean; `build` + `tokens:check` + `tsc` +
+`lint:tokens` (baseline unchanged at 11) + `probe:headline` clean.
+
+### Open
+
+- **Three accent captions are placed by collision-avoidance, not by design**: «Офисы для вашего
+  бизнеса», «Отведать авторскую кухню», «Выпить кофе и поработать». The frame's gaps for them
+  exist only in the spread collage.
+- **Hotel copy is a proposal.** Stars are gone per the client; both lines are assembled from the
+  client's own `references/texts.txt` rather than invented, and marked `TODO(copy)`.
+- **«Ледник» is a reading.** No such name exists in `buildingsInfo`; `b16` is the smallest real
+  volume and the frame letters it against its smallest mask. Marked `TODO(verify)`.
+- **The frame puts the spa on the WEST cross; `buildingsInfo` lists SPA among `b01`'s (east)
+  residents.** One of the two is wrong and the drawer would contradict the map. Flagged, not
+  silently reconciled.
+- **Figma's own "Map Tiny" style still names ALS Chromius**, not Span. Following the client;
+  the style wants fixing or the two keep diverging.
+- `cosmos-logo.svg` is now unreferenced (kept on disk).
+- The water shader is parked, not deleted.
