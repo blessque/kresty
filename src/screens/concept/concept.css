@@ -53,18 +53,108 @@
   overflow: hidden;
 }
 
+/* ROUND 26: the stage is CONTENT-HEIGHT — plate, gap, river band.
+   It was `--map-vh * 100%` (150vh), which existed for one reason: round 14
+   needed the Neva to sit below the fold so it could be judged at its shipped
+   scale. The Neva is a DOM band now, so the stage has no reason to be taller
+   than what is in it, and `--map-vh` / `?vh=` are inert. Kept as a property
+   rather than deleted so a URL carrying it does not become a mystery. */
 .map-stage {
   position: relative;
   width: 100%;
-  /* the custom property is what `?vh=<k>` writes */
-  height: calc(var(--map-vh, 1.5) * 100%);
+  padding-bottom: 96px;
 }
 
-#screen-concept canvas {
+/* ───────────────────────────────────────────────── the floor plate (r26)
+
+   Figma 1120:30 stands the site on a blue rectangle instead of letting the
+   drawing bleed off every edge. It is TEN OF THE TWELVE COLUMNS — the frame's
+   plate runs x 149 → 1291, and `styles/grid.css` puts column 2 at 148.667 with
+   columns 2–11 measuring 1142.667. The designer's 1142 is the grid's own
+   arithmetic, not a coincidence, so this is written as the grid rather than as
+   the number it happens to produce at 1440.
+
+   The plate is also the CANVAS's box and therefore the camera's viewport — see
+   mapScroll.plate. Two consequences worth knowing before editing this rule:
+
+   - NO `overflow` HERE, EVER. Both street captions and the metro are lettered
+     in the margin band OUTSIDE the drawing (round 17), so `.map-labels`
+     legitimately places children at negative and over-size coordinates.
+     `overflow: hidden` would delete them with no error.
+   - the aspect ratio is what gives the canvas its height, so changing it
+     re-frames the model. 1142 × 717.5 is the frame's own. */
+.map-plate {
+  --grid-content: min(100% - 2 * var(--page-margin), var(--page-max));
+  --grid-col: calc((var(--grid-content) - 11 * var(--grid-gutter)) / 12);
+  position: relative;
+  width: calc(10 * var(--grid-col) + 9 * var(--grid-gutter));
+  aspect-ratio: 1142 / 717.5;
+  margin-inline: auto;
+  background: var(--map-plate);
+}
+
+/* Scoped to the plate now. The id-scoped selector still outranks any bare
+   class — round 16.1 lost a debugging round to that — so the page light's own
+   canvas rule below still has to carry the id and undo `bottom` explicitly. */
+#screen-concept .map-plate canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* ───────────────────────────────────────────────── the Neva band (r26)
+
+   Full-bleed, detached from the plate, with a wavy top edge — and deliberately
+   the simplest thing that draws it: a coloured box behind an SVG mask. The
+   client asked for exactly this («a super stupid vector shape… we need a very
+   simple solution now, not screwing up the model») after five rounds in which
+   the river was a tuned fragment shader on GLB geometry.
+
+   WHAT THAT COSTS, stated so nobody has to rediscover it: the round-11/14 water
+   does not run on this screen any more. It is not deleted — `water.ts`,
+   `waterParams.ts` and the `?admin` panel are all intact and still tuned — it
+   simply has no surface to run on, because `groundPlan.ts` hides `Color_H08`.
+   The band is a flat fill. Putting motion back is a tiling bake, not a shader.
+
+   The gap above it is the frame's: the plate ends at 1109.4 and the band starts
+   at 1208, and the two embankment captions letter into the 99px between. */
+.map-water {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  margin-top: 99px;
+}
+
+/* A MASK CLIPS DESCENDANTS, NOT JUST THE ELEMENT'S OWN PAINT, which is why the
+   pier is this element's sibling rather than its child. Nested, the pier's stem
+   is sliced along the wave and simply looks like a shorter pier — no warning,
+   no clipped-content cue, just a different drawing. */
+.map-river {
+  position: absolute;
+  inset: 0;
+  background: var(--map-river);
+  -webkit-mask: url('/resources/river-wave.svg') top center / 100% 100% no-repeat;
+  mask: url('/resources/river-wave.svg') top center / 100% 100% no-repeat;
+}
+
+/* The pier, which left the model this round: `b18` was a 0.09-tall slab lying
+   in the river, and round 13 had already taken it out of the framing
+   measurement for being plan furniture wearing a building's clothes. Now it is
+   what it always drew as — a flat shape on the water.
+
+   63.9% is the frame's own placement (the group spans x 736–1104 of 1440, so
+   its centre is 920), NOT the middle of the band. */
+.map-pier {
+  position: absolute;
+  left: 63.9%;
+  top: -18px;
+  translate: -50% 0;
+  width: 368px;
+  height: 136px;
+  background: var(--map-field);
+  -webkit-mask: url('/resources/pier-deck.svg') top center / contain no-repeat;
+  mask: url('/resources/pier-deck.svg') top center / contain no-repeat;
 }
 
 #screen-concept.picking canvas {
@@ -405,11 +495,11 @@
    internal layout are settled here, so the per-frame path stays one transform
    write per mark.
 
-   16px against the 21px site base: these sit ON the volumes and eighteen of
-   them are in view at once, so they read as annotation rather than as the
-   plan's own lettering. Chromius Regular is weight 120 and Medium is 150 — the
-   axis runs 50/120/232, so `400`/`500` would clamp to Black. Never add
-   `font-variation-settings` here; it overrides `font-weight`. */
+   ROUND 26 SPLIT THIS INTO TWO REGISTERS. The base rule below is now layout
+   only — position, stacking, the icon relationship — and everything that says
+   what a mark IS (typeface, size, case, tracking, ink) lives on the tier class,
+   so `.map-mark--accent` and `.map-mark--plan` can be read against each other in
+   one screen. See mapMarks.ts for why the tier is a single field. */
 .map-mark {
   position: absolute;
   left: 0;
@@ -421,18 +511,56 @@
      apart, which is a hair of air rather than a measured space */
   gap: 1px;
   white-space: nowrap;
-  font-family: var(--font-family-display);
-  font-weight: var(--type-caption-sm-weight);
-  font-size: var(--type-caption-sm-size);
   /* One number, referenced by the icon's own centring calc below. It reads the
      token because that calc is `var(--mark-lh) * 1em` — a PX line-height here
      is invalid at computed-value time, the whole calc drops, and both entrance
      marks jump ~5px silently. That is why the scale's line-heights are emitted
-     as unitless ratios. */
-  --mark-lh: var(--type-caption-sm-lh);
+     as unitless ratios. Each tier re-points it at its own leading. */
+  --mark-lh: var(--type-map-tiny-lh);
   line-height: var(--mark-lh);
-  color: var(--map-ink-mark);
   will-change: transform;
+}
+
+/* THE ACCENT REGISTER — Figma "Map Medium". Names a destination, rides the
+   roof of the volume it names (mapLabels.ts), carries a 36px icon above the
+   words. Chromius Medium is weight 150 on this font's axis; `500` clamps to
+   Black, and `font-variation-settings` must never appear here because it
+   overrides `font-weight` and reintroduces that exact bug. */
+.map-mark--accent {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-map-medium-weight);
+  font-size: var(--type-map-medium-size);
+  --mark-lh: var(--type-map-medium-lh);
+  color: var(--ref-navy);
+}
+
+/* THE PLAN REGISTER — Figma "Map Tiny". Names a thing that is simply there, and
+   is welded to its footprint.
+
+   UPPERCASE IS APPLIED HERE, NOT IN THE SOURCE STRINGS. The same names appear
+   in the building drawer in sentence case, and `mapMarks.ts` is where a reader
+   looks to check the copy — «КОТЕЛЬНАЯ» in the table would be a shouted string
+   that has to be un-shouted anywhere else it is used.
+
+   ALS Span is a STATIC face at weight 700 and has no variable axis; do not copy
+   the Chromius 120/150 reflex onto it, or the browser synthesises a bold from
+   the only file there is. See styles/fonts.css. */
+.map-mark--plan {
+  font-family: var(--font-family-map-plan);
+  font-weight: var(--type-map-tiny-weight);
+  font-size: var(--type-map-tiny-size);
+  --mark-lh: var(--type-map-tiny-lh);
+  letter-spacing: var(--type-map-tiny-tracking);
+  text-transform: uppercase;
+  color: var(--map-ink-plan);
+}
+
+/* The tracking adds a trailing space after the LAST letter, which optically
+   shifts a centred block left by half of it. Pulling it back is the difference
+   between a caption that sits on its building and one that looks 1.5px off at
+   0.25em — visible precisely because these are set in pairs down a column. */
+.map-mark--plan .map-mark__text {
+  margin-right: calc(var(--type-map-tiny-tracking) * -1);
 }
 
 /* Aligned blocks. The two cross captions are mirrored in the design — the west
@@ -463,6 +591,12 @@
    on the icon's height. Bleeding the same amount off the bottom makes the icon
    contribute exactly one line box to layout, so the block's box IS the text's
    box and the anchor addresses what it appears to. */
+/* An arrow belongs on the side it points at — see IconAt. `column-reverse`
+   rather than a reordered DOM so `createMark` builds one shape either way. */
+.map-mark--icon-below {
+  flex-direction: column-reverse;
+}
+
 .map-mark--icon-before {
   flex-direction: row;
   align-items: flex-start;
@@ -478,6 +612,22 @@
   max-width: none;
 }
 
+/* A TINTED icon is a mask filled with the mark's own ink, not a picture.
+   Every zone icon in public/resources is `fill="white"` — drawn for round 12's
+   «Контакты», which is a black field — so as an <img> on this near-white plate
+   they are invisible, and invisibly so: it reads as a failed load, not as a
+   wrong colour. Through a mask they take `currentColor` and therefore follow
+   their tier for free, navy on an accent mark and blue on a `way` one.
+
+   `span` is the selector because `createMark` only builds a span when it means
+   to tint; `metro-group` stays an <img> and keeps its four tones.
+   The standard `mask` is written LAST so it wins where both are supported. */
+span.map-mark__icon {
+  background: currentColor;
+  -webkit-mask: var(--icon-src) center / contain no-repeat;
+  mask: var(--icon-src) center / contain no-repeat;
+}
+
 /* One element per line: a mark is a column of lines, which `white-space:
    pre-line` could not give inside a nowrap box. The 2px matches the design's
    `gap-[2px]` on both cross captions. */
@@ -487,20 +637,18 @@
   gap: 2px;
 }
 
-/* White ink for a mark lying on a filled roof — the parking deck and the pier.
-   The design steps the weight up with it: at 120 the white breaks up over the
-   roof's own edge lines, and Chromius Medium is 150. */
-.map-mark--white {
-  color: var(--color-text-ondark-main);
-  font-weight: var(--font-weight-medium);
-}
+/* THE WAYFINDING INK — the two entrances and the parking, and nothing else.
+   Sampled off the frame at `--ref-blue`, which is the main screen's own field:
+   round 25 made blue mean interactive site-wide, and these are the marks that
+   say where you go IN. «Причал» and «м. Площадь Ленина» carry icons too and are
+   NOT in this tier — an icon is not the rule. See mapMarks.ts.
 
-/* The margin tint, for features that run off the sheet: both streets and the
-   metro. They are lettered in the white band outside the plate, so they carry
-   less weight than anything standing on the site itself. */
-.map-mark--muted {
-  color: var(--map-ink-margin);
-  --mark-lh: 1.4;
+   Round 26 retired `--white` (nothing lies on a filled roof any more — the
+   parking mark moved off the deck and the pier left the model) and `--muted`
+   (the whole plan register is the muted tint now, so a modifier that meant
+   "quieter than the marks" has nothing left to be quieter than). */
+.map-mark--way {
+  color: var(--color-link);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

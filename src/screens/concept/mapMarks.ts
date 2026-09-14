@@ -76,8 +76,49 @@
 
 import { asset } from '../../shared/assetUrl';
 
-/** where an icon sits relative to the text */
-export type IconAt = 'above' | 'before';
+/**
+ * ---------------------------------------------------------------------------
+ * ROUND 26: TWO REGISTERS, AND THE TIER DECIDES BOTH THINGS AT ONCE
+ *
+ * Figma 1120:30 splits the annotation into two tiers that differ in typeface,
+ * size, colour, case and tracking — and, the client's own emphasis, in whether
+ * they MOVE:
+ *
+ *   accent  Chromius Medium 20/1.2, navy, sentence case, icon above.
+ *           Names a destination («Отведать авторскую кухню»). RIDES THE ROOF.
+ *   plan    ALS Span Bold 12/1.2, muted violet-blue, UPPERCASE, 0.25em tracking.
+ *           Names a thing that is there («Котельная», «ул. Комсомола»).
+ *           WELDED TO THE FOOTPRINT — it does not move with the lean at all.
+ *
+ * `tier` is ONE field because those are not two decisions. "Only the Chromius
+ * texts move with the roofs" is the rule as the client stated it, so the
+ * typeface and the anchor height are the same choice wearing two hats; two
+ * independent fields could disagree, and the first time they did it would look
+ * like a rendering bug rather than a table typo.
+ *
+ * Rounds 17 and 18 had this half-built already and did not know it: `on` meant
+ * both "which building" and "rides the roof", which is fine while every
+ * building caption is a tenant name. The moment a building caption is a
+ * HISTORICAL name — «Ледник», «Котельная» — the two meanings come apart, and the
+ * old code would have floated both of them off their own walls.
+ */
+
+/**
+ * Where an icon sits relative to the text.
+ *
+ * `below` is round 26's: the two entrance marks carry an ARROW, and an arrow
+ * belongs on the side it points at. «Главный вход» points down into the site
+ * from the top margin and «Вход с набережной» points up into it from the
+ * bottom, so the same relationship puts one icon under its words and the other
+ * over them.
+ */
+export type IconAt = 'above' | 'below' | 'before';
+
+/**
+ * Which register a mark belongs to. See the note above — this picks the
+ * typeface AND the anchor height, and `mapLabels.ts` reads it for the second.
+ */
+export type MarkTier = 'accent' | 'plan';
 
 export interface MarkIcon {
   /** file in `public/resources`, without the extension */
@@ -92,10 +133,42 @@ export interface MarkIcon {
    */
   w: number;
   h: number;
+  /**
+   * `false` renders the file's own colours; the default RE-INKS it to the
+   * mark's own colour by masking.
+   *
+   * ROUND 26 NEEDED THIS THE MOMENT THE FIELD TURNED LIGHT. Every zone icon in
+   * `public/resources` is `fill="white"` — they were drawn for round 12's
+   * «Контакты» showcase, which is a black field — so dropped onto the new plate
+   * as `<img>` they render white on near-white and simply are not there. It is
+   * not a visible bug either; it looks like an icon that failed to load.
+   *
+   * Masking rather than recolouring the files means the icon takes `currentColor`
+   * and therefore follows its TIER: an accent icon is navy because its caption
+   * is, and a `way` icon is blue because its caption is. One artwork set, both
+   * registers, and a future ink change moves them together.
+   *
+   * `metro-group` opts out: the SPb metro logo is genuinely four-tone, and a
+   * mask would flatten a real piece of identity into a silhouette.
+   */
+  tint?: false;
 }
 
 export interface Mark {
-  /** the building whose roof this rides; absent = pinned to the site plan */
+  /**
+   * Which register — and therefore whether this mark moves. See `MarkTier`.
+   *
+   * An `accent` mark anchors on its building's ROOF and travels with it; a
+   * `plan` mark anchors at grade and is welded there, whether or not it names a
+   * building.
+   */
+  tier: MarkTier;
+  /**
+   * The building this mark belongs to; absent = pinned to the site plan.
+   *
+   * Since round 26 this means only "which building" — the anchor HEIGHT comes
+   * from `tier`, so a `plan` mark may name a volume without floating off it.
+   */
   on?: string;
   /** one element per line — the block is a column, never a wrapped paragraph */
   lines?: string[];
@@ -121,11 +194,21 @@ export interface Mark {
   turn?: number;
   icon?: MarkIcon;
   /**
-   * `muted` is the margin tint for features that run off the sheet; `white` is
-   * for a mark lying on a filled roof, where the design also steps the weight up
-   * to Chromius Medium. The default is the plan ink.
+   * An ink OVERRIDE. The default is the tier's own — navy for accent, the muted
+   * violet-blue for plan — and almost every mark takes it.
+   *
+   * `way` is the wayfinding tier: the two entrances and the parking, which the
+   * frame sets in `--ref-blue`. Sampling the render is what found this, and the
+   * value is not a new colour at all — it is the main screen's own field, which
+   * means round 25's site-wide rule («blue means interactive») already covers
+   * it. The marks in blue are the ones that tell you where to go in.
+   *
+   * NOTE what is NOT in this tier, because it is the thing you would guess
+   * wrong: «Причал «Кресты»» and «м. Площадь Ленина» carry icons and name
+   * destinations, and both are measured at the plain plan ink. Having an icon is
+   * not the rule; being a way IN to the site is.
    */
-  ink?: 'muted' | 'white';
+  ink?: 'way';
 }
 
 /**
@@ -142,67 +225,149 @@ export interface Mark {
  * volume naming that volume. These name tenants, so there is nothing left to
  * keep in step; `b06` is one volume with three restaurants on it.
  */
+/**
+ * ---------------------------------------------------------------------------
+ * ROUND 26: WHERE THESE NUMBERS COME FROM, AND WHICH ONES TO TRUST
+ *
+ * `?parts` prints the scale and every footprint, so this is reproducible rather
+ * than remembered. At the 1440 frame the plate measures 1143×718 and **one unit
+ * of `at` is 893.2 px** — derived two independent ways that agree to 0.08%: from
+ * the camera directly, and by solving three marks on `b02` for the linear map.
+ * The site origin lands on the plate's own centre, (571.5, 359).
+ *
+ * The designer's frame IS the 1440 plate almost exactly (its plate is 1142 ×
+ * 717.5), so a frame coordinate converts to an offset by subtracting the plate
+ * origin (149, 392) and dividing by 893.2. That is how every site mark and both
+ * cross captions below were set, and those are the trustworthy ones: they are
+ * measured against the PLATE, which the collage did not rearrange.
+ *
+ * THE BUILDING MARKS ARE WEAKER, and the reason is structural rather than
+ * sloppy. The frame is a collage in which buildings were moved apart — the two
+ * crosses by 165px — so a caption's position in it is stated relative to a plan
+ * that does not exist here. Round 26 moves the crosses to match and leaves the
+ * rest, so wherever the design's gap was made BY the spread, there is no gap to
+ * put a caption in. Those are placed by the client's own rule instead — a 16px
+ * gap from the footprint, measured from the typography — and the three that
+ * still cannot clear their neighbours are marked.
+ *
+ * A cross is the one place the 16px rule cannot be applied to a bounding box:
+ * `b01`/`b02` are plus-shaped, so their AABB is 354×354 of which the four
+ * corners are empty, and "16 from the footprint" there means 16 from an ARM.
+ * Those four captions keep the frame's own relative placement.
+ */
 export const BUILDING_MARKS: Mark[] = [
-  // The west cross, lettered three times down one left edge — the museum and
-  // the hotel share x 584 in the frame, which is what makes them read as one
-  // column rather than two loose captions.
-  { on: 'b02', lines: ['Музей Крестов'], at: [0.040, -0.067], align: 'left' },
+  // ── the west cross ────────────────────────────────────────────────────────
+  // Three accent blocks around it, mirrored about its own centre: the museum
+  // reads back at the cross from the left, the hotel forward from the right.
   {
+    tier: 'accent',
     on: 'b02',
-    lines: ['Западный Крест', 'Отель Cosmos 4*'],
-    at: [0.040, 0.055],
-    align: 'left',
-  },
-  /** the annexe on the cross's lower-left; geometrically part of `b02` */
-  { on: 'b02', lines: ['Лекторий'], at: [-0.162, 0.197], align: 'left' },
-
-  // The east cross takes the mirror choice — a RIGHT-aligned block in its
-  // lower-left quadrant, which is what keeps it clear of the SPA block.
-  {
-    on: 'b01',
-    lines: ['Восточный Крест', 'Отель Cosmos 5*'],
-    at: [-0.066, 0.054],
+    lines: ['Музей Кресты'],
+    at: [-0.2532, -0.0301],
     align: 'right',
+    icon: { src: 'Culture-640', at: 'above', w: 36, h: 36 },
   },
-  { on: 'b01', lines: ['SPA-Комплекс'], at: [0.199, -0.127], turn: 90 },
-
-  // The office alley: two blocks lettered down their right flank, one turned to
-  // fit the gap rather than shrink to it.
-  { on: 'b08', lines: ['Офисы А1'], at: [0.069, -0.005], turn: 90 },
-  { on: 'b11', lines: ['Офисы А2'], at: [0.069, -0.005], turn: 90 },
-  { on: 'b09', lines: ['Офисы B1'], at: [-0.039, 0.066], align: 'left' },
-
-  // The gastronomy block: two tenants read UPWARD in the alley to its left, the
-  // hall reads level under its own footprint.
-  { on: 'b06', lines: ['Mates Bistro'], at: [-0.085, -0.050], turn: -90 },
-  { on: 'b06', lines: ['Pho Bo'], at: [-0.085, 0.037], turn: -90 },
-  { on: 'b06', lines: ['Фуд-холл'], at: [-0.063, 0.098], align: 'left' },
-
-  /** white ink ON the parking deck, which is why it also carries the P chip */
   {
+    tier: 'accent',
+    on: 'b02',
+    // TODO(copy): the client asked for the hotels to lose their star ratings and
+    // be "more aesthetic"; both lines here are assembled from their own approved
+    // copy in references/texts.txt («Остановиться в роскошном отеле в
+    // исторических зданиях-крестах») rather than invented, but the phrasing
+    // itself is a proposal awaiting a verdict.
+    // THREE lines, not two, and it is a collision fix rather than a taste call:
+    // set as «Остановиться / в историческом отеле» this block measures 224px and
+    // runs into «Отведать авторскую кухню» at x 486. The frame breaks its own
+    // accent captions this short for the same reason — «Офисы / для вашего /
+    // бизнеса» is three lines of one short phrase.
+    lines: ['Остановиться', 'в историческом', 'отеле'],
+    at: [0.0313, 0.075],
+    align: 'left',
+    icon: { src: 'Bed-640', at: 'above', w: 36, h: 36 },
+  },
+  {
+    tier: 'accent',
+    on: 'b02',
+    // The client's own re-phrasing, and it is the one that sets the register for
+    // this whole tier: infinitive verb phrases, matching references/texts.txt's
+    // «Остановиться / Позаботиться / Пробовать / Открывать / Арендовать».
+    //
+    // TODO(verify): the frame puts the spa on the WEST cross, while
+    // buildingsInfo lists the SPA-комплекс among b01's residents (east). One of
+    // the two is wrong and the drawer would contradict the map. Flagged, not
+    // silently reconciled.
+    lines: ['Позаботиться', 'о теле и душе'],
+    at: [-0.1739, 0.2319],
+    icon: { src: 'SPA-640', at: 'above', w: 36, h: 36 },
+  },
+  { tier: 'plan', on: 'b02', lines: ['Западный', 'крест'], at: [-0.2684, 0.0684] },
+
+  // ── the east cross ────────────────────────────────────────────────────────
+  {
+    tier: 'accent',
+    on: 'b01',
+    lines: ['Остановиться в отеле', 'с видом на Неву'], // TODO(copy) — see above
+    at: [0.2263, -0.1078],
+    align: 'left',
+    icon: { src: 'Bed-640', at: 'above', w: 36, h: 36 },
+  },
+  { tier: 'plan', on: 'b01', lines: ['Восточный', 'крест'], at: [0.2263, 0.0661], align: 'left' },
+
+  // ── the rest of the site ──────────────────────────────────────────────────
+  // TODO(round 26 stage 8): every offset below the crosses is PROVISIONAL.
+  // The frame is a collage — each building is a mask over its own copy of a
+  // screenshot, several of them moved and two scaled non-uniformly — so it
+  // states the composition, not the geometry. Only the four cross-adjacent
+  // blocks above could be derived from it directly, because the cross cutout is
+  // unambiguous and used twice at identical size. The rest get measured in the
+  // live app AFTER the buildings move, against the footprint (round 18's rule).
+  {
+    tier: 'accent',
+    on: 'b08',
+    lines: ['Офисы', 'для вашего', 'бизнеса'],
+    at: [-0.0931, -0.1146],
+    icon: { src: 'Office-640', at: 'above', w: 36, h: 36 },
+  },
+  {
+    tier: 'accent',
+    on: 'b06',
+    lines: ['Отведать', 'авторскую кухню'],
+    at: [-0.0527, 0.1059],
+    icon: { src: 'Restaurant-640', at: 'above', w: 36, h: 36 },
+  },
+  {
+    tier: 'accent',
+    on: 'b06',
+    lines: ['Выпить кофе', 'и поработать'],
+    at: [0.0592, 0.4306],
+    icon: { src: 'Cup-640', at: 'above', w: 36, h: 36 },
+  },
+
+  /** TODO(verify): the domed church is b00 and certain; the SHORT form is what
+   *  the map carries, the full one stays in the drawer. */
+  { tier: 'plan', on: 'b00', lines: ['Церковь', 'св. Александра Невского'], at: [0, 0.0844] },
+
+  /** b12 is «the chimneyed volume on the Комсомола row» — a boiler house, which
+   *  is why the historical name lands here and not by a guess. Set reading
+   *  downward to fit the alley, exactly as round 17's office marks did. */
+  { tier: 'plan', on: 'b12', lines: ['Котельная'], at: [0.0551, 0], turn: 90 },
+
+  /** TODO(verify): «Ледник» is a new name with no entry in buildingsInfo. b16 is
+   *  the smallest real volume (59 tris, 1.07×1.38) and the frame letters this
+   *  against its smallest mask (30×23), which is the match — but it is a
+   *  reading, and the render is what settles it. */
+  { tier: 'plan', on: 'b16', lines: ['Ледник'], at: [-0.0336, 0.0705] },
+
+  /** The parking deck. It is no longer white type lying ON the roof — the frame
+   *  sets it in the wayfinding blue beside the ₽ chip, so the `turn: -4.47` that
+   *  matched the deck's own list goes with it. */
+  {
+    tier: 'plan',
     on: 'b15',
-    lines: ['Паркинг'],
-    at: [-0.004, 0.010],
-    turn: -4.47,
-    ink: 'white',
-    icon: { src: 'parking', at: 'above', w: 35, h: 35 },
-  },
-
-  /**
-   * «Бар «Ротонда»» is TYPE ON A CURVE in the design, following the drum it
-   * names. There is no text-path here and no reason to build one for a single
-   * string: the designer's own export already has the curve in its outlines, so
-   * it ships as artwork with no text at all.
-   */
-  { on: 'b04', at: [0.014, 0.040], icon: { src: 'rotonda', at: 'above', w: 98, h: 52 } },
-
-  /** the pier is a slab in the river, so its mark lies on it in white */
-  {
-    on: 'b18',
-    lines: ['Причал «Кресты»'],
-    at: [0.056, 0.006],
-    ink: 'white',
-    icon: { src: 'prichal', at: 'before', w: 32, h: 32 },
+    lines: ['Парковка'],
+    at: [0, 0.1332],
+    ink: 'way',
+    icon: { src: 'parking', at: 'before', w: 24, h: 24 },
   },
 ];
 
@@ -214,26 +379,58 @@ export const BUILDING_MARKS: Mark[] = [
  * to a volume, and none of which should slide when the plan leans.
  */
 export const SITE_MARKS: Mark[] = [
+  // The two entrances, and the only two marks the frame sets in the wayfinding
+  // blue. The arrow sits ABOVE the words now rather than beside them — it points
+  // into the site across the plate's edge, so it wants the vertical axis.
   {
+    tier: 'plan',
     lines: ['Главный вход'],
-    at: [0.004, -0.362],
-    align: 'left',
-    icon: { src: 'arrow-down', at: 'before', w: 30, h: 33 },
+    at: [-0.0409, -0.4113],
+    ink: 'way',
+    icon: { src: 'arrow-down', at: 'below', w: 24, h: 24 },
   },
   {
+    tier: 'plan',
     lines: ['Вход', 'с набережной'],
-    at: [-0.080, 0.376],
-    align: 'left',
-    icon: { src: 'arrow-up', at: 'before', w: 30, h: 33 },
+    at: [-0.065, 0.4187],
+    ink: 'way',
+    icon: { src: 'arrow-up', at: 'above', w: 24, h: 24 },
   },
-  { lines: ['ул. Комсомола'], at: [0.503, -0.397], align: 'left', ink: 'muted' },
-  { lines: ['Арсенальная наб.'], at: [0.163, 0.423], align: 'left', ink: 'muted' },
+
+  /**
+   * EACH STREET IS LETTERED TWICE, left and right of the entrance it flanks.
+   *
+   * That is not a duplicate to be de-duplicated: a map names a long feature
+   * wherever the reader's eye lands on it, and both of these run the full width
+   * of the sheet. The frame does it for both streets, and the second instance is
+   * what stops «Главный вход» from reading as an interruption in a single label.
+   */
+  { tier: 'plan', lines: ['ул. Комсомола'], at: [0.281, -0.4355], align: 'left' },
+  { tier: 'plan', lines: ['ул. Комсомола'], at: [-0.2183, -0.4355], align: 'right' },
+  { tier: 'plan', lines: ['Арсенальная наб.'], at: [0.2978, 0.4355], align: 'left' },
+  { tier: 'plan', lines: ['Арсенальная наб.'], at: [-0.318, 0.4355], align: 'right' },
+
   {
+    tier: 'plan',
     lines: ['м. Площадь Ленина'],
-    at: [-0.601, -0.398],
+    at: [-0.6857, -0.4404],
     align: 'left',
-    ink: 'muted',
-    icon: { src: 'metro-group', at: 'above', w: 83, h: 27 },
+    // the only icon that keeps its own colours — the SPb metro mark is four-tone
+    // identity, not a glyph. See MarkIcon.tint.
+    icon: { src: 'metro-group', at: 'above', w: 83, h: 27, tint: false },
+  },
+
+  /**
+   * The pier left the 3D model this round — it is flat white artwork on the
+   * river band now (stage 6), so its caption is a SITE mark rather than a
+   * building one. It was `on: 'b18'` in white ink lying on the slab; both the
+   * anchor and the ink were properties of a volume that no longer renders.
+   */
+  {
+    tier: 'plan',
+    lines: ['Причал «Кресты»'],
+    at: [0.2233, 0.4685],
+    icon: { src: 'prichal', at: 'above', w: 24, h: 24 },
   },
 ];
 
@@ -249,21 +446,39 @@ export const SITE_MARKS: Mark[] = [
 export function createMark(mark: Mark): HTMLElement {
   const el = document.createElement('div');
   el.className = 'map-mark';
+  // the register — typeface, size, case, tracking and ink all hang off this one
+  // class, so the CSS says what the tier IS in one place
+  el.classList.add(`map-mark--${mark.tier}`);
   if (mark.align) el.classList.add(`map-mark--${mark.align}`);
   if (mark.ink) el.classList.add(`map-mark--${mark.ink}`);
   if (mark.icon) el.classList.add(`map-mark--icon-${mark.icon.at}`);
 
   if (mark.icon) {
-    const img = document.createElement('img');
-    img.className = 'map-mark__icon';
-    img.src = asset(`/resources/${mark.icon.src}.svg`);
-    img.width = mark.icon.w;
-    img.height = mark.icon.h;
-    img.alt = '';
+    const { src, w, h, tint } = mark.icon;
+    const url = asset(`/resources/${src}.svg`);
+    // Either way the box is authored, not measured: a mark positions itself from
+    // its own extent, so an icon that reports 0×0 until the SVG lands would
+    // place the whole mark wrong until then.
+    let node: HTMLElement;
+    if (tint === false) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.width = w;
+      img.height = h;
+      img.alt = '';
+      node = img;
+    } else {
+      // a masked box filled with `currentColor` — see MarkIcon.tint
+      node = document.createElement('span');
+      node.style.width = `${w}px`;
+      node.style.height = `${h}px`;
+      node.style.setProperty('--icon-src', `url("${url}")`);
+    }
+    node.className = 'map-mark__icon';
     // the `before` offset that centres the icon on line one, as a length CSS
     // can subtract a line box from
-    el.style.setProperty('--icon-h', `${mark.icon.h}px`);
-    el.appendChild(img);
+    el.style.setProperty('--icon-h', `${h}px`);
+    el.appendChild(node);
   }
 
   if (mark.lines?.length) {

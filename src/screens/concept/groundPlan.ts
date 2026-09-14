@@ -68,7 +68,22 @@ const TONES: Record<string, { color: number; depth: number; hidden?: true }> = {
    *  The value itself lives in waterParams.ts, because the admin panel tunes it
    *  alongside the ripple and two sources of truth for one colour is how they
    *  drift apart. */
-  Color_H08: { color: WATER_DEFAULTS.color, depth: 0 },
+  /**
+   * ROUND 26 HID THE RIVER. The Neva is a DOM band below the plate now — the
+   * designer detached it from the site entirely and it runs full-bleed, wider
+   * than the model's own frame, with a wavy top edge and the pier drawn on it as
+   * flat artwork. None of that is expressible as a surface inside the model's
+   * fitted box, and the client's instruction was explicit: «don't touch webGL
+   * for it… a super stupid vector shape».
+   *
+   * The entry stays for the round-12 reason below: deleting it would let a
+   * re-export bring the river back, correctly tinted, looking intentional.
+   *
+   * `water.ts` and `waterParams.ts` are untouched and still tuned — two rounds
+   * of work that this round parks rather than deletes. `applyWater` simply never
+   * gets called now, so nothing compiles the shader.
+   */
+  Color_H08: { color: WATER_DEFAULTS.color, depth: 0, hidden: true },
   /**
    * Neighbouring city blocks — a solidly present grey that framed the site.
    *
@@ -88,9 +103,17 @@ const TONES: Record<string, { color: number; depth: number; hidden?: true }> = {
    * since the GLB carries no surface for the site itself.)
    */
   Color_M02: { color: 0xccd7dd, depth: 1, hidden: true },
-  /** Арсенальная наб. + ул. Комсомола — lighter than the ground plate, so the
-   *  streets read as ribbons cut through it rather than as more blocks */
-  Color_M04: { color: 0xf5f5f5, depth: 2 },
+  /**
+   * Арсенальная наб. + ул. Комсомола — lighter than the ground plate, so the
+   * streets read as ribbons cut through it rather than as more blocks.
+   *
+   * ROUND 26 HID THEM TOO. The new plate is a plain blue rectangle and the
+   * streets are named in the margin band rather than drawn — which round 17
+   * already conceded in practice: round 15 straightened both roads clean out of
+   * the resting frame, so what these surfaces contributed at rest was a pale
+   * stripe at the very edge of the sheet and nothing else.
+   */
+  Color_M04: { color: 0xf5f5f5, depth: 2, hidden: true },
 };
 const FALLBACK = { color: 0xccd7dd, depth: 1 };
 

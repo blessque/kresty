@@ -109,11 +109,34 @@ export class MapLabels {
         const part = byId.get(mark.on);
         if (!part) continue;
         const c = part.bbox.getCenter(new THREE.Vector3());
+        // ROUND 26: the TIER picks the height, and this one line is the whole
+        // implementation of "only the Chromius texts move with the roofs".
+        //
+        // An `accent` mark rides `bbox.max.y` as every building mark used to; a
+        // `plan` mark takes the building's x/z but sits at y = 0, the shear's
+        // fixed point, so it is welded to the footprint and does not travel at
+        // all. «Котельная» and «Ледник» are historical names painted on the
+        // site, not tenants riding a volume, and at roof height they would have
+        // slid off their own walls under lean.
+        //
+        // `update()` deliberately does NOT branch on this. Shearing a y = 0
+        // anchor is provably the identity, so both kinds keep going through the
+        // one projection path — the same argument this module already made for
+        // the site marks, now covering a second case for free.
+        //
+        // THE ZERO IS APPLIED AFTER THE MATRIX, NOT BEFORE, and that is not
+        // tidiness: `c` is in MODEL space, where grade sits at `groundY` and not
+        // at zero — `modelMatrix` is the transform that moves it to world 0 (see
+        // ConceptScreen's normalize). Writing the 0 into the source vector would
+        // put these marks a whole `groundY · scale` off the plate, on a plane
+        // nothing else uses. The matrix here carries no rotation into y, so
+        // flattening afterwards leaves x and z exactly where they landed.
         at = new THREE.Vector3(
           c.x + mark.at[0] * siteSpan,
           part.bbox.max.y,
           c.z + mark.at[1] * siteSpan
         ).applyMatrix4(modelMatrix);
+        if (mark.tier === 'plan') at.y = 0;
       } else {
         at = new THREE.Vector3(
           mark.at[0] * siteSpan * scale,

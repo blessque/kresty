@@ -41,8 +41,35 @@
 export const STAGE_VH = 1.5;
 
 export class MapScroll {
-  /** the canvas and the caption layer live in here */
+  /** the plate and the river band live in here */
   readonly stage = document.createElement('div');
+  /**
+   * ROUND 26: THE FLOOR PLATE, and the canvas is now its child rather than the
+   * stage's.
+   *
+   * The designer's map stands on a blue rectangle ten grid columns wide instead
+   * of bleeding off every edge, and the cleanest way to say that is to make the
+   * rectangle the canvas's own box: then "fit the model into the plate" is just
+   * the fit that already existed, measured against a smaller element. The
+   * alternative — keeping the canvas full-bleed and teaching MapCamera to frame
+   * into a sub-rectangle — is a second framing system to maintain alongside the
+   * drawer inset and the overscan.
+   *
+   * Its background is what the buildings are seen against: the GLB's ground
+   * surfaces are hidden now (groundPlan.ts) and the canvas clears to alpha 0,
+   * so this element IS the site's ground.
+   */
+  readonly plate = document.createElement('div');
+  /**
+   * The Neva — a full-bleed band below the plate, with a wavy top edge.
+   *
+   * `.map-water` is a plain box; the WAVE MASK goes on `.map-river` inside it
+   * and the pier is that element's SIBLING, not its child. A CSS mask clips an
+   * element's descendants as well as its own painting, so a pier inside the
+   * masked band gets its stem sliced off along the wave — which looks like a
+   * short pier rather than like a clipping bug.
+   */
+  readonly river = document.createElement('div');
   /** the page scroller: the intro block, then the stage */
   readonly scroller = document.createElement('div');
 
@@ -54,6 +81,12 @@ export class MapScroll {
     this.scroller.className = 'concept-scroll';
     this.stage.className = 'map-stage';
     this.stage.style.setProperty('--map-vh', String(vh));
+    this.plate.className = 'map-plate';
+    this.river.className = 'map-water';
+    // the pier is artwork ON the river, not a volume in the model any more —
+    // and a SIBLING of the masked band, see the field's note
+    this.river.innerHTML = '<div class="map-river"></div><div class="map-pier"></div>';
+    this.stage.append(this.plate, this.river);
     this.scroller.appendChild(this.stage);
     container.appendChild(this.scroller);
   }
@@ -119,12 +152,37 @@ export class MapScroll {
     return this.scroller.clientHeight;
   }
 
-  /** the rendered canvas size, in CSS px — NOT the window size */
+  /** the full width of the scroller — the band the margin captions letter into */
   get stageW(): number {
     return this.scroller.clientWidth;
   }
   get stageH(): number {
     return this.stage.clientHeight;
+  }
+
+  /**
+   * THE RENDERED CANVAS SIZE since round 26 — the plate, not the stage and
+   * certainly not the window.
+   *
+   * Everything that used to take `stageW/stageH` takes these instead: the
+   * renderer, the picker's resolution, the caption layer's projection space and
+   * MapCamera's viewport. They are read from the laid-out element rather than
+   * computed from the grid, so the CSS stays the single author of the plate's
+   * size and a media query cannot desynchronise the camera from the canvas.
+   */
+  get plateW(): number {
+    return this.plate.clientWidth;
+  }
+  get plateH(): number {
+    return this.plate.clientHeight;
+  }
+  /** the plate's top-left within the STAGE — what turns a stage coordinate into
+   *  a plate one, for the picker */
+  get plateLeft(): number {
+    return this.plate.offsetLeft;
+  }
+  get plateTop(): number {
+    return this.plate.offsetTop;
   }
 
   /**

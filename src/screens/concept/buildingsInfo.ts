@@ -44,8 +44,9 @@
  * A branded resident — a hotel, restaurant, café or shop that carries its own
  * identity, as opposed to a plain programme entry like «Переговорные».
  *
- * ALL URLS ARE INVENTED AND DO NOT RESOLVE (bar the Cosmos group site). They
- * exist so the drawer can be judged with real link furniture in it.
+ * ALL URLS ARE INVENTED AND DO NOT RESOLVE. They exist so the drawer can be
+ * judged with real link furniture in it. (Round 26 removed the one real one —
+ * see HOTEL_SITE below.)
  */
 export interface Brand {
   /** key into RESIDENT_LOGOS (residentLogos.ts) */
@@ -120,7 +121,15 @@ export interface BuildingInfo {
   residents: Resident[];
 }
 
-const COSMOS = 'https://cosmosgroup.ru';
+/**
+ * ROUND 26: the operator's brand is OFF this prototype, at the client's
+ * instruction — «don't mention Космос». The programme note in this file's header
+ * keeps it, because that press release is where the 126/136 room counts come
+ * from and deleting it would leave two numbers with no source. Nothing the
+ * VISITOR reads names the operator: no logo, no brand in a resident row, and
+ * this url is now invented like every other one here.
+ */
+const HOTEL_SITE = 'https://kresty-hotel.ru';
 
 export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   // 8482 tris · domed, column-fronted, between the two crosses = Лит Е2
@@ -147,17 +156,18 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     // east). Only the two NAMES were wrong: the star ratings, residents and the
     // SPA all sit on the buildings the client's map puts them on.
     name: 'Восточный крест',
-    kind: 'Лит. Е1 · отель Cosmos 5★',
+    kind: 'Лит. Е1 · отель 5★',
     photo: '/resources/hotel.webp',
-    logo: '/resources/cosmos-logo.svg',
-    link: { url: COSMOS, label: 'Сайт отеля' },
+    link: { url: HOTEL_SITE, label: 'Сайт отеля' },
     brief: 'Пятизвездочный отель с номерами на месте бывших камер.',
     rooms: 126,
-    // exactly the three rows in the client's drawer design, in their order
+    // The three rows of the client's drawer design, in their order. ROUND 26
+    // took the operator's name out of two of them; «Панорамный ресторан» is the
+    // client's own wording from references/texts.txt, not an invention.
     residents: [
-      { label: 'Гостиница Cosmos Selection 5*', floor: 0, type: 'hotel' },
-      { label: 'Ресторан Cosmos', floor: 0, type: 'restaurant' },
-      { label: 'SPA-Комплекс', floor: 0, type: 'spa' },
+      { label: 'Гостиница 5*', floor: 0, type: 'hotel' },
+      { label: 'Панорамный ресторан', floor: 0, type: 'restaurant' },
+      { label: 'SPA-комплекс', floor: 0, type: 'spa' },
     ],
   },
 
@@ -165,19 +175,20 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   b02: {
     // see b01 — the client's map names this, the screen-LEFT cross, «Западный»
     name: 'Западный крест',
-    kind: 'Лит. Е3 · отель Cosmos 4★',
+    kind: 'Лит. Е3 · отель 4★',
     photo: '/resources/hotel.webp',
-    logo: '/resources/cosmos-logo.svg',
-    link: { url: COSMOS, label: 'Сайт отеля' },
+    link: { url: HOTEL_SITE, label: 'Сайт отеля' },
     brief: 'Четырехзвездочный отель с конференц-центром и мультимедийным музеем.',
     rooms: 136,
     // three rows, matching the west cross — the design shows only one drawer,
     // and two crosses that list different amounts would read as an accident
     residents: [
-      { label: 'Гостиница Cosmos Smart 4*', floor: 0, type: 'hotel' },
+      { label: 'Гостиница 4*', floor: 0, type: 'hotel' },
       { label: 'Конференц-зал', floor: 0, type: 'hall' },
       {
-        label: 'Мультимедийный музей «Кресты»',
+        // ROUND 26: «Музей Кресты» is the client's own name for it, and the map
+        // caption now uses exactly this string.
+        label: 'Музей Кресты',
         floor: 0,
         type: 'museum',
         brand: { logo: 'museum', url: 'https://museum-kresty.ru', cta: 'Купить билет' },
@@ -301,14 +312,26 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     ],
   },
 
-  // 142 tris · 2.75×1.94 · embankment row
+  // 190 tris (142 + b17's 48) · 2.75×1.94 · embankment row
+  //
+  // ROUND 26 MERGED b17 «Навес» INTO THIS ENTRY. The client's reading: the
+  // canopy and the block it shelters are one structure, and the split saw two —
+  // which is what a connected-components pass does when the exporter leaves a
+  // seam at a thin junction. `buildingLayout.ts` folds the geometry; this is the
+  // copy side of the same decision, and b17's summer stage comes with it rather
+  // than being lost.
   b10: {
     name: 'Офисы на набережной',
     kind: 'Офисы',
-    brief: 'Офисные помещения с окнами на Неву и выходом на набережную.',
+    brief:
+      'Офисные помещения с окнами на Неву и выходом на набережную, ' +
+      'с крытым навесом над общественным пространством.',
     residents: [
       { label: 'Офисы резидентов', floor: 0, type: 'office', count: 9 },
       { label: 'Переговорные', floor: 1, type: 'hall', count: 2 },
+      // from b17. Typed `service`, not `hall`: an open-air stage summarised as
+      // «зал» reads as an indoor room, so it contributes no summary clause.
+      { label: 'Летняя сцена', floor: 0, type: 'service' },
     ],
   },
 
@@ -373,13 +396,18 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     ],
   },
 
-  // 48 tris · 2.67×1.87 · only 0.21 high — a canopy
+  // 48 tris · 2.67×1.87 · only 0.21 high — a canopy.
+  //
+  // ROUND 26 merged this into b10, which it is physically part of. The ENTRY
+  // stays and the id is NOT reused, for the same reason `Color_M02` stays in
+  // groundPlan's TONES: ids are assigned by sorting the split's output, so if a
+  // future export seams that junction differently and b17 comes back as its own
+  // part, it must come back as ITSELF. An id silently re-pointed at some other
+  // volume is the failure this whole file is keyed against.
   b17: {
     name: 'Навес',
     kind: 'Навес общественного пространства',
     brief: 'Крытый навес над общественным пространством. Сезонная сцена и ярмарки.',
-    // typed `service`, not `hall`: an open-air stage summarised as «зал» reads
-    // as an indoor room. It simply contributes no summary clause.
     residents: [{ label: 'Летняя сцена', floor: 0, type: 'service' }],
   },
 
