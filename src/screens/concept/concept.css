@@ -85,13 +85,13 @@
   padding: 184px 0 96px;
 }
 
-/* ROUND 23: this is `.col-r` on the page grid now, and that FIXES A BUG the old
-   comment described but did not deliver. It said "the design's 1440-wide frame
-   starts the block at x=720, i.e. the centre" — but the `50%` in the old
-   `margin-right` resolved against the flex container's CONTENT box (1376 at
-   1440), not the viewport, so the block actually started at 752 and its right
-   edge stopped 178px short of the edge every section below it used. On the grid
-   it starts at exactly 720, with the same 478px measure. */
+/* ROUND 23 put this on the page grid, fixing a bug the comment before it had
+   described but not delivered: the old `margin-right: 50%` resolved against the
+   flex container's CONTENT box, so the block started at 752 rather than the
+   centre. ROUND 25 moves it to `.col-main`, which starts at 732 — the body
+   column every section below it now uses. The 720 the old comment chased was
+   the two-column centre line; 732 is the grid's own column 7, and agreeing with
+   the sections underneath matters more than the 12px. */
 .concept-intro__body {
   max-width: 478px;
 }
@@ -639,18 +639,67 @@
      names the offending section, rather than quietly shrinking the type. */
   font-size: var(--type-h2-size);
   line-height: var(--type-h2-lh);
-  /* ROUND 23: THE 80% IS THE HEADING'S CLEARANCE FROM THE CENTRE LINE, and it is
-     required, not cosmetic. With the gutter gone the column runs to 720, and
-     measured before this the «hotel» heading's longest line ended at 717 — three
-     pixels from the prose. The old 48px gutter had been hiding it.
-     The grid's own rule is the fix: a gap comes from content not filling its
-     column, exactly like the News page's image slack. 80 % of 624 leaves ~62px
-     each side at the design frame — one rhythm unit — and it scales down with
-     the column instead of collapsing at a fixed 64.
-     `min()` so the 15em type cap still wins on very wide columns, and
-     `margin-inline: auto` so the cap re-centres rather than sitting left. */
-  max-width: min(15em, 80%);
-  margin-inline: auto;
+
+  /* ROUND 25 DELETED round 23's `max-width: min(15em, 80%)`. That 80 % bought
+     the heading clearance from the prose, because the old two-column grid had
+     them touching at the centre line — measured, the «hotel» heading's longest
+     line ended 3px from the body copy. The 12-column grid gives that clearance
+     STRUCTURALLY: the aside ends at 591.333, the body starts at 732, and the
+     140.667px between them is a gutter plus the skipped column 6. A percentage
+     cap on top of that would just be a second, weaker copy of the same rule.
+
+     The inset is the grid's own 16px, so the heading hangs inside its column
+     exactly as the designer's frame draws it.
+
+     HYPHENATION IS LOAD-BEARING HERE, not a nicety. The aside is 442.667 and
+     the text box 410.667, while «экскурсионных» in the museum heading is 407px
+     of unbreakable min-content at 44px — 3.7px of clearance at the design frame
+     and an overflow at any width below it. Breaking the word is what lets H2
+     stay at 44. It needs `lang="ru"` on <html> to do anything at all (it is
+     set); without it this silently no-ops, which is this project's house
+     failure shape. */
+  padding-inline: var(--grid-text-inset);
+  hyphens: auto;
+  /* `hyphens: auto` ALONE IS TOO EAGER and it shows immediately: unconstrained,
+     the hotel heading came back as «оте-ле» and «историче-ских» — three hyphens
+     in four lines, two on words that fit. The browser hyphenates to balance the
+     rag, not only to avoid overflow. So the limit is the HIGHEST value that
+     still never overflows, which is the fewest hyphens that stay safe.
+
+     Swept on the widest RENDERED LINE BOX per heading (see below), worst
+     overflow across all six:
+
+       hyphens: none   1440 ok   1366 +21   1280 +50   1180 +83
+       limit 16        1440 ok   1366 +21   1280 +50   1180 +83   (nothing is 16+)
+       limit 15        1440 ok   1366 ok    1280 +4    1180 +37
+       limit 14        1440 ok   1366 ok    1280 ok    1180 +22
+       limit 13        1440 ok   1366 ok    1280 ok    1180 ok    ← shipped
+       limit 12        1440 ok   1366 ok    1280 ok    1180 ok    (more hyphens, no gain)
+
+     The 6/4 stops a break leaving a stub: «экскурси-онных» is 8+5.
+
+     THREE MEASUREMENT TRAPS, each of which gave a WRONG answer first:
+
+     - `scrollWidth − clientWidth` DOES NOT SEE THIS OVERFLOW. The heading is
+       centred, so the excess hangs out both sides and scrollWidth under-reports
+       it — the first sweep came back clean at every width on a layout that was
+       overflowing by 83px. Measure the widest line box
+       (`Range.getClientRects()`) against the content box instead.
+
+     - THE UNBREAKABLE UNIT IS AN NBSP RUN, NOT A WORD. `bindShortWords` binds
+       short Russian words with U+00A0, so the real constraint is «для размышлений»
+       at 407px, not «размышлений» at 317. (That 407 is the figure round 23
+       recorded against «экскурсионных», which is 346 on its own — the number was
+       right, the label was not.) Splitting on whitespace hides this; split on the
+       plain space only.
+
+     - `hyphenate-limit-chars` COUNTS THE RUN, NOT THE WORD, and the NBSP counts
+       as a character. «в исторических» is 14, so it still breaks at 13 even
+       though «исторических» alone is 12 and fits. That is why one hyphen remains
+       in the hotel heading and cannot be tuned away from here: raising the limit
+       to 15 to spare it re-opens a 37px overflow. To spare a specific word, take
+       the NBSP out of that string — the binding is the cause, not the limit. */
+  hyphenate-limit-chars: 13 6 4;
 }
 
 .sec-body {
@@ -667,8 +716,12 @@
   max-width: 34em;
 }
 
+/* ROUND 25: text is inset 16px inside its column, images are not — so the inset
+   goes on the paragraphs, never on `.sec-body` itself, or the figure below would
+   take it too and stop aligning with the column edge. That split IS the rule. */
 .sec-body p {
   margin: 0 0 1.2em;
+  padding-inline: var(--grid-text-inset);
 }
 
 .sec-figure {
@@ -720,17 +773,25 @@
    that sweep — the failure is invisible in English and appears in Russian. */
 @media (max-width: 1160px), (max-height: 720px) {
   .sec-grid,
-  .contact-form form {
+  .contact-form form,
+  /* ROUND 25: the intro collapses with everything else now. It never did before,
+     which was survivable while the right column was half the page — on twelve
+     columns cols 7–11 is 386px at a 1024 viewport, and a 478px measure inside
+     it does not fit. */
+  .concept-intro {
     grid-template-columns: 1fr;
   }
-  /* THE TEMPLATE IS NOT ENOUGH — the PLACEMENT has to go too. `.col-r`'s
-     `grid-column: 2` survives the collapse and creates an IMPLICIT second
-     column, so instead of one stacked column you get two unequal ones.
-     Measured at 1024 before this line: `348.078px 539.312px`. It looks like
-     the media query simply is not matching, which is the wrong thing to go
-     and debug. See styles/grid.css. */
-  .sec-grid > .col-l,
-  .sec-grid > .col-r {
+  .concept-intro > .col-main {
+    grid-column: auto;
+  }
+  /* THE TEMPLATE IS NOT ENOUGH — the PLACEMENT has to go too. An explicit
+     `grid-column` survives the collapse and creates IMPLICIT columns, so
+     instead of one stacked column you get several unequal ones. Measured at
+     1024 before this line existed: `348.078px 539.312px`. It looks like the
+     media query simply is not matching, which is the wrong thing to go and
+     debug. See styles/grid.css. */
+  .sec-grid > :is(.col-aside, .col-main),
+  .contact-form form > :is(.col-aside, .col-main) {
     grid-column: auto;
   }
   .sec-col {

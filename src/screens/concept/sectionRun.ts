@@ -138,11 +138,11 @@ export class SectionRun {
     // neither can be renamed by accident.
     el.innerHTML =
       `<div class="sec-grid page-grid">` +
-      `<div class="sec-col col-l">` +
+      `<div class="sec-col col-aside">` +
       `<div class="sec-icon" aria-hidden="true"></div>` +
       `<h2 class="sec-h2">${escapeHtml(bindShortWords(s.h2))}</h2>` +
       `</div>` +
-      `<div class="sec-body col-r">${paras}${figure}</div>` +
+      `<div class="sec-body col-main">${paras}${figure}</div>` +
       `</div>`;
     return el;
   }

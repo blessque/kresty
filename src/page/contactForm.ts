@@ -123,11 +123,11 @@ export class ContactForm {
       // The design has an icon here; `SectionRun` now carries the form as a
       // sixth STATION so the box gets the same god-ray the five sections do.
       `<div class="sec-grid page-grid">` +
-      `<div class="sec-col col-l">` +
+      `<div class="sec-col col-aside">` +
       (c.icon ? `<div class="sec-icon" aria-hidden="true"></div>` : '') +
       `<h2 class="sec-h2">${escapeHtml(bindShortWords(c.heading))}</h2>` +
       `</div>` +
-      `<div class="sec-body col-r">` +
+      `<div class="sec-body col-main">` +
       `<p class="cf-lead">${escapeHtml(bindShortWords(c.lead))}</p>` +
       `<p class="cf-dept">${escapeHtml(c.dept)}<br>` +
       `<a class="cf-phone" href="tel:${c.phone.replace(/[^+\d]/g, '')}">${escapeHtml(c.phone)}</a></p>` +

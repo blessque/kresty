@@ -85,36 +85,65 @@ a heading.
 
 ---
 
-## The page grid (round 23) — `src/styles/grid.css`
+## The page grid (round 25) — `src/styles/grid.css`
 
-**Two columns that MEET at the page centre. There is no gutter.** The metaphor is the layout:
-left column emotional, right column rational, and they touch.
+**Twelve columns, from the designer's own spec frames** (Figma `1119:62` longread,
+`1119:89` news, where the skipped columns are drawn as grey bars).
 
 ```
---page-margin: clamp(32px, 6.67vw, 96px);   /* 96 at the 1440 design frame */
---page-max:    1248px;                       /* 1440 − 2×96 */
-.page-grid  → 1fr 1fr, gap 0, width min(100% − 2×margin, max), centred
-.col-l / .col-r / .col-full
-.anchor-inner / .anchor-outer  (column-aware — "inner" mirrors between columns)
+--page-margin:      32px        --grid-gutter: 24px
+--page-max:         1376px      --grid-text-inset: 16px
+.page-grid  → repeat(12, 1fr), column-gap 24, width min(100% − 64, 1376), centred
+
+.col-aside  2 / span 4    442.667   longread h2
+.col-media  2 / span 5    559.333   the square photo
+.col-main   7 / span 5    559.333   body copy, both kinds of page
+.col-full   2 / -2       1142.667   the full MEASURE — ten columns, not twelve
+.gp-text    padding-inline: 16px
 ```
 
-- **Symmetric insets + `1fr 1fr` put the boundary on the viewport centre at ANY margin.** That
-  is what makes "right-column text starts at 720" a rule and not a number that happened to work
-  at one width. Above the design frame the MARGINS grow, not the columns.
-- **Gaps come from content that does not fill its column, never from a gutter.** The News
-  page's 64px gap is a 559px square in a 624px column, anchored outward: 96 + 559 = 655, and
-  720 − 655 = 65. Add a gutter and you double it there and open a seam everywhere else.
-- **Not a 12-col grid, on the numbers.** Three widths exist (half, half, full) and 559 lands on
-  no 12-col boundary — it is 6.8 of an 82px column.
-- **Collapsing to one column takes TWO declarations.** Overriding `grid-template-columns: 1fr`
-  is not enough: `.col-r`'s `grid-column: 2` survives and places the item in column 2 of a
-  one-column grid, **creating an implicit second column** (measured `348px 539px` at 1024).
-  Reset the placement too. It looks exactly like a media query that is not matching.
-- **A long heading can touch the prose, and the fix is the measure, not a gutter.** Centred in
-  a 624 column the «hotel» h2 ended 3px from the centre line; `max-width: min(15em, 80%)`
-  leaves ~62px. Below ~1180 even that fights min-content — «экскурсионных» is 407px
-  unbreakable at 44px — which is why «О Крестах» collapses at 1160, not 900. **The failure is
-  invisible in English and appears in Russian.**
+At 1440: `12 × 92.667 + 11 × 24 = 1376`. Column *n* starts at `32 + (n−1) × 116.667`.
+**Columns 1 and 12 are skipped on every frame**, which is why `.col-full` is `2 / -2`.
+
+- **Above the design frame the grid does not grow.** Content caps at 1376 and centres — 272px
+  margins at 1920, 592 at 2560, columns always 92.667. Below 1440 the columns narrow.
+- **Round 23's rejection of a 12-col grid was right arithmetic on the wrong constant.** It read
+  *"559 is 6.8 columns of 82"* — true at a **96px** margin (1248 content). The designer's margin
+  is **32**, giving 1376 and a 92.667 column, on which 559.333 is **exactly 5**. Independent
+  check: «Читайте также»'s 1142 measure is cols 2–11 to three decimals.
+- **The article's reading measure is a column span, not a typographic exception.** The frame's
+  x=615→1291 is columns 6–11 (615.333→1291.333). The old `--article-outdent: 104px` was the
+  tell — the old right column began at 720, and 720 − 615.333 = 104.667. The hack was measuring
+  the gap between a two-column boundary and a twelve-column one.
+- **Text is inset 16px; images are not.** Put the inset on the text-bearing element, never on
+  the grid item, or an adjacent figure takes it and stops aligning with the column edge.
+- **Collapsing to one column takes TWO declarations**, and the reset must now name all four
+  role classes *and* `.article-body`. An explicit `grid-column` surviving into a one-column
+  grid **creates implicit columns** (measured `348px 539px` at 1024). Miss one class and that
+  element alone conjures them — which reads as a partially-applied media query.
+- **The narrower aside makes Russian min-content the binding constraint, and hyphenation is
+  what pays for it.** The design frame itself is fine; **1366 and below is where it breaks**
+  (+21px, rising to +83 at 1180). `hyphens: auto` needs `lang="ru"` (set) or it silently
+  no-ops, and it needs `hyphenate-limit-chars: 13 6 4` — **13 is the highest limit that never
+  overflows, swept, and the highest is what you want because it hyphenates least.** Round 23's
+  `max-width: min(15em, 80%)` clearance hack is deleted; the grid gives 140.667px of clearance
+  structurally (a gutter plus the skipped column 6).
+
+**Two measurement traps in that sweep, both of which returned a clean bill of health on
+genuinely broken layout:**
+
+- **`scrollWidth − clientWidth` cannot see overflow in centred text.** It hangs out both sides
+  and scrollWidth under-reports. Measure the widest line box via `Range.getClientRects()`
+  against the content box.
+- **The unbreakable unit is an NBSP RUN, not a word.** `bindShortWords` binds short Russian
+  words with U+00A0, so the real constraint is «для размышлений» at **407px**, not
+  «размышлений» at 317. That also identifies round 23's own 407px figure, which it recorded
+  against «экскурсионных» — the word alone is 346. The number was right; the label was not.
+  Split on the plain space only.
+- **`hyphenate-limit-chars` counts the RUN too**, NBSP included. «в исторических» is 14
+  characters, so it breaks at limit 13 even though «исторических» alone is 12 and fits. **To
+  spare a particular word, remove the NBSP from that string — the binding is the cause, not the
+  limit.** Raising the limit instead re-opens the overflow.
 
 The header, the wordmarks and the main-screen slider keep their own 32px corner rule and are
 outside this grid.

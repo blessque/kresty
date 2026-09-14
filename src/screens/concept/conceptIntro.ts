@@ -30,7 +30,7 @@ export function buildIntro(): HTMLElement {
   el.classList.add('page-grid');
 
   const inner = document.createElement('div');
-  inner.className = 'concept-intro__body col-r';
+  inner.className = 'concept-intro__body col-main';
 
   const h1 = document.createElement('h1');
   h1.className = 'concept-intro__title';

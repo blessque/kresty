@@ -63,24 +63,28 @@ right: there is no light to converge when main is not an endpoint.
 
 ## Layout
 
-Everything horizontal comes from `.page-grid` (see DESIGN_SYSTEM). Nothing in `pages.css` sets
-a horizontal position; if a rule there has a left/right value it is a fixed-size composition or
-a bug.
+Everything horizontal comes from `.page-grid` — **twelve columns since round 25** (see
+DESIGN_SYSTEM). `pages.css` sets no horizontal *position*; the one horizontal value it may use
+is the grid's own 16px text inset (`.gp-text` / `--grid-text-inset`), because text hangs inside
+its column while images sit flush to the column edge.
 
-**The News card is the grid's own worked example.** A 559px square anchored `.anchor-outer` in
-the left column at a 96px margin ends at 655; the headline starts at 720; the 65px between them
-is the image not filling its column, and it reproduces the 64 the designer drew. **Do not add a
-gutter to recreate it** — that would double it here and open a seam on every other page.
+**The News card is the grid's own worked example, and it got simpler.** `.col-media` is five
+columns = 559.333 at the design frame, which is the square's authored width, so the image
+**fills** its position at `width: 100%`. The air before the headline is the skipped column 6 —
+a real grid position now, not slack to be explained. `.anchor-outer` / `.anchor-inner` are
+deleted.
 
-Two measures are deliberately *not* the grid, both typographic:
-
-- **The article's body copy starts before the centre line** (`--article-outdent`). A reading
-  measure is not a layout column, and forcing it onto one makes the lines too short at 24px.
-- **«Читайте также» is three columns of the full measure.** The frame's cards are 364.67 wide
-  and `(1142 − 2×24) / 3` is 364.67 exactly — the designer's arithmetic, not an invention.
+- **The article's body copy is `grid-column: 6 / span 6`** — the frame's x=615→1291 lands on
+  columns 6–11 exactly. `--article-outdent` is gone; see DESIGN_SYSTEM for why its 104px was
+  the two-column grid measuring its distance from this one.
+- **«Читайте также» is three cards inside `.col-full`.** That is cols 2–11 = 1142.667, and the
+  designer's own `(1142 − 2×24)/3 = 364.67` falls straight out of it.
+- **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
+  which `.col-main` now names directly.
 
 Below 1160 the pages stack, and **that takes two declarations**: the template *and* the
-placement, or `grid-column: 2` creates an implicit second column.
+placement, listing all four role classes plus `.article-body`, or the surviving `grid-column`
+creates implicit columns.
 
 ---
 

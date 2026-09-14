@@ -2,9 +2,15 @@
    THE CONTENT PAGES (round 24): «Новости», «Новость», «Аренда», «Контакты».
 
    Four pages, one stylesheet, because they are the same page with different
-   words. Nothing here sets a horizontal position — `.page-grid` does. If a rule
-   below contains a left/right value it is either a fixed-size composition
-   (an image at its authored size) or a bug.
+   words. Horizontal POSITION comes from `.page-grid` (styles/grid.css) — if a
+   rule below contains a left/right offset it is either a fixed-size composition
+   or a bug.
+
+   ROUND 25 ADDS ONE EXCEPTION, and it is a grid rule rather than a violation of
+   one: text is inset 16px inside its column while images sit flush to the column
+   edge, which is how both of the designer's grid frames are drawn. That inset is
+   `.gp-text` / `--grid-text-inset`, it is applied to the text-bearing element,
+   and it is the only horizontal value a rule here may rely on.
    ──────────────────────────────────────────────────────────────────────────── */
 
 .news-page,
@@ -133,18 +139,24 @@
 .news-card[hidden] {
   display: none;
 }
-/* A FIXED SQUARE anchored to the outer edge — the air before the centre line is
-   this image not filling its column, which is the whole grid rule. Do not add a
-   gutter to recreate it. */
+/* ROUND 25: the square FILLS its column now. `.col-media` is five columns, which
+   is 559.333 at the design frame — the square's own authored width — so this is
+   `100%` rather than a fixed 559 and it scales with the grid below 1440. The air
+   between image and headline is the skipped column 6, not image slack. */
 .news-card__img {
   display: block;
-  width: min(559px, 100%);
+  width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
 }
 .news-card__body {
   padding-top: 56px;
 }
+/* BLUE AT REST, and that is the interactivity rule rather than an exception to
+   it. This h2 is the card's link label — the whole `.news-card` is an <a> — and
+   the designer's frame 1119:89 draws it blue while «12 августа» beside it stays
+   ink and «СМИ о нас», a filter link, is blue. Colour tracks what is clickable,
+   not what tag it is. An unlinked heading takes ink; see DESIGN_SYSTEM. */
 .news-card__title {
   font-family: var(--font-family-display);
   font-weight: var(--type-h3-weight);
@@ -152,6 +164,7 @@
   line-height: var(--type-h3-lh);
   margin: 0;
   max-width: 17em;
+  color: var(--color-link);
 }
 .news-card__meta {
   display: flex;
@@ -162,9 +175,12 @@
   line-height: var(--type-caption-big-lh);
   color: var(--color-text-onlight-secondary);
 }
+/* The hover can no longer be "turn blue" — it already is. It darkens to the ink
+   instead, so the affordance survives the colour change rather than disappearing
+   with it. Same 240ms `--ease-out` the rest of the site's hovers use. */
 @media (hover: hover) and (pointer: fine) {
   .news-card:hover .news-card__title {
-    color: var(--color-link);
+    color: var(--color-text-onlight-main);
   }
 }
 .news-card__title {
@@ -206,15 +222,20 @@
 .article-date {
   margin: 0;
 }
-/* THE READING MEASURE, and it is deliberately not the column. The frame starts
-   body copy before the centre line and runs it to the right margin — a measure
-   is a typographic decision, and forcing it onto the column would make the
-   lines too short at this size. It is still anchored to the grid at its right. */
+/* THE READING MEASURE IS A COLUMN SPAN (round 25). The frame runs body copy from
+   x=615 to x=1291, and columns 6–11 are 615.333 → 1291.333 — the designer's own
+   measure, on the grid, to a third of a pixel.
+
+   It used to be a negative margin (`--article-outdent`, fallback 104px, and the
+   property was never actually defined anywhere so only the fallback ever ran).
+   That 104 was the tell: the old right column began at 720, and 720 − 615.333 is
+   104.667. The outdent was measuring the distance from a two-column boundary to
+   a twelve-column one — the real grid showing through the coarser one. */
 .article-body {
+  grid-column: 6 / span 6;
   font-weight: var(--type-base-weight);
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
-  margin-left: calc(-1 * var(--article-outdent, 104px));
 }
 .article-body > p {
   margin: 0 0 1.2em;
@@ -352,9 +373,11 @@
   line-height: var(--type-h3-lh);
   margin: 0 0 24px;
 }
+/* same square as the News card, same reasoning — it fills `.col-main`'s five
+   columns rather than sitting at a fixed 559 with slack beside it */
 .rent-photo {
   display: block;
-  width: min(559px, 100%);
+  width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
 }
@@ -411,21 +434,25 @@
 }
 
 /* Below the two-column breakpoint the pages stack. THE PLACEMENT HAS TO GO TOO,
-   not just the template: `grid-column: 2` in a one-column grid creates an
-   implicit second column and you get two unequal ones. See styles/grid.css. */
+   not just the template: an explicit `grid-column` in a one-column grid creates
+   implicit columns and you get unequal ones. See styles/grid.css.
+
+   ROUND 25: the reset now has to name FOUR role classes plus `.article-body`,
+   which carries its own span. Miss one and that element alone conjures the
+   implicit columns — which looks like a partially-applied media query and is
+   even harder to read than the two-column version of this bug was. */
 @media (max-width: 1160px) {
   :is(.news-page, .article-page, .rent-page, .contacts-page) .page-grid {
     grid-template-columns: 1fr;
   }
   /* THE SECOND DECLARATION, and it is not optional */
-  :is(.news-page, .article-page, .rent-page, .contacts-page) .page-grid > :is(.col-l, .col-r) {
+  :is(.news-page, .article-page, .rent-page, .contacts-page)
+    .page-grid
+    > :is(.col-aside, .col-media, .col-main, .col-full, .article-body) {
     grid-column: auto;
   }
   .article-related__grid {
     grid-template-columns: 1fr;
-  }
-  .article-body {
-    margin-left: 0;
   }
   .article-gallery {
     grid-template-columns: 1fr;

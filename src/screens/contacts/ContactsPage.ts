@@ -75,12 +75,12 @@ export class ContactsPage extends ContentScreen {
     const general = document.createElement('section');
     general.className = 'page-block page-grid';
     general.innerHTML =
-      `<div class="col-l"><h2 class="page-h2">Общая информация</h2></div>` +
-      `<dl class="col-r contact-pairs">${pairs(GENERAL)}</dl>`;
+      `<div class="col-aside gp-text"><h2 class="page-h2">Общая информация</h2></div>` +
+      `<dl class="col-main contact-pairs gp-text">${pairs(GENERAL)}</dl>`;
     this.shell.add(general);
 
-    // full width, inside the margins — both columns, which is what `.col-full`
-    // is for. The frame draws this at the page's full 1142 measure.
+    // full width, inside the margins — `.col-full` is columns 2–11, and that IS
+    // the frame's 1142 measure (10 × 92.667 + 9 × 24 = 1142.667).
     const photo = document.createElement('section');
     photo.className = 'page-block page-grid';
     photo.innerHTML =
@@ -100,8 +100,8 @@ export class ContactsPage extends ContentScreen {
     const press = document.createElement('section');
     press.className = 'page-block page-grid';
     press.innerHTML =
-      `<div class="col-l"><h2 class="page-h2">Пресс-служба</h2></div>` +
-      `<div class="col-r">` +
+      `<div class="col-aside gp-text"><h2 class="page-h2">Пресс-служба</h2></div>` +
+      `<div class="col-main gp-text">` +
       `<p class="page-prose">${escapeHtml(bindShortWords(PRESS_LEAD))}</p>` +
       `<dl class="contact-pairs">${pairs([['Электронная почта', 'kresty@spb.ru']])}</dl>` +
       `</div>`;

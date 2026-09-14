@@ -13,12 +13,16 @@ const img = (src: string, cls: string) =>
 /**
  * «Новость» — one article (Figma `854:185`).
  *
- * THE ARTICLE HAS ITS OWN MEASURE, and it is not half the page. The frame runs
- * body copy from x=615 to x=1291 — wider than the right column, narrower than
- * full — with the date and the pull-quote in a left rail beside it. That is a
- * long-form decision, not a grid violation: `.col-r` holds the prose and the
- * rail is `.col-l`, but the prose is allowed to start before the centre line
- * because a reading measure is not a layout column. See `.article-body`.
+ * THE ARTICLE'S MEASURE IS A COLUMN SPAN, which round 25 discovered rather than
+ * decided. The frame runs body copy from x=615 to x=1291, and on the 12-column
+ * grid columns 6–11 run from 615.333 to 1291.333 — the designer's measure to a
+ * third of a pixel. Under the old two-column grid it could only be expressed as
+ * a negative margin (`--article-outdent`, fallback 104px), and that 104 was
+ * itself the tell: the right column started at 720, and 720 − 615.333 = 104.667.
+ * The hack was the distance from a two-column boundary to a twelve-column one.
+ *
+ * So `.article-body` is `grid-column: 6 / span 6` now, the outdent is deleted,
+ * and the rail keeps `.col-aside`.
  */
 export class ArticleScreen extends ContentScreen {
   constructor(el: HTMLElement) {
@@ -33,7 +37,7 @@ export class ArticleScreen extends ContentScreen {
     const head = document.createElement('header');
     head.className = 'page-head page-grid';
     head.innerHTML =
-      `<div class="col-full">` +
+      `<div class="col-full gp-text">` +
       `<nav class="article-crumbs">` +
       `<a href="#news" data-to="news">Новости</a>` +
       `<span class="news-filters__dot" aria-hidden="true"></span>` +
@@ -46,8 +50,8 @@ export class ArticleScreen extends ContentScreen {
     const body = document.createElement('article');
     body.className = 'article page-grid';
     body.innerHTML =
-      `<div class="col-l article-rail"><p class="article-date">${escapeHtml(ARTICLE.date)}</p></div>` +
-      `<div class="col-r article-body">` +
+      `<div class="col-aside article-rail gp-text"><p class="article-date">${escapeHtml(ARTICLE.date)}</p></div>` +
+      `<div class="article-body gp-text">` +
       p(ARTICLE.lead) +
       `<h2>${escapeHtml(bindShortWords(ARTICLE.h2))}</h2>` +
       p(ARTICLE.body2) +
@@ -67,12 +71,12 @@ export class ArticleScreen extends ContentScreen {
     const quote = document.createElement('figure');
     quote.className = 'article-quote page-grid';
     quote.innerHTML =
-      `<div class="col-l">` +
+      `<div class="col-aside gp-text">` +
       `<span class="article-quote__mark" aria-hidden="true">«»</span>` +
       `<blockquote>${escapeHtml(bindShortWords(ARTICLE.quote))}</blockquote>` +
       `<figcaption>${escapeHtml(ARTICLE.quoteBy)}</figcaption>` +
       `</div>` +
-      `<div class="col-r article-body">` +
+      `<div class="article-body gp-text">` +
       p(ARTICLE.closing) +
       img(ARTICLE.closingImage, 'article-img') +
       `</div>`;

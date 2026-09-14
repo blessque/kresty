@@ -61,8 +61,8 @@ export class RentScreen extends ContentScreen {
     const info = document.createElement('section');
     info.className = 'page-block page-grid';
     info.innerHTML =
-      `<div class="col-l"><h2 class="page-h2">Общая информация</h2></div>` +
-      `<div class="col-r">` +
+      `<div class="col-aside gp-text"><h2 class="page-h2">Общая информация</h2></div>` +
+      `<div class="col-main gp-text">` +
       `<dl class="rent-stats">` +
       STATS.map(
         ([k, v]) =>
@@ -75,16 +75,17 @@ export class RentScreen extends ContentScreen {
       `</div>`;
     this.shell.add(info);
 
-    // The spaces list beside a square photograph. The image is a fixed square
-    // anchored to the OUTER edge of its column, so the air before the centre
-    // line is the composition's, not a gutter's — the News page's rule.
+    // The spaces list beside a square photograph. ROUND 25: the photo now FILLS
+    // `.col-main` (five columns = 559.333 at the design frame, the square's own
+    // width), so it needs no anchor class — the air between list and photo is the
+    // skipped column 6, the same rule the News card follows.
     const spaces = document.createElement('section');
     spaces.className = 'page-block page-grid';
     spaces.innerHTML =
-      `<ul class="col-l rent-spaces">` +
+      `<ul class="col-aside rent-spaces gp-text">` +
       SPACES.map((s) => `<li>${escapeHtml(bindShortWords(s))}</li>`).join('') +
       `</ul>` +
-      `<div class="col-r">` +
+      `<div class="col-main">` +
       `<img class="rent-photo" src="${asset('/resources/concept-plan.webp')}" alt=""` +
       ` loading="lazy" decoding="async" width="1200" height="1200">` +
       `</div>`;
@@ -92,9 +93,12 @@ export class RentScreen extends ContentScreen {
 
     const body = document.createElement('section');
     body.className = 'page-block page-grid';
+    // ROUND 25: the empty `<div class="col-l">` spacer is gone. It existed only
+    // to push the prose into the right half — the one place the grid was used to
+    // PUSH content rather than to PLACE it. `.col-main` names the position, so
+    // the placeholder has nothing left to do.
     body.innerHTML =
-      `<div class="col-l"></div>` +
-      `<div class="col-r page-prose"><p>${escapeHtml(bindShortWords(BODY))}</p></div>`;
+      `<div class="col-main page-prose gp-text"><p>${escapeHtml(bindShortWords(BODY))}</p></div>`;
     this.shell.add(body);
 
     // the shared form, with «Аренда»'s own heading

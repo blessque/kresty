@@ -69,8 +69,8 @@
 
 /* typography/Mobile. The token set names no breakpoint; 768 keeps the
    set's own promise — it is called "Desktop & Tablet", so a tablet in
-   portrait keeps the larger scale. Note «О Крестах» collapses to one
-   column at 900, so 768–900 is single-column with desktop type; that is
+   portrait keeps the larger scale. Note the pages collapse to one column
+   at 1160, so 768–1160 is single-column with desktop type; that is
    intended, not an oversight. */
 @media (max-width: 767.98px) {
   :root {

@@ -30,7 +30,7 @@ export function buildPageHead({ title, lead, onPartner }: PageHeadOpts): HTMLEle
   const grid = document.createElement('div');
   grid.className = 'page-grid';
   grid.innerHTML =
-    `<div class="col-full">` +
+    `<div class="col-full gp-text">` +
     `<h1 class="page-title">${escapeHtml(bindShortWords(title))}</h1>` +
     (lead ? `<p class="page-lead">${escapeHtml(bindShortWords(lead))}</p>` : '') +
     `</div>`;

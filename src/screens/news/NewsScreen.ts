@@ -81,16 +81,17 @@ export class NewsScreen extends ContentScreen {
       a.href = '#news/1';
       a.dataset.category = n.category;
       a.innerHTML =
-        `<div class="col-l">` +
+        `<div class="col-media">` +
         (n.image
-          // ANCHOR-OUTER: against the page margin, so the slack falls at the
-          // CENTRE line — which is the 64px the designer drew between the image
-          // and the headline, and the example `styles/grid.css` cites.
-          ? `<img class="news-card__img anchor-outer" src="${asset(encodeURI(n.image))}" alt=""` +
+          // ROUND 25: no anchor class. `.col-media` is five columns = 559.333 at
+          // the design frame, which is the square's own width, so it FILLS its
+          // position instead of leaving slack the old two-column grid had to
+          // explain. The air before the headline is now the skipped column 6.
+          ? `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
             ` loading="lazy" decoding="async" width="1200" height="1200">`
           : '') +
         `</div>` +
-        `<div class="col-r news-card__body">` +
+        `<div class="col-main news-card__body gp-text">` +
         `<h2 class="news-card__title">${escapeHtml(bindShortWords(n.title))}</h2>` +
         `<p class="news-card__meta">` +
         `<span>${escapeHtml(n.date)}</span>` +
