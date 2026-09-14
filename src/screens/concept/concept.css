@@ -651,13 +651,22 @@
      The inset is the grid's own 16px, so the heading hangs inside its column
      exactly as the designer's frame draws it.
 
-     HYPHENATION IS LOAD-BEARING HERE, not a nicety. The aside is 442.667 and
-     the text box 410.667, while «экскурсионных» in the museum heading is 407px
-     of unbreakable min-content at 44px — 3.7px of clearance at the design frame
-     and an overflow at any width below it. Breaking the word is what lets H2
-     stay at 44. It needs `lang="ru"` on <html> to do anything at all (it is
-     set); without it this silently no-ops, which is this project's house
-     failure shape. */
+     HYPHENATION IS A SAFETY NET NOW, NOT A MECHANISM (round 26). It used to be
+     load-bearing: at a fixed 44px the widest unbreakable run had 3.7px of
+     headroom at 1440 and overflowed at every width below, so breaking the word
+     was the only thing holding the layout together. The fluid scale removed that
+     job — the run scales with the column, so measured WITH HYPHENS OFF the worst
+     clearance is +4.3 at 1440, +3.9 at 1366, +3.2 at 1309, +3.0 at 1280.
+
+     So the limit goes to 16, which is past every run this copy contains
+     («для размышлений» is 15 including the NBSP, «в исторических» 14). Nothing
+     breaks in practice, and a pathological 16+ character run still breaks rather
+     than overflowing. That matters because `hyphens: auto` hyphenates to BALANCE
+     THE RAG, not only to avoid overflow — at the old limit it kept breaking
+     words that fit, which is the broken word the client reported seeing.
+
+     It needs `lang="ru"` on <html> to do anything at all (it is set); without it
+     this silently no-ops, which is this project's house failure shape. */
   padding-inline: var(--grid-text-inset);
   hyphens: auto;
   /* `hyphens: auto` ALONE IS TOO EAGER and it shows immediately: unconstrained,
@@ -699,7 +708,7 @@
        in the hotel heading and cannot be tuned away from here: raising the limit
        to 15 to spare it re-opens a 37px overflow. To spare a specific word, take
        the NBSP out of that string — the binding is the cause, not the limit. */
-  hyphenate-limit-chars: 13 6 4;
+  hyphenate-limit-chars: 16 6 4;
 }
 
 .sec-body {

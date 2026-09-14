@@ -55,22 +55,38 @@
    ──────────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* 32 at and above the 1440 design frame — the same corner rule the wordmark,
-     the header and the main-screen furniture already use. Below 1440 it stays
-     32 and the columns narrow; the grid is fluid downward, fixed upward. */
-  --page-margin: 32px;
+  /* ── THE FLUID CONSTANTS (round 26) ──────────────────────────────────────
+     Below the 1440 design frame every fixed pixel in this grid scales with the
+     viewport, in lockstep with the type (see tokens.gen.css's fluid block).
 
-  /* 24 in both frames, on every boundary. Unlike round 23's grid this one DOES
-     have a gutter, because the designer's own skipped columns only make sense
-     against one. */
-  --grid-gutter: 24px;
+     THIS IS NOT COSMETIC, and the arithmetic is the argument. The client asked
+     for proportional type — `44 × vw / 1440` — and that alone does not fix the
+     fit, because a fixed 32px margin and 24px gutter make the COLUMN shrink
+     faster than the type. Measured, «для·размышлений» (407px, one unbreakable
+     NBSP-bound unit) against the H2 text box:
 
-  /* 1440 − 2×32. Above the design frame the margins grow, not the columns. */
-  --page-max: 1376px;
+       vw     type fluid only     type + these constants
+       1440   +3.7px              +3.7px
+       1366   −0.1px  ✗           +3.5px
+       1309   −3.0px  ✗           +3.3px
+       1160   −10.5px ✗           +3.0px
+
+     Scaling all four together reproduces the 1440 design at every width, so the
+     headroom is constant instead of evaporating. `min()` rather than `clamp()`:
+     there is no floor, because below 1160 the pages collapse to one column and
+     the constraint disappears.
+
+     CSS cannot divide a length by a length, so each is authored as its own `vw`
+     quantity: 32/1440 × 100 = 2.2222, and so on. ── */
+  --page-margin: min(32px, 2.2222vw);
+  --grid-gutter: min(24px, 1.6667vw);
 
   /* The text inset, single-sourced because six stylesheets reach for it and a
      literal 16 in each is how a "grid rule" quietly becomes six numbers. */
-  --grid-text-inset: 16px;
+  --grid-text-inset: min(16px, 1.1111vw);
+
+  /* 1440 − 2×32. Above the design frame the margins grow, not the columns. */
+  --page-max: 1376px;
 }
 
 .page-grid {

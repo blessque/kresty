@@ -48,6 +48,9 @@ const OUT_TS = join(ROOT, 'src/styles/tokens.gen.ts');
  */
 const REM_ROOT_PX = 16;
 
+/** the design frame every measurement in this project is taken at */
+const DESIGN_W = 1440;
+
 /**
  * ALS Chromius's `wght` axis is min 50 / default 120 / max 232 — Regular is
  * 120 and Medium is 150. Figma reports these as the words below and, over the
@@ -231,9 +234,15 @@ L.push('  /* ── primitives. Named by what they ARE. The semantic layer below
 L.push('     the only thing that may reference these — see tokens.css. ── */');
 for (const [name, v] of primitives) L.push(`  --ref-${name}: ${v};`);
 L.push('');
-L.push('  /* ── type scale (Desktop & Tablet). Mobile overrides at the foot. ── */');
+L.push('  /* ── type scale, FLUID (round 26). See the note at the foot. ── */');
 for (const [name, { px, src }] of sizes.desktop) {
-  L.push(`  --${name}: ${num(px)}px; /* ${src} @ root ${REM_ROOT_PX} */`);
+  const mob = new Map(sizes.mobile).get(name)?.px ?? px;
+  const vw = num((px / DESIGN_W) * 100);
+  L.push(
+    px === mob
+      ? `  --${name}: ${num(px)}px; /* ${src} — constant; mobile and desktop agree */`
+      : `  --${name}: clamp(${num(mob)}px, ${vw}vw, ${num(px)}px); /* ${src} → ${num(px)}px @ ${DESIGN_W} */`,
+  );
 }
 L.push('');
 L.push('  /* Line-heights are UNITLESS RATIOS on purpose — a px value breaks');
@@ -269,17 +278,51 @@ for (const s of styles) {
 }
 L.push('}');
 L.push('');
-L.push('/* typography/Mobile. The token set names no breakpoint; 768 keeps the');
-L.push('   set\'s own promise — it is called "Desktop & Tablet", so a tablet in');
-L.push('   portrait keeps the larger scale. Note the pages collapse to one column');
-L.push('   at 1160, so 768–1160 is single-column with desktop type; that is');
-L.push('   intended, not an oversight. */');
-L.push('@media (max-width: 767.98px) {');
-L.push('  :root {');
-for (const [name, { px, src }] of sizes.mobile) {
-  L.push(`    --${name}: ${num(px)}px; /* ${src} @ root ${REM_ROOT_PX} */`);
+L.push('/* ─────────────────────────────────────────────────────────────────────');
+L.push('   THE FLUID SCALE (round 26). Type is proportional to the viewport below');
+L.push('   the 1440 design frame: at width W the size is `desktop × W / 1440`.');
+L.push('');
+L.push('   WHY THIS EXISTS. The type was never oversized — H2 is 44px, which is');
+L.push('   the designer\'s own `fs-h2: 2.75rem @ 16` and `fontSize.3 = 44`, matched');
+L.push('   twice. What breaks is the FIT: the H2 lives in a 4-column aside whose');
+L.push('   text box is 410.667px at 1440, and «для·размышлений» — one unbreakable');
+L.push('   unit, bound by `bindShortWords` — is 407px. That is 3.7px of headroom at');
+L.push('   the design frame and an overflow at every width below it.');
+L.push('');
+L.push('   THE MARGIN, GUTTER AND INSET SCALE WITH IT, and that is not optional —');
+L.push('   see grid.css. They are fixed px, so type-only scaling leaves the column');
+L.push('   shrinking FASTER than the type and the overflow survives:');
+L.push('');
+L.push('     vw     type only     type + grid constants');
+L.push('     1440   +3.7px        +3.7px');
+L.push('     1366   −0.1px  ✗     +3.5px');
+L.push('     1309   −3.0px  ✗     +3.3px');
+L.push('     1160   −10.5px ✗     +3.0px');
+L.push('');
+L.push('   CAPPED AT 1440 because the grid caps content at 1376 above the design');
+L.push('   frame — type that kept growing would overflow fixed columns. FLOORED at');
+L.push('   the typography/Mobile values, so the curve MEETS the mobile set exactly');
+L.push('   and there is no second mechanism setting the same variable — the old');
+L.push('   `@media (max-width: 767.98px)` block is gone, not disabled.');
+L.push('');
+L.push('   THE MAIN SCREEN OPTS OUT, and it has to be done HERE rather than by');
+L.push('   scoping the fluid values, because of a CSS rule that is easy to get');
+L.push('   wrong: `var()` inside a custom-property declaration is substituted on');
+L.push('   the element that DECLARES it. `:root { --type-h2-size: var(--fs-h2) }`');
+L.push('   therefore bakes in :root\'s `--fs-h2`, and re-declaring `--fs-h2` further');
+L.push('   down the tree would change nothing. So the opt-out has to restate the');
+L.push('   COMPOSED `--type-*-size`, not the `--fs-*` it was built from.');
+L.push('');
+L.push('   Why the main screen needs it: it is a `stageScale()` contain-fit stage,');
+L.push('   and `.nav-link` is appended to that scaled stage while reading');
+L.push('   `--type-h3-size`. Fluid there would scale TWICE, and the labels are');
+L.push('   positioned on a hard 272px radius in stage coordinates, so they would');
+L.push('   part company with their own geometry. ── */');
+L.push('#screen-main {');
+for (const s of styles) {
+  const px = new Map(sizes.desktop).get(s.sizeToken)?.px;
+  L.push(`  --type-${s.stem}-size: ${num(px)}px; /* ${s.style} — fixed inside the scaled stage */`);
 }
-L.push('  }');
 L.push('}');
 const css = L.join('\n') + '\n';
 

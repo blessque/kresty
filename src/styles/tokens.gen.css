@@ -18,12 +18,12 @@
   --ref-amethyst: #783c96;
   --ref-amber: #fe9300;
 
-  /* ── type scale (Desktop & Tablet). Mobile overrides at the foot. ── */
-  --fs-h1: 54px; /* 3.375rem @ root 16 */
-  --fs-h2: 44px; /* 2.75rem @ root 16 */
-  --fs-lead: 32px; /* 2rem @ root 16 */
-  --fs-base: 24px; /* 1.5rem @ root 16 */
-  --fs-small: 16px; /* 1rem @ root 16 */
+  /* ── type scale, FLUID (round 26). See the note at the foot. ── */
+  --fs-h1: clamp(40px, 3.75vw, 54px); /* 3.375rem → 54px @ 1440 */
+  --fs-h2: clamp(32px, 3.0556vw, 44px); /* 2.75rem → 44px @ 1440 */
+  --fs-lead: clamp(28px, 2.2222vw, 32px); /* 2rem → 32px @ 1440 */
+  --fs-base: clamp(20px, 1.6667vw, 24px); /* 1.5rem → 24px @ 1440 */
+  --fs-small: 16px; /* 1rem — constant; mobile and desktop agree */
 
   /* Line-heights are UNITLESS RATIOS on purpose — a px value breaks
      concept.css's `calc(var(--mark-lh) * 1em …)` icon centring, and a
@@ -67,17 +67,51 @@
   --type-caption-sm-size: var(--fs-small);  --type-caption-sm-lh: var(--lh-1-2);  --type-caption-sm-weight: var(--font-weight-regular); /* Caption Small */
 }
 
-/* typography/Mobile. The token set names no breakpoint; 768 keeps the
-   set's own promise — it is called "Desktop & Tablet", so a tablet in
-   portrait keeps the larger scale. Note the pages collapse to one column
-   at 1160, so 768–1160 is single-column with desktop type; that is
-   intended, not an oversight. */
-@media (max-width: 767.98px) {
-  :root {
-    --fs-h1: 40px; /* 2.5rem @ root 16 */
-    --fs-h2: 32px; /* 2rem @ root 16 */
-    --fs-lead: 28px; /* 1.75rem @ root 16 */
-    --fs-base: 20px; /* 1.25rem @ root 16 */
-    --fs-small: 16px; /* 1rem @ root 16 */
-  }
+/* ─────────────────────────────────────────────────────────────────────
+   THE FLUID SCALE (round 26). Type is proportional to the viewport below
+   the 1440 design frame: at width W the size is `desktop × W / 1440`.
+
+   WHY THIS EXISTS. The type was never oversized — H2 is 44px, which is
+   the designer's own `fs-h2: 2.75rem @ 16` and `fontSize.3 = 44`, matched
+   twice. What breaks is the FIT: the H2 lives in a 4-column aside whose
+   text box is 410.667px at 1440, and «для·размышлений» — one unbreakable
+   unit, bound by `bindShortWords` — is 407px. That is 3.7px of headroom at
+   the design frame and an overflow at every width below it.
+
+   THE MARGIN, GUTTER AND INSET SCALE WITH IT, and that is not optional —
+   see grid.css. They are fixed px, so type-only scaling leaves the column
+   shrinking FASTER than the type and the overflow survives:
+
+     vw     type only     type + grid constants
+     1440   +3.7px        +3.7px
+     1366   −0.1px  ✗     +3.5px
+     1309   −3.0px  ✗     +3.3px
+     1160   −10.5px ✗     +3.0px
+
+   CAPPED AT 1440 because the grid caps content at 1376 above the design
+   frame — type that kept growing would overflow fixed columns. FLOORED at
+   the typography/Mobile values, so the curve MEETS the mobile set exactly
+   and there is no second mechanism setting the same variable — the old
+   `@media (max-width: 767.98px)` block is gone, not disabled.
+
+   THE MAIN SCREEN OPTS OUT, and it has to be done HERE rather than by
+   scoping the fluid values, because of a CSS rule that is easy to get
+   wrong: `var()` inside a custom-property declaration is substituted on
+   the element that DECLARES it. `:root { --type-h2-size: var(--fs-h2) }`
+   therefore bakes in :root's `--fs-h2`, and re-declaring `--fs-h2` further
+   down the tree would change nothing. So the opt-out has to restate the
+   COMPOSED `--type-*-size`, not the `--fs-*` it was built from.
+
+   Why the main screen needs it: it is a `stageScale()` contain-fit stage,
+   and `.nav-link` is appended to that scaled stage while reading
+   `--type-h3-size`. Fluid there would scale TWICE, and the labels are
+   positioned on a hard 272px radius in stage coordinates, so they would
+   part company with their own geometry. ── */
+#screen-main {
+  --type-h1-size: 54px; /* H1 — fixed inside the scaled stage */
+  --type-h2-size: 44px; /* H2 — fixed inside the scaled stage */
+  --type-h3-size: 32px; /* H3 — fixed inside the scaled stage */
+  --type-base-size: 24px; /* Base Text — fixed inside the scaled stage */
+  --type-caption-big-size: 24px; /* Caption Big — fixed inside the scaled stage */
+  --type-caption-sm-size: 16px; /* Caption Small — fixed inside the scaled stage */
 }
