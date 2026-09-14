@@ -66,6 +66,81 @@ function cssFiles(dir) {
   return out;
 }
 
+/**
+ * STRUCTURE, checked before any value rule and on EVERY file.
+ *
+ * ROUND 25. `page.css` shipped without its final `}` and `concept.css` kept the
+ * orphan — and the deployed site was a blue screen that froze the machine, while
+ * `npm run dev` was perfect. The asymmetry is the whole lesson: Vite injects each
+ * sheet as its own <style> in dev, and the CSS parser AUTO-CLOSES an unterminated
+ * block at end-of-sheet, so the damage stopped at that file's last rule. `vite
+ * build` CONCATENATES every sheet into one file, so the open block ran forward
+ * through `pages.css` and `main.css` until the orphan closed it — 200 selectors,
+ * two thirds of the bundle, silently rewritten into descendants of a `.sent`
+ * state. `.ray-canvas` lost `position: absolute`, fell 8300px down inside an
+ * `overflow: hidden` box, and the shader went on drawing at 60fps where nobody
+ * could see it.
+ *
+ * Nothing in the toolchain catches this: `tsc` does not read CSS, `tokens:check`
+ * only diffs the generated files, esbuild accepts the unterminated block and
+ * `vite build` exits 0. This is the SECOND instance — round 23 lost `.sec`'s
+ * whole `padding` declaration to a comment carrying a second comment-terminator,
+ * equally silently. (Which cannot be spelled out here for the obvious reason.)
+ *
+ * So: no baseline, no exemptions, and it fails before the value rules run,
+ * because a mis-nested file makes every line number below it a guess.
+ */
+function braceBalance(src) {
+  let depth = 0;
+  let line = 1;
+  const opened = []; // line numbers of currently-unclosed `{`
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\n') { line++; continue; }
+    // block comment — CSS has no line comments, and `//` inside a declaration
+    // is a value (e.g. a data: URI), so only `/* */` may be skipped
+    if (c === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2);
+      const skipped = src.slice(i, end === -1 ? src.length : end + 2);
+      line += (skipped.match(/\n/g) || []).length;
+      if (end === -1) return { unterminatedComment: line };
+      i = end + 1;
+      continue;
+    }
+    // a quoted string may legitimately contain a brace (`content: "}"`)
+    if (c === '"' || c === "'") {
+      for (i++; i < src.length; i++) {
+        if (src[i] === '\\') { i++; continue; }
+        if (src[i] === c) break;
+        if (src[i] === '\n') line++;
+      }
+      continue;
+    }
+    if (c === '{') { depth++; opened.push(line); }
+    else if (c === '}') { depth--; opened.pop(); if (depth < 0) return { extraClose: line }; }
+  }
+  return depth > 0 ? { unclosed: opened } : {};
+}
+
+const structural = [];
+for (const file of cssFiles(SRC)) {
+  const r = braceBalance(readFileSync(file, 'utf8'));
+  const rel = relative(ROOT, file);
+  if (r.unterminatedComment) structural.push(`${rel}: block comment opened near line ${r.unterminatedComment} is never closed`);
+  else if (r.extraClose) structural.push(`${rel}:${r.extraClose}: a '}' that closes nothing — in a build this SWALLOWS every sheet imported before it`);
+  else if (r.unclosed) structural.push(`${rel}: ${r.unclosed.length} unclosed '{' (opened at line ${r.unclosed.join(', ')}) — in a build this swallows every sheet imported AFTER it`);
+}
+if (structural.length) {
+  console.error(`\nCSS structure: ${structural.length} malformed file(s)\n`);
+  for (const s of structural) console.error(`  ${s}`);
+  console.error(
+    '\nThis is invisible in `npm run dev` and breaks the built site — see the\n' +
+      'note above this check in scripts/lint-tokens.mjs. Reproduce with\n' +
+      '`npm run build && npm run preview`, never with `npm run dev`.\n',
+  );
+  process.exit(1);
+}
+
 const RULES = [
   {
     id: 'colour',

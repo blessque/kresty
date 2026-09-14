@@ -689,8 +689,6 @@
    — «Контакты» and «Аренда» use the same form. Nothing concept-specific was
    left behind; if a rule here needs to differ, override it, do not fork it. */
 
-}
-
 /* ── the handoff into the main screen ────────────────────────────────────── */
 
 /* Deliberately EMPTY and with no background of its own: `.page-bg` carries the
