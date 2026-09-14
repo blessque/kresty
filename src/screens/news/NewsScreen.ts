@@ -47,7 +47,10 @@ export class NewsScreen extends ContentScreen {
     row.setAttribute('aria-label', 'Фильтр новостей');
 
     const inner = document.createElement('div');
-    inner.className = 'col-full news-filters__row';
+    // ROUND 26: `.gp-text` — the tabs are text and hang inside the column like
+    // every other text block. Without it they started 16px left of the H1
+    // directly above them, which is what the client reported.
+    inner.className = 'col-full news-filters__row gp-text';
     // «Все» plus the three categories, separated by the frame's small stars
     const all: (Category | null)[] = [null, ...CATEGORIES];
     all.forEach((c, i) => {

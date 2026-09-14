@@ -106,12 +106,28 @@
   }
 }
 
+/* ROUND 26: THE FORM IS A TEXT BLOCK and hangs inside its column like one.
+   It was flush while the copy directly above it was inset, because the rule
+   lived on `.sec-body p` — a TAG selector, which a <form> is not. The fields
+   started 16px left of the paragraph above them, which the client read (right)
+   as the form not being on the grid.
+
+   `max-width: 34em` is deleted rather than converted: `em` here resolved
+   against the 21px document root (the form declares no font-size of its own),
+   so it was 714px where it meant 816 — the single genuine root/`em` leak in the
+   codebase. Either way it never bound inside a 559px column.
+
+   The private `1fr 1fr` STAYS. Putting the fields on page columns would need
+   `display: contents` on the <form>, which redefines `.cf-field--message`'s
+   `grid-column: 1 / -1` to mean columns 1-12 of the page; and lifting the form
+   out of `.sec-body` costs it the inherited family and weight, where Chromius's
+   400 default clamps to Black. The gutter is the grid's, though, not a coincidence. */
 .contact-form form {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px 24px;
+  gap: 32px var(--grid-gutter);
   margin-top: 40px;
-  max-width: 34em;
+  padding-inline: var(--grid-text-inset);
 }
 .cf-field {
   display: flex;

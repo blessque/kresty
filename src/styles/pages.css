@@ -95,19 +95,36 @@
   align-items: center;
   gap: 10px;
 }
+/* ROUND 26: BLUE, because these are the most obviously clickable things on the
+   page and they were ink. `global.css` gives every <button> `color: inherit`,
+   so an interactive element is ink-by-default here unless a rule says otherwise
+   — which is the root cause of every violation of the sitewide rule, not just
+   this one. The client's "tabs seem to be still black" is exactly this. */
 .news-filters__btn {
   padding: 0;
-  color: inherit;
+  color: var(--color-link);
   font: inherit;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   /* the underline is the state, and it is drawn rather than toggled so the
      transition has something to move */
   border-bottom: 2px solid transparent;
-  transition: border-color 240ms var(--ease-out);
+  transition:
+    color 240ms var(--ease-out),
+    border-color 240ms var(--ease-out);
 }
+/* The ACTIVE filter is the one that is not offering to do anything — you are
+   already looking at it — so it takes ink and keeps the underline. That reads
+   as "selected" rather than "disabled", and it means rest/active differ by
+   colour AND rule instead of by rule alone. */
 .news-filters__btn.on {
+  color: var(--color-text-onlight-main);
   border-bottom-color: currentColor;
+}
+@media (hover: hover) and (pointer: fine) {
+  .news-filters__btn:not(.on):hover {
+    color: var(--color-text-onlight-main);
+  }
 }
 /* the frame's small four-pointed star between items */
 .news-filters__dot {
@@ -199,6 +216,7 @@
 }
 .article-crumbs a {
   color: var(--color-link);
+  transition: color 240ms var(--ease-out);
 }
 .article-title {
   font-family: var(--font-family-display);
@@ -236,6 +254,13 @@
   font-weight: var(--type-base-weight);
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
+}
+/* ROUND 26: THE INSET GOES ON THE TEXT CHILDREN, never on `.article-body`.
+   The block holds prose AND figures, so an inset on the wrapper is inherited by
+   the images — round 25 did exactly that and left them 32px narrower than their
+   column, aligned to nothing. `.sec-body` has always done it this way. */
+.article-body > :is(p, h2, h3, ul, ol, blockquote) {
+  padding-inline: var(--grid-text-inset);
 }
 .article-body > p {
   margin: 0 0 1.2em;
@@ -322,15 +347,24 @@
 .article-related__card {
   color: inherit;
 }
+/* ROUND 26: blue at REST, ink on hover — it was the other way round, which is
+   backwards from the sitewide rule and from `.news-card__title` two hundred
+   lines up. The card is an <a>; its headline is the link label. */
 .article-related__headline {
   margin: 8px 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
+  color: var(--color-link);
   transition: color 240ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .article-related__card:hover .article-related__headline {
-    color: var(--color-link);
+    color: var(--color-text-onlight-main);
+  }
+  /* these two had the right colour and no hover at all */
+  .article-crumbs a:hover,
+  .article-all:hover {
+    color: var(--color-text-onlight-main);
   }
 }
 .article-all {
@@ -339,6 +373,7 @@
   color: var(--color-link);
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
+  transition: color 240ms var(--ease-out);
 }
 
 /* ── «Аренда» ────────────────────────────────────────────────────────────── */

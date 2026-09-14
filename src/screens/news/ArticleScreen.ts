@@ -51,7 +51,7 @@ export class ArticleScreen extends ContentScreen {
     body.className = 'article page-grid';
     body.innerHTML =
       `<div class="col-aside article-rail gp-text"><p class="article-date">${escapeHtml(ARTICLE.date)}</p></div>` +
-      `<div class="article-body gp-text">` +
+      `<div class="article-body">` +
       p(ARTICLE.lead) +
       `<h2>${escapeHtml(bindShortWords(ARTICLE.h2))}</h2>` +
       p(ARTICLE.body2) +
@@ -76,7 +76,7 @@ export class ArticleScreen extends ContentScreen {
       `<blockquote>${escapeHtml(bindShortWords(ARTICLE.quote))}</blockquote>` +
       `<figcaption>${escapeHtml(ARTICLE.quoteBy)}</figcaption>` +
       `</div>` +
-      `<div class="article-body gp-text">` +
+      `<div class="article-body">` +
       p(ARTICLE.closing) +
       img(ARTICLE.closingImage, 'article-img') +
       `</div>`;
@@ -95,7 +95,7 @@ export class ArticleScreen extends ContentScreen {
     const sec = document.createElement('section');
     sec.className = 'article-related page-grid';
     sec.innerHTML =
-      `<div class="col-full">` +
+      `<div class="col-full gp-text">` +
       `<h2 class="article-related__title">Читайте также</h2>` +
       `<div class="article-related__grid">` +
       RELATED.map(

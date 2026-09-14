@@ -152,3 +152,20 @@
 .gp-text {
   padding-inline: var(--grid-text-inset);
 }
+
+/* THE RULE HAS TWO HALVES, and the second one decides where `.gp-text` may go:
+   text hangs inside the column, images sit flush to it.
+
+   SO A WRAPPER THAT CONTAINS BOTH MUST NOT CARRY `.gp-text` — put the inset on
+   the text children instead. Round 25 put it on `.article-body`, which holds
+   paragraphs AND figures, and the figures inherited it: they rendered 32px
+   narrower than their column and aligned with nothing.
+
+   The obvious repair — a negative-margin escape class on the image — was tried
+   and is worse. `pages.css` loads after this file, so its `.article-img {
+   margin: 40px 0; width: 100% }` beats an equal-specificity utility on BOTH
+   properties by source order, and the escape silently does nothing. The margin
+   SHORTHAND is the quiet half of that: it resets `margin-inline` even though it
+   looks like it only sets the block axis.
+
+   `.sec-body` had it right all along by insetting `p` alone. */
