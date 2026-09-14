@@ -17,7 +17,7 @@
       "com.figma.hiddenFromPublishing": false
     },
     "$type": "dimension",
-    "$value": "2rem"
+    "$value": "2.5rem"
   },
   "fs-lead": {
     "$extensions": {

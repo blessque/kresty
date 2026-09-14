@@ -87,6 +87,52 @@
 
   /* 1440 − 2×32. Above the design frame the margins grow, not the columns. */
   --page-max: 1376px;
+
+  /* ── ONE COLUMN, AS A LENGTH (round 27) ──────────────────────────────────
+     `.page-grid` states the columns as `repeat(12, 1fr)`, which is the right
+     way to lay them out and gives nothing to anyone who needs ONE column's
+     width as a number. The picture block does: its frame reaches exactly one
+     column plus one gutter past the body so the next slide has somewhere to
+     peek, and that has to stay exact at every width.
+
+     Derived from the same three values `.page-grid` uses, so it cannot drift
+     from the real columns — if the margin or the gutter moves, this follows.
+     At 1440: (1376 − 11×24) / 12 = 92.667, and a column plus a gutter is
+     116.667, which lands the frame's right edge on the content edge (1291.333
+     + 116.667 = 1408 = 32 + 1376).
+
+     It was AUTHORED AS A LITERAL `116.667px` when the picture block was
+     written, which was only correct at 1440 — below the design frame the
+     margin and gutter shrink and the columns shrink with them, so a fixed peek
+     overhangs. `100vw` is safe to read here because this page never scrolls
+     the document (html/body are `overflow: hidden`) and the scroller hides its
+     scrollbar, so there is no gutter to subtract. ── */
+  --grid-content: min(100vw - 2 * var(--page-margin), var(--page-max));
+  --grid-col: calc((var(--grid-content) - 11 * var(--grid-gutter)) / 12);
+
+  /* ── THE VERTICAL RHYTHM (round 27) ──────────────────────────────────────
+     Four steps, and every gap between blocks in an editorial column is one of
+     them. Before this there was no scale at all: paragraphs carried a `1.2em`
+     BOTTOM margin, pictures a 48px TOP margin and the slider's controls 24px —
+     so `text → picture` came out 76.8px, `picture → text` came out ZERO
+     (nothing declared a top margin on that side), and the arrows ended up
+     nearer the next paragraph than the photos they belong to. All three were
+     emergent rather than chosen, which is what the client saw.
+
+     They are DIRECTIONLESS on purpose: a gap belongs to the PAIR, so it is set
+     by `* + *` on the flow (see page.css) rather than by each element guessing
+     its own bottom margin. That is what makes "photo to next text block" a
+     single number instead of the sum of two unrelated ones.
+
+     RAW PIXELS, DELIBERATELY. An earlier round rode these on a `--k` scale
+     factor along with every other padding on the site; that scaling is not in
+     this build and these must not quietly reintroduce it. Layout is otherwise
+     untokenised here (see tokens.css) — vertical rhythm earns the exception
+     because these four values serve three stylesheets. ── */
+  --sp-tight: 16px; /* within one component */
+  --sp-text: 32px; /* text block → text block */
+  --sp-block: 64px; /* text ↔ picture, and after the controls */
+  --sp-page: 96px; /* between page-level blocks */
 }
 
 .page-grid {

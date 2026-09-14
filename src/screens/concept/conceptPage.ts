@@ -143,6 +143,11 @@ export class ConceptPage {
     applyMotionCss();
     this.bg = new PageBackground(screen);
     this.sections = new SectionRun(scroller);
+    // ROUND 26: a picture block changing slides can change the body's box, and
+    // every light station is derived from measured geometry — `sectionRun.ts`'s
+    // own header calls out that anything altering a section after first layout
+    // must re-measure or the track desyncs mid-scroll.
+    this.sections.onMediaResize = () => this.measure(this.viewW, this.viewH);
     this.form = new ContactForm(scroller);
     // ROUND 24: the form is a sixth light station. Registered AFTER its own
     // constructor has appended it, because `measure()` reads `offsetTop` in

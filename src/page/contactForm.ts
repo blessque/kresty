@@ -104,14 +104,24 @@ export class ContactForm {
       const common =
         `id="${id}" name="${f.name}" autocomplete="${f.autocomplete}"` +
         (f.inputmode ? ` inputmode="${f.inputmode}"` : '');
+      // ROUND 26: `placeholder=" "` — a single space, and it is a STATE HOOK
+      // rather than a placeholder. It is what makes `:placeholder-shown` mean
+      // "this field is empty", which is the only way pure CSS can know whether
+      // the label should sit inside the field or above it. A real placeholder
+      // would compete with the label for the same space; a space renders as
+      // nothing. The label stays a real <label for>, because placeholder-only
+      // is an accessibility failure and Safari's autofill reads the label.
       const control =
         f.type === 'textarea'
-          ? `<textarea ${common} rows="1"></textarea>`
-          : `<input type="${f.type}" ${common}>`;
+          ? `<textarea ${common} rows="1" placeholder=" "></textarea>`
+          : `<input type="${f.type}" ${common} placeholder=" ">`;
+      // the control comes FIRST so the label can be styled off it with `~`,
+      // which only looks forward — the label is positioned absolutely, so
+      // source order costs nothing visually
       return (
         `<div class="cf-field cf-field--${f.name}">` +
-        `<label for="${id}">${escapeHtml(f.label)}</label>` +
         control +
+        `<label for="${id}">${escapeHtml(f.label)}</label>` +
         `</div>`
       );
     }).join('');

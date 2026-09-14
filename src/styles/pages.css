@@ -259,22 +259,23 @@
 .article-body > :is(p, h2, h3, ul, ol, blockquote) {
   padding-inline: var(--grid-text-inset);
 }
-.article-body > p {
-  margin: 0 0 1.2em;
-}
+/* ROUND 27: NONE OF THESE RULES MAY MENTION MARGIN. The flow in page.css
+   (`.article-body > * + *` and friends) owns every vertical gap in this column,
+   and this file loads AFTER it — so a margin here ties on specificity, wins on
+   source order, and silently replaces the step it was supposed to leave alone.
+   `margin: 0` is not the safe version of this; saying nothing is. The paragraph,
+   both headings, the images and the list all carried one before. */
 .article-body h2 {
   font-family: var(--font-family-display);
   font-weight: var(--type-h3-weight);
   font-size: var(--type-h3-size);
   line-height: var(--type-h3-lh);
-  margin: 56px 0 24px;
 }
 .article-body h3 {
   font-family: var(--font-family-display);
   font-weight: var(--type-caption-big-weight);
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
-  margin: 48px 0 20px;
 }
 .article-img,
 .article-gallery__img {
@@ -282,7 +283,6 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  margin: 40px 0;
 }
 .article-gallery {
   display: grid;
@@ -290,7 +290,6 @@
   gap: 24px;
 }
 .article-list {
-  margin: 0 0 1.2em;
   padding-left: 1.2em;
 }
 .article-list li {

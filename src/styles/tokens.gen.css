@@ -20,7 +20,7 @@
 
   /* ── type scale, FLUID (round 26). See the note at the foot. ── */
   --fs-h1: clamp(40px, 3.75vw, 54px); /* 3.375rem → 54px @ 1440 */
-  --fs-h2: clamp(32px, 3.0556vw, 44px); /* 2.75rem → 44px @ 1440 */
+  --fs-h2: 40px; /* 2.5rem — constant; mobile and desktop agree */
   --fs-lead: clamp(28px, 2.2222vw, 32px); /* 2rem → 32px @ 1440 */
   --fs-base: clamp(20px, 1.6667vw, 24px); /* 1.5rem → 24px @ 1440 */
   --fs-small: 16px; /* 1rem — constant; mobile and desktop agree */
@@ -109,7 +109,7 @@
    part company with their own geometry. ── */
 #screen-main {
   --type-h1-size: 54px; /* H1 — fixed inside the scaled stage */
-  --type-h2-size: 44px; /* H2 — fixed inside the scaled stage */
+  --type-h2-size: 40px; /* H2 — fixed inside the scaled stage */
   --type-h3-size: 32px; /* H3 — fixed inside the scaled stage */
   --type-base-size: 24px; /* Base Text — fixed inside the scaled stage */
   --type-caption-big-size: 24px; /* Caption Big — fixed inside the scaled stage */

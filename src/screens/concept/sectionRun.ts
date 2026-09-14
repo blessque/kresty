@@ -5,6 +5,7 @@ import { PAGE_SECTIONS, sectionBg, type PageSection } from './pageSections';
 import { PageLight } from './pageLight';
 import { MOTION } from './motionParams';
 import type { ColorStop } from '../../page/pageBackground';
+import { MediaSlider } from '../../page/mediaSlider';
 
 /**
  * The five editorial sections below the map: a pinned left column carrying the
@@ -118,20 +119,6 @@ export class SectionRun {
     el.className = 'sec';
     el.dataset.section = s.id;
 
-    const paras = s.paras
-      .map((p) => `<p>${escapeHtml(bindShortWords(p))}</p>`)
-      .join('');
-    // aspect-ratio is authored from the known 3:2 crop so the height is
-    // committed BEFORE decode. Without it a late image resolves its height and
-    // shifts every section below it, desyncing the measured track mid-scroll —
-    // round 16 never hit this because it had no images.
-    const figure = s.image
-      ? `<figure class="sec-figure">` +
-        `<img src="${asset(encodeURI(s.image))}" alt="${escapeHtml(s.imageAlt ?? '')}"` +
-        ` loading="lazy" decoding="async" width="1200" height="800">` +
-        `</figure>`
-      : '';
-
     // ROUND 23: the site grid (styles/grid.css) carries the horizontal position;
     // `.sec-col` / `.sec-body` stay as the JS hooks `measure()` queries for, so
     // the class that positions and the class that is measured are separate and
@@ -142,12 +129,38 @@ export class SectionRun {
       `<div class="sec-icon" aria-hidden="true"></div>` +
       `<h2 class="sec-h2">${escapeHtml(bindShortWords(s.h2))}</h2>` +
       `</div>` +
-      `<div class="sec-body col-main">${paras}${figure}</div>` +
+      `<div class="sec-body col-main"></div>` +
       `</div>`;
+
+    // ROUND 26: the body is a BLOCK LIST, walked in order. A `media` block with
+    // one item is a figure; with two or more it is a slider — so two pictures
+    // can only stack when a paragraph lies between them, which is the client's
+    // longread rule enforced by the shape of the data rather than by a check.
+    const body = el.querySelector('.sec-body') as HTMLElement;
+    for (const b of s.body) {
+      if (b.kind === 'p') {
+        const p = document.createElement('p');
+        p.textContent = bindShortWords(b.text);
+        body.appendChild(p);
+        continue;
+      }
+      // a slide of a different aspect changes the block's width, so the run has
+      // to re-measure — the light's stations are derived from these heights
+      const slider = new MediaSlider(b.items, { onResize: () => this.onMediaResize() });
+      body.appendChild(slider.el);
+    }
     return el;
   }
 
   /** re-measure section geometry; call on resize, on font swap and on image load */
+  /**
+   * Fired when a picture block changes the body's width — a slider moving to a
+   * slide of a different aspect. The light's stations are derived from measured
+   * geometry, so anything that changes a section's box after first layout has to
+   * say so or the track desyncs. `conceptPage` wires this to its own measure.
+   */
+  onMediaResize: () => void = () => {};
+
   measure(viewH: number) {
     // ROUND 25: CENTRING IS A PER-SECTION PIN, computed before any rect is read.
     //
