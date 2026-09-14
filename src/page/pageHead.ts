@@ -18,30 +18,39 @@ export interface PageHeadOpts {
   title: string;
   /** the paragraph under the title, if the frame has one */
   lead?: string;
-  onPartner: () => void;
+  /**
+   * Markup to sit ABOVE the title — «Новость»'s breadcrumbs, today the only
+   * caller. Already-escaped HTML, because it carries its own <a>.
+   */
+  eyebrow?: string;
+  /** omitted on «Новость», the one page the frames give no CTA */
+  onPartner?: () => void;
 }
 
 export const PARTNER_CTA = 'Стать партнером';
 
-export function buildPageHead({ title, lead, onPartner }: PageHeadOpts): HTMLElement {
+export function buildPageHead({ title, lead, eyebrow, onPartner }: PageHeadOpts): HTMLElement {
   const head = document.createElement('header');
   head.className = 'page-head';
 
   const grid = document.createElement('div');
   grid.className = 'page-grid';
   grid.innerHTML =
-    `<div class="col-full gp-text">` +
+    `<div class="col-lead gp-text">` +
+    (eyebrow ?? '') +
     `<h1 class="page-title">${escapeHtml(bindShortWords(title))}</h1>` +
     (lead ? `<p class="page-lead">${escapeHtml(bindShortWords(lead))}</p>` : '') +
     `</div>`;
   head.appendChild(grid);
 
-  const cta = document.createElement('button');
-  cta.type = 'button';
-  cta.className = 'btn btn--onlight page-partner';
-  cta.textContent = PARTNER_CTA;
-  cta.addEventListener('click', onPartner);
-  head.appendChild(cta);
+  if (onPartner) {
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'btn btn--onlight page-partner';
+    cta.textContent = PARTNER_CTA;
+    cta.addEventListener('click', onPartner);
+    head.appendChild(cta);
+  }
 
   return head;
 }

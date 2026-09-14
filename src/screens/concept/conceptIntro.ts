@@ -1,18 +1,21 @@
-import { bindShortWords } from '../../shared/ruTypography';
+import { buildPageHead } from '../../page/pageHead';
 
 /**
  * The page's opening block, above the map — Figma 616:188 / 616:260.
  *
- * Round 18. Until now «Концепция» opened straight onto the map, with no title
- * and no standfirst; the designer's first full-page frame gives it both, and
- * puts them in the RIGHT half of the measure rather than at the left margin —
- * the map below is full-bleed and starts at the left, so a left-aligned title
- * would sit directly over the column the plan's own margin captions use.
+ * ROUND 26: THIS IS THE SHARED MASTHEAD NOW. It used to be its own h1, its own
+ * lead and its own three CSS rules, placed in the RIGHT half of the measure
+ * because the full-bleed map below starts at the left margin and a left-aligned
+ * title was thought to sit over the column the plan's margin captions use.
  *
- * The heading is Chromius **Medium**, which on this font's axis is `wght 150`,
- * NOT 500 — see `styles/fonts.css`. The axis runs min 50 / default 120 / max
- * 232, so a stray `font-weight: 500` clamps to Black. All of that lives in the
- * stylesheet; this module only builds the box.
+ * The client's instruction is that H1 + lead is the universal opening of every
+ * page, at columns 2–7. The collision the old comment feared does not happen:
+ * the intro sits ABOVE the map stage, not over it, and `mapLabels.ts`'s solver
+ * takes its obstacles from measured rects — which do not include this header.
+ * Verified after the move: all seven captions still place.
+ *
+ * What remains here is the copy and the spacing class. The type, the colour and
+ * the grid position are `buildPageHead`'s, so a future «Музей» page is one call.
  */
 
 const TITLE = 'О «Крестах»';
@@ -21,28 +24,12 @@ const LEAD =
   'туристов, артистов и бизнеса.';
 
 export function buildIntro(): HTMLElement {
-  const el = document.createElement('header');
-  el.className = 'concept-intro';
-
-  // ROUND 23: the intro rides the site grid, so its left edge is the page centre
-  // — the same 720 the sections' right column starts at. The header itself is
-  // the grid; the body is its right column.
-  el.classList.add('page-grid');
-
-  const inner = document.createElement('div');
-  inner.className = 'concept-intro__body col-main';
-
-  const h1 = document.createElement('h1');
-  h1.className = 'concept-intro__title';
-  // bound with U+00A0 like the rest of the site's Russian, so a narrow window
-  // cannot leave «О» stranded at the end of a line
-  h1.textContent = bindShortWords(TITLE);
-
-  const lead = document.createElement('p');
-  lead.className = 'concept-intro__lead';
-  lead.textContent = bindShortWords(LEAD);
-
-  inner.append(h1, lead);
-  el.appendChild(inner);
+  // No `onPartner`: «О Крестах» carries no CTA in the frames, and the head
+  // omits the button entirely rather than rendering a dead one.
+  const el = buildPageHead({ title: TITLE, lead: LEAD });
+  // `.concept-intro` keeps ONLY what is specific to this page: its own top and
+  // bottom padding, and the scroll-driven exit that `#screen-concept.past-intro`
+  // drives. Everything typographic now comes from `.page-head`.
+  el.classList.add('concept-intro');
   return el;
 }

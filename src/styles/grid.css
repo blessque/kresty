@@ -144,6 +144,20 @@
   grid-column: 2 / -2;
 }
 
+/* THE MASTHEAD MEASURE (round 26) — six columns from column 2, so 148.667 →
+   824.667, 676 wide. H1 + the lead paragraph under it is the universal opening
+   of every page, and this is the one place it lives: «Новости», «Новость»,
+   «Аренда», «Контакты», «О Крестах», and a «Музей» page that does not exist yet
+   gets it by calling `buildPageHead` with no CSS at all.
+
+   It replaces three different answers — `.col-full` (1142) on the content
+   pages, `.col-main` (559 at x=732) on «О Крестах», and a hand-built head on
+   the article. Two `em` caps die with them: `.page-lead`'s `34em` was 816px and
+   `.article-title`'s `16em` was 864px, both wider than 676 and therefore inert. */
+.col-lead {
+  grid-column: 2 / span 6;
+}
+
 /* ── the 16px text inset ─────────────────────────────────────────────────────
    The designer's text wrappers inset their text 16px on both sides while images
    sit flush to the column edge. Applied to the text-bearing child, never to the

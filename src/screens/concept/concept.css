@@ -82,43 +82,36 @@
    title would stack into the same column. */
 .concept-intro {
   position: relative;
+  /* its own rhythm — `.page-head`'s 152/0 is for pages that open onto prose,
+     this one opens onto a full-bleed map and wants air under it too */
   padding: 184px 0 96px;
 }
 
-/* ROUND 23 put this on the page grid, fixing a bug the comment before it had
-   described but not delivered: the old `margin-right: 50%` resolved against the
-   flex container's CONTENT box, so the block started at 752 rather than the
-   centre. ROUND 25 moves it to `.col-main`, which starts at 732 — the body
-   column every section below it now uses. The 720 the old comment chased was
-   the two-column centre line; 732 is the grid's own column 7, and agreeing with
-   the sections underneath matters more than the 12px. */
-.concept-intro__body {
-  max-width: 478px;
+/* THE INK HAS TO BE STATED, and this is the one thing that does not come free
+   from sharing the masthead. The four content pages get it from `pages.css`'s
+   page list, which also sets a `background` — and this page cannot join that
+   list, because its background is the colour track's to write. Without this the
+   intro inherits `global.css`'s ondark white and disappears against the white
+   the page opens on. */
+.concept-intro .page-title,
+.concept-intro .page-lead {
+  color: var(--color-text-onlight-main);
 }
 
-.concept-intro__title {
-  /* Chromius Medium = wght 150 on this font's axis — see fonts.css. NEVER add
-     `font-variation-settings` here: it overrides `font-weight`, and this axis
-     (min 50 / default 120 / max 232) has already caused this bug three times. */
-  font-family: var(--font-family-display);
-  font-weight: var(--type-h1-weight);
-  /* Figma text style H1 (was a one-off 48/1.1 — the 1.1 already matched) */
-  font-size: var(--type-h1-size);
-  line-height: var(--type-h1-lh);
-  /* ROUND 25: was `--accent-intro-heading` (#44abde). Blue is reserved for
-     interactive elements site-wide now, and this h1 is not a link — it takes the
-     same ink as the lead directly below it. */
-  color: var(--color-text-onlight-main);
-  margin: 0 0 20px;
-}
+/* ROUND 26 DELETED `.concept-intro__body/__title/__lead`. This page's opening
+   was a second implementation of the masthead every other page already had —
+   its own h1 rule, its own lead rule, its own measure — differing from
+   `buildPageHead` only in placement and spacing. It is `.page-head` now, at
+   `.col-lead` (columns 2–7) like «Новости», «Аренда», «Контакты» and «Новость».
 
-.concept-intro__lead {
-  font-weight: var(--type-base-weight);
-  font-size: var(--type-base-size);
-  line-height: var(--type-base-lh);
-  color: var(--color-text-onlight-main);
-  margin: 0;
-}
+   The right-half placement it used to have was defended on the grounds that a
+   left-aligned title would sit over the column the map's margin captions use.
+   It does not: the intro is ABOVE the map stage, and `mapLabels.ts` solves
+   against measured rects that never included this header. All seven captions
+   verified after the move.
+
+   `#screen-concept` is in `pages.css`'s ink-colour list now, so the h1 takes
+   the same ink as every other page rather than restating it. */
 
 /* ------------------------------------------------------------ the wordmark
 
@@ -817,10 +810,15 @@
      which was survivable while the right column was half the page — on twelve
      columns cols 7–11 is 386px at a 1024 viewport, and a 478px measure inside
      it does not fit. */
-  .concept-intro {
+  /* ROUND 26: `.concept-intro` is the shared `.page-head` now, so the GRID is a
+     child div rather than the header itself. Targeting the header collapsed
+     nothing and the intro stayed twelve columns wide below the breakpoint —
+     which looks exactly like the media query not matching, the same misreading
+     the placement-reset comment below warns about. */
+  .concept-intro .page-grid {
     grid-template-columns: 1fr;
   }
-  .concept-intro > .col-main {
+  .concept-intro .col-lead {
     grid-column: auto;
   }
   /* THE TEMPLATE IS NOT ENOUGH — the PLACEMENT has to go too. An explicit

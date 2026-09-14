@@ -2,6 +2,7 @@ import { ContentScreen } from '../../page/ContentScreen';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { bindShortWords } from '../../shared/ruTypography';
 import { asset } from '../../shared/assetUrl';
+import { buildPageHead } from '../../page/pageHead';
 import { ARTICLE, RELATED } from './newsData';
 import { T } from '../../styles/tokens.gen';
 
@@ -34,17 +35,21 @@ export class ArticleScreen extends ContentScreen {
   }
 
   protected build() {
-    const head = document.createElement('header');
-    head.className = 'page-head page-grid';
-    head.innerHTML =
-      `<div class="col-full gp-text">` +
-      `<nav class="article-crumbs">` +
-      `<a href="#news" data-to="news">Новости</a>` +
-      `<span class="news-filters__dot" aria-hidden="true"></span>` +
-      `<span>${escapeHtml(ARTICLE.category)}</span>` +
-      `</nav>` +
-      `<h1 class="article-title">${escapeHtml(bindShortWords(ARTICLE.title))}</h1>` +
-      `</div>`;
+    // ROUND 26: the shared masthead. This page used to hand-build its own,
+    // differing in four ways — `.page-head` and `.page-grid` on ONE element
+    // rather than nested, its own `.article-title` class, breadcrumbs above the
+    // h1 that the builder had no slot for, and no «Стать партнером» button. The
+    // builder grew an `eyebrow` slot and an optional `onPartner`; the rest was
+    // duplication.
+    const head = buildPageHead({
+      title: ARTICLE.title,
+      eyebrow:
+        `<nav class="article-crumbs">` +
+        `<a href="#news" data-to="news">Новости</a>` +
+        `<span class="news-filters__dot" aria-hidden="true"></span>` +
+        `<span>${escapeHtml(ARTICLE.category)}</span>` +
+        `</nav>`,
+    });
     this.shell.add(head);
 
     const body = document.createElement('article');

@@ -45,13 +45,13 @@
   margin: 0;
 }
 
+/* ROUND 26: `max-width: 34em` is gone. It existed to stop a lead running the
+   full 1142 measure, and `.col-lead` is 676 — the cap was 816px and therefore
+   inert. The measure is now a grid position rather than a typographic guess. */
 .page-lead {
   font-weight: var(--type-base-weight);
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
-  /* the frames run this to ~792 of the 1142 measure — a lead is not body copy
-     and should not use the full width */
-  max-width: 34em;
   margin: 24px 0 0;
 }
 
@@ -210,6 +210,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* the 16px that used to live on `.article-title`'s top margin — it belongs to
+     the thing that creates the gap, so a page with no eyebrow has no gap */
+  margin: 0 0 16px;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   color: var(--color-text-onlight-secondary);
@@ -218,16 +221,10 @@
   color: var(--color-link);
   transition: color 240ms var(--ease-out);
 }
-.article-title {
-  font-family: var(--font-family-display);
-  font-weight: var(--type-h1-weight);
-  font-size: var(--type-h1-size);
-  line-height: var(--type-h1-lh);
-  margin: 16px 0 0;
-  /* the frame runs the headline to 909 of 1142 — wider than a column, short of
-     full, because a display line wants to break where the words want to */
-  max-width: 16em;
-}
+/* ROUND 26 DELETED `.article-title`. It was `.page-title` with a `16em` cap
+   (864px — inert against `.col-lead`'s 676) and a 16px top margin that only
+   existed because breadcrumbs sit above it; the eyebrow's own bottom margin
+   carries that now. The article's h1 is the shared `.page-title`. */
 
 .article {
   padding: 64px 0 0;
@@ -483,7 +480,7 @@
   /* THE SECOND DECLARATION, and it is not optional */
   :is(.news-page, .article-page, .rent-page, .contacts-page)
     .page-grid
-    > :is(.col-aside, .col-media, .col-main, .col-full, .article-body) {
+    > :is(.col-aside, .col-media, .col-main, .col-full, .col-lead, .article-body) {
     grid-column: auto;
   }
   .article-related__grid {
