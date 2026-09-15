@@ -181,6 +181,10 @@
     "4": {
       "$type": "fontSizes",
       "$value": 54
+    },
+    "5": {
+      "$type": "fontSizes",
+      "$value": 72
     }
   },
   "letterSpacing": {
@@ -197,6 +201,20 @@
     "1": {
       "$type": "paragraphSpacing",
       "$value": 16
+    }
+  },
+  "Factoid": {
+    "$type": "typography",
+    "$value": {
+      "fontFamily": "{fontFamilies.als-chromius}",
+      "fontWeight": "{fontWeights.als-chromius-0}",
+      "lineHeight": "{lineHeights.0}",
+      "fontSize": "{fontSize.5}",
+      "letterSpacing": "{letterSpacing.0}",
+      "paragraphSpacing": "{paragraphSpacing.0}",
+      "paragraphIndent": "{paragraphIndent.0}",
+      "textCase": "{textCase.none}",
+      "textDecoration": "{textDecoration.none}"
     }
   },
   "H1": {

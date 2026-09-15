@@ -66,6 +66,7 @@ const ONLY_FAMILY = 'ALS Chromius';
 /** which size token each text style binds — confirmed against Figma's own
  *  variable bindings, which Token Studio flattened to positional fontSize.N */
 const STYLE_SIZE = {
+  Factoid: 'fs-factoid',
   H1: 'fs-h1',
   H2: 'fs-h2',
   H3: 'fs-lead',
@@ -76,6 +77,7 @@ const STYLE_SIZE = {
 
 /** the CSS custom-property stem for each style */
 const STYLE_STEM = {
+  Factoid: 'factoid',
   H1: 'h1',
   H2: 'h2',
   H3: 'h3',

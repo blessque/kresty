@@ -1,4 +1,14 @@
 {
+  "fs-factoid": {
+    "$extensions": {
+      "com.figma.scopes": [
+        "FONT_SIZE"
+      ],
+      "com.figma.hiddenFromPublishing": false
+    },
+    "$type": "dimension",
+    "$value": "3.75rem"
+  },
   "fs-h1": {
     "$extensions": {
       "com.figma.scopes": [

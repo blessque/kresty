@@ -9,17 +9,41 @@ import { T } from '../../styles/tokens.gen';
 /**
  * «Новости» — the list (Figma `854:251`).
  *
- * A card is a square photograph in the LEFT column and date · category ·
- * headline in the RIGHT. The visible gap between them is not a gutter: the
- * columns meet at the page centre and the image simply does not fill its
- * column, which is exactly what `styles/grid.css` documents about this page.
- * Nothing here sets a horizontal position — the grid does.
+ * A card is a photograph in the LEFT column and date · category · headline in
+ * the RIGHT. The visible gap between them is the SKIPPED COLUMN 6, not a gutter
+ * — the picture fills `.col-media` exactly. Nothing here sets a horizontal
+ * position; the grid does.
+ *
+ * ROUND 27: THE CARD IS AN `<article>`, NOT AN `<a>`.
+ * The client asked for the category tags to be blue, and on this site blue means
+ * clickable — so the tag had to become a real control rather than blue paint on
+ * an inert label. A `<button>` inside an `<a>` is invalid and behaves
+ * unpredictably (the outer link swallows the click in some engines, both fire in
+ * others), so the meta row is free to hold a working filter button.
+ *
+ * ROUND 27.1: THE WHOLE CARD IS THE TARGET. There is ONE link, on the headline,
+ * and `pages.css` stretches its `::after` across the card — so the picture, the
+ * headline and the air between them all click through, while the accessible
+ * name stays the headline and the tag button sits above it on `z-index`. Round
+ * 27's two links (picture + headline) left a dead strip down the middle, which
+ * is what the reader actually aims at.
  */
 export class NewsScreen extends ContentScreen {
   private filter: Category | null = null;
 
   constructor(el: HTMLElement) {
     super(el, 'news-page');
+  }
+
+  /**
+   * Show one category, from outside — the article's breadcrumb following its way
+   * back up. Safe before `build()`: `buildFilters` and `buildCards` both read
+   * `filter` as they go, so a list that has never been opened comes up already
+   * filtered instead of rendering all thirteen and then hiding nine.
+   */
+  showCategory(c: Category | null) {
+    this.filter = c;
+    this.applyFilter();
   }
 
   protected stops() {
@@ -79,34 +103,52 @@ export class NewsScreen extends ContentScreen {
     const wrap = document.createElement('div');
     wrap.className = 'news-cards';
     for (const n of NEWS) {
-      const a = document.createElement('a');
-      a.className = 'news-card page-grid';
-      a.href = '#news/1';
-      a.dataset.category = n.category;
-      a.innerHTML =
+      const card = document.createElement('article');
+      card.className = 'news-card page-grid';
+      card.dataset.category = n.category;
+      // Honour a filter set BEFORE this list was ever built — the article's
+      // breadcrumb can arrive here first. `buildFilters` already reads `filter`
+      // for the active tab; without the same read here the tab came up correct
+      // above thirteen unfiltered cards.
+      card.hidden = this.filter !== null && n.category !== this.filter;
+      card.innerHTML =
         `<div class="col-media">` +
         (n.image
-          // ROUND 25: no anchor class. `.col-media` is five columns = 559.333 at
-          // the design frame, which is the square's own width, so it FILLS its
-          // position instead of leaving slack the old two-column grid had to
-          // explain. The air before the headline is now the skipped column 6.
+          // `.col-media` is five columns = 559.333 at the design frame, so the
+          // picture FILLS its position. `w`/`h` are the file's real pixels: the
+          // box has to exist before the lazy image decodes, or the page grows
+          // under a reader who is already scrolling.
+          //
+          // No link of its own — the headline's link is stretched over the whole
+          // card in CSS, so the picture, the headline and the air between them
+          // are one target with one accessible name.
           ? `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
-            ` loading="lazy" decoding="async" width="1200" height="1200">`
+            ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}">`
           : '') +
         `</div>` +
         `<div class="col-main news-card__body gp-text">` +
-        `<h2 class="news-card__title">${escapeHtml(bindShortWords(n.title))}</h2>` +
+        `<h2 class="news-card__title">` +
+        `<a class="news-card__link" href="#news/1">${escapeHtml(bindShortWords(n.title))}</a>` +
+        `</h2>` +
         `<p class="news-card__meta">` +
-        `<span>${escapeHtml(n.date)}</span>` +
+        `<span class="news-card__date">${escapeHtml(n.date)}</span>` +
         `<span class="news-filters__dot" aria-hidden="true"></span>` +
-        `<span>${escapeHtml(n.category)}</span>` +
+        `<button type="button" class="news-card__tag">${escapeHtml(n.category)}</button>` +
         `</p>` +
         `</div>`;
-      a.addEventListener('click', (e) => {
+
+      card.querySelector('.news-card__link')?.addEventListener('click', (e) => {
         e.preventDefault();
         this.onNavigate('article');
       });
-      wrap.appendChild(a);
+      // the tag filters the list to its own category — which is what makes it
+      // legitimately blue rather than blue-and-inert
+      card.querySelector('.news-card__tag')?.addEventListener('click', () => {
+        this.filter = n.category;
+        this.applyFilter();
+        this.el.querySelector('.news-filters')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      wrap.appendChild(card);
     }
     return wrap;
   }

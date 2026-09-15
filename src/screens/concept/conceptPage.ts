@@ -176,7 +176,10 @@ export class ConceptPage {
     this.bg.setStops([
       ...this.sections.stops(),
       { top: this.form.top, color: FORM_BG },
-      ...this.handoff.stops(viewH),
+      // FORM_BG is what the zone is leaving, and it is what keeps the dawn on
+      // this page: round 27 made the mid-tone conditional on the incoming
+      // colour, and this run is the dark case the dawn was designed for.
+      ...this.handoff.stops(viewH, FORM_BG),
     ]);
   }
 

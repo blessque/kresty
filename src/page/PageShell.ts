@@ -38,6 +38,8 @@ export class PageShell {
   onScrollToMain: (from: number) => void = () => {};
   /** true while a route transition is playing; the handoff must not fire then */
   transitionBusy: () => boolean = () => false;
+  /** the page re-derives anything it measures from the viewport (round 27) */
+  onMeasure: (viewH: number) => void = () => {};
 
   private stops: ColorStop[] = [];
   private running = false;
@@ -82,7 +84,11 @@ export class PageShell {
   measure() {
     const viewH = this.scroller.clientHeight;
     if (!viewH) return;
-    this.bg.setStops([...this.stops, ...this.handoff.stops(viewH)]);
+    // The page's own last colour decides whether the seam needs the dawn — see
+    // MainHandoff.stops. A light page goes straight to main's blue.
+    const last = this.stops.length ? this.stops[this.stops.length - 1].color : LEAD_COLOR;
+    this.bg.setStops([...this.stops, ...this.handoff.stops(viewH, last)]);
+    this.onMeasure(viewH);
     this.update();
   }
 

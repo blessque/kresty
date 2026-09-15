@@ -69,11 +69,16 @@
   padding: 96px 0 0;
 }
 
+/* ROUND 27: H2 TOKENS, because these ARE H2s. «Общая информация» and
+   «Пресс-служба» were set at H3 while «Аренда помещений» — the same rank of
+   heading, three blocks down the same page — came through the form as `.sec-h2`
+   at H2. One page, one rank, two sizes: the client read it as the headings not
+   behaving alike, and they were right. The tag was never the problem. */
 .page-h2 {
   font-family: var(--font-family-display);
-  font-weight: var(--type-h3-weight);
-  font-size: var(--type-h3-size);
-  line-height: var(--type-h3-lh);
+  font-weight: var(--type-h2-weight);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
   margin: 0;
 }
 
@@ -126,48 +131,99 @@
     color: var(--color-text-onlight-main);
   }
 }
-/* the frame's small four-pointed star between items */
+/* ROUND 27: THE DESIGNER'S STAR, not an approximation of it. This was a
+   `clip-path: polygon()` — eight straight edges standing in for a shape whose
+   arms are cubic curves, which reads as a spiky asterisk at 12px rather than the
+   soft four-point star in the frame.
+
+   It is a MASK rather than a background-image so the glyph keeps taking
+   `currentColor`: the same star is blue between tags and ink as a list bullet,
+   and a two-colour icon would otherwise be two files. Masking keys off the
+   source's ALPHA, so the export's own `#031425` fill never arrives — which is
+   why `src/assets/star-bullet.svg` is the designer's file byte-for-byte.
+
+   Referenced from `src/` so Vite hashes and rewrites the URL; a `/resources/`
+   absolute path would not survive the GitHub Pages subpath. */
 .news-filters__dot {
   display: inline-block;
   width: 12px;
   height: 12px;
   flex: none;
-  background: var(--color-link);
-  clip-path: polygon(
-    50% 0%,
-    58% 42%,
-    100% 50%,
-    58% 58%,
-    50% 100%,
-    42% 58%,
-    0% 50%,
-    42% 42%
-  );
+  background: currentColor;
+  color: var(--color-link);
+  mask: url(../assets/star-bullet.svg) center / contain no-repeat;
 }
 
 .news-cards {
   padding: 64px 0 0;
 }
+/* ROUND 27.1: THE TWO COLUMNS ARE CENTRED ON EACH OTHER. They were top-aligned
+   with a 56px nudge on the text — which lines up for one headline length and
+   drifts for every other, because the picture is a fixed 3:2 and the text block
+   is however many lines the Russian wraps to. Centring is the relationship the
+   frame actually draws, and it holds at any headline length. */
 .news-card {
-  padding: 0 0 64px;
+  --news-card-gap: 64px;
+  position: relative;
+  padding: 0 0 var(--news-card-gap);
   color: inherit;
-  align-items: start;
+  align-items: center;
+}
+/* THE WHOLE CARD IS THE TARGET, including the air between photo and headline.
+   Round 27 put a link on the picture and another on the headline, which left a
+   dead strip down the middle of every card — the reader aims at the card, not
+   at one of its parts.
+
+   A stretched pseudo-element rather than an <a> wrapping everything, because
+   the meta row holds a filter BUTTON and a button inside a link is invalid and
+   behaves differently in every engine. The link stays around the headline (so
+   its accessible name is the headline, and the status bar shows one
+   destination) and its ::after covers the card. `inset`'s bottom stops at the
+   gap so the space BETWEEN cards is not clickable. */
+.news-card__link::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 var(--news-card-gap) 0;
+}
+/* the tag has to sit above the stretched link or it can never be pressed */
+.news-card__tag {
+  position: relative;
+  z-index: 1;
 }
 .news-card[hidden] {
   display: none;
 }
-/* ROUND 25: the square FILLS its column now. `.col-media` is five columns, which
-   is 559.333 at the design frame — the square's own authored width — so this is
-   `100%` rather than a fixed 559 and it scales with the grid below 1440. The air
-   between image and headline is the skipped column 6, not image slack. */
+/* Round 25: the picture FILLS its column. `.col-media` is five columns, which is
+   559.333 at the design frame, so this is `100%` rather than a fixed width and
+   it scales with the grid below 1440. The air between image and headline is the
+   skipped column 6, not image slack.
+
+   ROUND 27: 3:2, NOT A SQUARE. Nothing in `public/resources/` is square — the
+   renders run 0.67 to 4.80 — so a 1:1 crop threw away a third of every photo it
+   showed, and the client asked for rectangles. 3:2 is the ratio fourteen of the
+   files already are, so for most cards `cover` now crops nothing at all. */
 .news-card__img {
   display: block;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  /* `height: auto` IS LOAD-BEARING and the rule is easy to delete by accident.
+     The `width`/`height` ATTRIBUTES on an <img> apply as presentational hints —
+     real used values, not just the intrinsic ratio. `width: 100%` above beats
+     the width hint, but with nothing overriding `height` the hint stands, and an
+     explicit height outranks `aspect-ratio`: the card rendered 559 wide by the
+     file's full 1600 tall. It reads as "the aspect-ratio is being ignored",
+     which is what sent this round looking at the wrong declaration.
+
+     This is NOT the round-26 desync in disguise. That was `width: auto` too, so
+     a lazy image reserved 0×0 until it decoded; here the width is definite and
+     the ratio derives the height, so the box is committed before the file
+     arrives — which is the whole reason the attributes are there. */
+  height: auto;
+  aspect-ratio: 3 / 2;
   object-fit: cover;
 }
+/* no top nudge: `align-items: center` on the card owns the relationship now */
 .news-card__body {
-  padding-top: 56px;
+  padding-top: 0;
 }
 /* BLUE AT REST, and that is the interactivity rule rather than an exception to
    it. This h2 is the card's link label — the whole `.news-card` is an <a> — and
@@ -190,13 +246,37 @@
   margin: 24px 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
-  color: var(--color-text-onlight-secondary);
+}
+/* ROUND 27: THE DATE AND THE TAG STOPPED SHARING AN INK. They sat in one
+   element and therefore took one colour — mid-grey — which made the tag look
+   like a disabled label and the date louder than it should be. The date is the
+   quietest thing on the card, so it goes tertiary; the tag is a filter, so it
+   goes blue and BECOMES one (see NewsScreen — it is a real button now). A blue
+   tag that did nothing would break the sitewide rule rather than satisfy it. */
+.news-card__date {
+  color: var(--color-text-onlight-tertiary);
+}
+.news-card__tag {
+  padding: 0;
+  font: inherit;
+  color: var(--color-link);
+  transition: color 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .news-card__tag:hover {
+    color: var(--color-text-onlight-main);
+  }
 }
 /* The hover can no longer be "turn blue" — it already is. It darkens to the ink
    instead, so the affordance survives the colour change rather than disappearing
-   with it. Same 240ms `--ease-out` the rest of the site's hovers use. */
+   with it. Same 240ms `--ease-out` the rest of the site's hovers use.
+
+   ROUND 27: keyed to THE LINK, not the card. The card is an `<article>` now and
+   holds a second control — the filter tag — so a card-wide `:hover` would darken
+   the headline while the pointer is over a button that goes somewhere else.
+   `:has()` keeps the picture and the headline acting as one target. */
 @media (hover: hover) and (pointer: fine) {
-  .news-card:hover .news-card__title {
+  .news-card:has(.news-card__link:hover) .news-card__title {
     color: var(--color-text-onlight-main);
   }
 }
@@ -229,25 +309,36 @@
 .article {
   padding: 64px 0 0;
 }
-.article-rail {
+/* The date lives in the masthead, under the H1 (round 27.1). The sticky
+   `.article-rail` is gone — see ArticleScreen for why a single article has
+   nothing for a pinned column to track.
+
+   ROUND 27.3: JUST THE DATE. The category was here too, two lines under the
+   breadcrumb that already names it — the same word twice in one masthead, and
+   `.article-meta__tag` went with it. The breadcrumb's copy is the one that
+   earns its place, because a breadcrumb step goes somewhere. */
+.article-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: var(--sp-text) 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
-  color: var(--color-text-onlight-secondary);
 }
-.article-date {
-  margin: 0;
-}
-/* THE READING MEASURE IS A COLUMN SPAN (round 25). The frame runs body copy from
-   x=615 to x=1291, and columns 6–11 are 615.333 → 1291.333 — the designer's own
-   measure, on the grid, to a third of a pixel.
+/* THE READING MEASURE IS `.col-main` (round 27), columns 7–11 — the longread's
+   own body column.
 
-   It used to be a negative margin (`--article-outdent`, fallback 104px, and the
-   property was never actually defined anywhere so only the fallback ever ran).
-   That 104 was the tell: the old right column began at 720, and 720 − 615.333 is
-   104.667. The outdent was measuring the distance from a two-column boundary to
-   a twelve-column one — the real grid showing through the coarser one. */
+   Round 25 had it at `6 / span 6`, taken off the frame's x=615→1291, and that
+   was a true reading of that frame. The client's note is that this page should
+   follow the longread's grid, and the longread's body is `.col-main`; one site
+   with two editorial measures was the thing being reported.
+
+   It also fixes the picture block by construction. `.ms-frame` is one column and
+   one gutter WIDER than its block so the next photograph peeks in from the
+   right, and that overhang is only free because column 12 is skipped. At
+   `6 / span 6` the body already reached column 11's right edge, so the peek had
+   nowhere to go. */
 .article-body {
-  grid-column: 6 / span 6;
   font-weight: var(--type-base-weight);
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
@@ -277,47 +368,93 @@
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
 }
-.article-img,
-.article-gallery__img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+/* ROUND 27 DELETED `.article-gallery` and `.article-img`. Pictures are the
+   shared `MediaSlider` now — the same component the longread uses — so the
+   two-up CSS grid and the 16/9 `cover` crop are gone with them. That crop was a
+   real loss: these are architectural renders running 0.67 to 4.80, and forcing
+   them all through one landscape box cut the buildings out of the portraits.
+   The slider shows each at its native aspect, `contain`, capped at 410. */
+
+/* A list and its lead sentence are ONE block, so they arrive wrapped — which
+   means the inset rule above, which only reaches direct children of
+   `.article-body`, does not see them. They take it here instead, and the gap
+   between lead and list is the flow's own text step stated locally because the
+   flow rules are scoped to the body column. */
+.article-list-block > :is(p, ul) {
+  padding-inline: var(--grid-text-inset);
 }
-.article-gallery {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-.article-list {
-  padding-left: 1.2em;
-}
-.article-list li {
-  margin: 0 0 0.6em;
+.article-list-block > * + * {
+  margin-top: var(--sp-text);
 }
 
+/* THE LIST BULLET IS THE DESIGNER'S STAR, not the browser's disc. `list-style:
+   none` plus a masked `::before`, because `::marker` takes only a handful of
+   properties and an image is not one of them. */
+.article-list {
+  padding-left: 0;
+  list-style: none;
+}
+.article-list li {
+  position: relative;
+  padding-left: 28px;
+}
+.article-list li + li {
+  margin-top: var(--sp-tight);
+}
+.article-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  /* centred on the first line: half a line box, less half the star */
+  top: calc(0.5em * var(--type-base-lh) - 6px);
+  width: 12px;
+  height: 12px;
+  background: var(--color-link);
+  mask: url(../assets/star-bullet.svg) center / contain no-repeat;
+}
+
+/* THE QUOTE TAKES THE FULL TEN-COLUMN MEASURE (round 27), breaking out of the
+   five-column body it lives in.
+
+   It is a child of `.article-body` rather than a sibling on the page grid, and
+   that is deliberate: it arrives in the block list in reading order, so lifting
+   it out would mean splitting the body into fragments around every quote and
+   re-joining the flow by hand. Breaking out sideways keeps one column and one
+   flow.
+
+   The arithmetic is exact rather than eyeballed. `.col-main` is 5 columns and 4
+   gutters; `.col-full` is 10 and 9. The difference is five column-plus-gutter
+   units, which is also precisely the distance from column 7's left edge back to
+   column 2's — so the same number widens it and shifts it, and both come from
+   `--grid-col` rather than the 583.333px it happens to be at 1440. */
 .article-quote {
-  padding: 40px 0 0;
-  align-items: start;
+  --quote-bleed: calc(5 * (var(--grid-col) + var(--grid-gutter)));
+  width: calc(100% + var(--quote-bleed));
+  margin-left: calc(-1 * var(--quote-bleed));
+  padding-inline: var(--grid-text-inset);
 }
 .article-quote__mark {
   display: block;
-  font-family: var(--font-family-display);
-  font-size: var(--type-h1-size);
-  /* a lone decorative glyph — see the token's note in tokens.css */
-  line-height: var(--type-glyph-lh);
+  /* the icon is 63×47 in the designer's file and ships at that size */
+  width: 63px;
   color: var(--color-link);
 }
+.article-quote__mark svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* FACTOID, NOT H3 (round 27) — 72/110%, the designer's own style, which had no
+   token until this round and is the same one the «Аренда» figures use. */
 .article-quote blockquote {
   font-family: var(--font-family-display);
-  font-weight: var(--type-h3-weight);
-  font-size: var(--type-h3-size);
-  line-height: var(--type-h3-lh);
-  margin: 16px 0 0;
-  max-width: 15em;
+  font-weight: var(--type-factoid-weight);
+  font-size: var(--type-factoid-size);
+  line-height: var(--type-factoid-lh);
+  margin: var(--sp-text) 0 0;
 }
 .article-quote figcaption {
-  margin: 24px 0 0;
+  margin: var(--sp-text) 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   color: var(--color-text-onlight-secondary);
@@ -378,19 +515,25 @@
   margin: 0;
 }
 .rent-stat {
-  margin: 0 0 40px;
+  margin: 0 0 var(--sp-text);
+}
+.rent-stat:last-child {
+  margin-bottom: 0;
 }
 .rent-stat dt {
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   color: var(--color-text-onlight-secondary);
 }
+/* «2500 м²», «9000 чел.» — these are the designer's FACTOID style (72/110%),
+   which had no token until round 27 and was standing in as H2. Now that the
+   token exists they are the thing it was named for. */
 .rent-stat dd {
-  margin: 4px 0 0;
+  margin: var(--sp-tight) 0 0;
   font-family: var(--font-family-display);
-  font-weight: var(--type-h2-weight);
-  font-size: var(--type-h2-size);
-  line-height: var(--type-h2-lh);
+  font-weight: var(--type-factoid-weight);
+  font-size: var(--type-factoid-size);
+  line-height: var(--type-factoid-lh);
 }
 .rent-spaces {
   margin: 0;
@@ -418,8 +561,14 @@
 .contact-pairs {
   margin: 0;
 }
+/* ROUND 27: ON THE SCALE. These were 40 between pairs and 4 between label and
+   value — both invented, neither on the 16/32/64/96 rhythm, and the 40 also ran
+   after the LAST pair, stacking with the next block's 96 into 136. */
 .contact-pair {
-  margin: 0 0 40px;
+  margin: 0 0 var(--sp-text);
+}
+.contact-pair:last-child {
+  margin-bottom: 0;
 }
 .contact-pair dt {
   font-size: var(--type-caption-big-size);
@@ -427,15 +576,33 @@
   color: var(--color-text-onlight-secondary);
 }
 .contact-pair dd {
-  margin: 4px 0 0;
+  margin: var(--sp-tight) 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
 }
-.contacts-photo {
+
+/* THE «ПРЕСС-СЛУЖБА» GAP WAS MISSING STRUCTURALLY, not by an oversight in one
+   rule. `.page-prose` and `.contact-pairs` both declare `margin: 0`, and their
+   wrapper is a plain `.col-main.gp-text` that the shared flow in page.css never
+   reaches — it names `.sec-body` and `.article-body` only. So the prose sat
+   welded to the list with nothing between them.
+
+   The fix is to make this column a flow column like the other two rather than
+   to hang a margin on `.page-prose`: otherwise the next thing anyone adds here
+   opens the same hole, and it is invisible until someone looks for it. */
+.contacts-body > * + * {
+  margin-top: var(--sp-text);
+}
+
+/* ROUND 27: the render became the real map. Same box the photo held — ten
+   columns at 2:1 — so nothing around it moved. `border: 0` is not cosmetic:
+   a UA default gives an iframe a 2px inset border that no other element here
+   has, and it reads as a misaligned edge against the column. */
+.contacts-map {
   display: block;
   width: 100%;
   aspect-ratio: 2 / 1;
-  object-fit: cover;
+  border: 0;
 }
 
 /* The shared form is dark by default (it was built for «О Крестах»'s dark
@@ -479,16 +646,18 @@
   /* THE SECOND DECLARATION, and it is not optional */
   :is(.news-page, .article-page, .rent-page, .contacts-page)
     .page-grid
-    > :is(.col-aside, .col-media, .col-main, .col-full, .col-lead, .article-body) {
+    > :is(.col-aside, .col-media, .col-main, .col-full, .col-lead) {
     grid-column: auto;
   }
   .article-related__grid {
     grid-template-columns: 1fr;
   }
-  .article-gallery {
-    grid-template-columns: 1fr;
-  }
   .news-card__body {
     padding-top: 24px;
+  }
+  /* ROUND 27: the quote stops breaking out. There is one column to break out
+     OF down here, so the bleed would hang the block off the left of the page. */
+  .article-quote {
+    --quote-bleed: 0px;
   }
 }

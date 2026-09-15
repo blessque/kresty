@@ -72,6 +72,36 @@
   pointer-events: none;
 }
 
+/* ── the sticky heading column (round 27) ────────────────────────────────── */
+
+/* A heading holds the centre of the frame while its body scrolls past. This is
+   «О Крестах»'s `.sec-col` behaviour, generalised: the pin is written per block
+   as `--sec-pin` by page/stickyHeads.ts, and the same variable drives both
+   spellings so one mechanism serves the longread and the content pages.
+
+   `align-self: start` IS THE RULE, not a tidy-up. A sticky grid item under the
+   default `align-items: stretch` is as tall as its row — it has nowhere to
+   travel, so it never sticks, and nothing reports an error. The ancestors must
+   also stay `overflow: visible` (an `overflow: hidden` scrollport ancestor
+   clips it) and free of `transform` / `filter` / `will-change` (any of them
+   steals sticky's containing block). All three fail silently. */
+.sticky-head {
+  position: sticky;
+  top: var(--sec-pin, 14vh);
+  align-self: start;
+  /* CENTRED, the same declaration `.sec-col` carries — including the same
+     `--sec-col-align` escape hatch, so the two cannot drift. Round 27 left this
+     off and «Контакты» ended up with two left-aligned H2s either side of the
+     form's centred one: three headings of one rank, two alignments, on one
+     page. Matching `.sec-col` exactly is the fix, not a new rule beside it. */
+  text-align: var(--sec-col-align, center);
+}
+
+/* the blocks that own a sticky head must not clip it */
+[data-sticky-head] {
+  overflow: visible;
+}
+
 /* ── the contact form ────────────────────────────────────────────────────── */
 
 /* At least one viewport tall, and that is an INVARIANT rather than a look: it
@@ -516,15 +546,22 @@
 
 /* a picture is a bigger event than a paragraph, in both directions — and
    `.ms + p` is the one that was missing entirely, which is why a photo used to
-   sit flush against the next sentence */
+   sit flush against the next sentence.
+
+   ROUND 27: `* + .ms` / `.ms + *` rather than `p + .ms` / `.ms + p` on the
+   article. The block list can now put a picture next to a heading, a list or a
+   quote, and the narrow pairs only covered paragraphs — a slider after an h2
+   would have fallen back to the 32 default. The longread keeps the narrow form
+   because its body holds nothing but prose and pictures.
+
+   `.article-gallery` and `.article-img` are gone with round 27's rebuild; their
+   pairs go with them. */
 .sec-body > p + .ms,
 .sec-body > .ms + p,
-.article-body > p + .ms,
-.article-body > .ms + p,
-.article-body > * + .article-gallery,
-.article-body > .article-gallery + *,
-.article-body > * + .article-img,
-.article-body > .article-img + * {
+.article-body > * + .ms,
+.article-body > .ms + *,
+.article-body > * + .article-quote,
+.article-body > .article-quote + * {
   margin-top: var(--sp-block);
 }
 

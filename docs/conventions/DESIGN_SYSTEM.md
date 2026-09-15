@@ -150,20 +150,29 @@ outside this grid.
 
 ## Type
 
-**The scale is the designer's six Figma text styles, verbatim:**
+**The scale is the designer's seven Figma text styles, verbatim:**
 
-| Style | size / leading | weight |
-|---|---|---|
-| H1 | 54 / 1.1 | Medium 150 |
-| H2 | 44 / 1.1 | Medium 150 |
-| H3 | 32 / 1.2 | Medium 150 |
-| Base Text | 24 / 1.45 | Regular 120 |
-| Caption Big | 24 / 1.2 | Regular 120 |
-| Caption Small | 16 / 1.2 | Regular 120 |
+| Style | size / leading | weight | desktop → mobile |
+|---|---|---|---|
+| Factoid | 72 / 1.1 | Medium 150 | 72 → 60 |
+| H1 | 54 / 1.1 | Medium 150 | 54 → 40 |
+| H2 | 40 / 1.1 | Medium 150 | constant |
+| H3 | 32 / 1.2 | Medium 150 | 32 → 28 |
+| Base Text | 24 / 1.45 | Regular 120 | 24 → 20 |
+| Caption Big | 24 / 1.2 | Regular 120 | 24 → 20 |
+| Caption Small | 16 / 1.2 | Regular 120 | constant |
 
-Do not invent a seventh size; a missing one is a question for the designer. Base and Caption
+Do not invent an eighth size; a missing one is a question for the designer. Base and Caption
 Big are both 24px and that is not a duplicate — since round 22 they differ **only** in
 line-height. The export carries exactly three ratios (1.1 / 1.2 / 1.45).
+
+**Factoid arrived in round 27 by asking, which is the point.** The article's pull-quote and
+«Аренда»'s figures («2500 м²», «9000 чел.») were both being set at H2 because the code had no
+larger style — the designer's file had had one all along. Adding it is four lines in `tokens/`
+plus one in each of `build-tokens.mjs`'s two maps; the generator then emits
+`--type-factoid-*`, the `clamp(60px, 5vw, 72px)` curve **and** the fixed-stage override under
+`#screen-main` without being told to. If a style seems to be missing, that is the procedure —
+not a one-off `font-size` at the call site.
 
 **A style carries its WEIGHT too**, so moving between two styles is never just a size change.
 
