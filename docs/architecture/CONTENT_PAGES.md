@@ -129,6 +129,28 @@ explained. `.anchor-outer` / `.anchor-inner` are deleted.
   designer's own `(1142 − 2×24)/3 = 364.67` falls straight out of it.
 - **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
   which `.col-main` now names directly.
+- **«Аренда»'s five spaces are a segmented control (round 28).** A vertical `role="tablist"` in
+  the sticky heading column under an H2 «Помещения»; `.col-main` holds all five panels with
+  four `hidden`. The label is a `<span>` inside a FULL-WIDTH BLOCK button, which is what lets
+  the underline hug the word while the column's own `text-align: var(--sec-col-align, center)`
+  still decides where the word sits — an inline-block button would need a second centring rule
+  that could then disagree with the H2 above it. `text-align: inherit` is required with it: the
+  UA sheet centres button contents outright and would ignore the escape hatch. Tabs are
+  tertiary at rest, ink + underline when chosen. **`select()` ends with `shell.measure()`** —
+  the panels are different heights, so a switch moves every colour stop below it and the
+  handoff's `offsetTop`; `NewsScreen.applyFilter` ends the same way for the same reason.
+  A hidden panel is `display: none`, so its `loading="lazy"` photograph never fetches until
+  first shown — one `pointerenter` warms it.
+
+### The flow column — `.page-flow`
+
+`.contacts-body` renamed (round 28): it was already a generic "this column flows" rule wearing
+one page's name, and «Аренда» needed three. The selectors are type-generic (`img`, `.btn`)
+rather than naming `.rent-photo` / `.rent-cta`, because a shared rule that lists one page's
+classes is not shared. `margin-block: 0` is stated once on the column instead of by every
+child, and **nothing inside may declare a block margin — `margin: 0` included**: those are
+(0,1,0) and so is `.rent-stats`, so only source order decides. The rules therefore sit at the
+END of `pages.css`'s component rules.
 
 Below 1160 the pages stack, and **that takes two declarations**: the template *and* the
 placement, listing every role class, or the surviving `grid-column` creates implicit columns.
@@ -153,10 +175,25 @@ was borrowed motion; round 27.1 moved date · category into the masthead under t
 `meta` slot on `buildPageHead`), which is where the reader just read them on the news card.
 **A pinned column has to be answering something.**
 
+**Round 28 made «Аренда» true.** It had none of this — the line above had claimed it for a
+round. All four of its blocks are managed now, the form included.
+
 `page/stickyHeads.ts` pins a heading to the vertical centre of the frame while its body
 scrolls — `(viewH − colH) / 2`, clamped to `viewH − colH − padBottom`, written per block as
 `--sec-pin`. Mark the block `data-sticky-head` and the column `.sticky-head`; `.sec-col` is
 matched too, so one mechanism serves the longread and the content pages.
+
+**THE PIN IS CAPPED BY THE BLOCK'S OWN HEIGHT, not by the page.** Sticky travel cannot leave
+the element's grid area, so a short block releases its heading almost at once — «Общая
+информация» holds for ~110px of a 400px scroll and «Помещения» for ~350px of 500. That is the
+clamp working, and it is why a pinning test must be written against a block with runway.
+
+**Below 1160 the columns STOP sticking (round 28), and that is a third declaration the stack
+has always needed** beside the template and the placement. A pinned column is only legible
+while there is a column BESIDE it to scroll past; stacked, the thing scrolling past is directly
+underneath, so the heading pins on top of it — «Аренда»'s five tab names sat over the
+photograph, unreadable. `stickyHeads.ts` had assumed the rule existed since it was written: its
+"strip `--sec-pin` from a column that is not actually sticky" branch was dead code until now.
 
 **It was half-present before and that was the bug.** `concept.css` is imported globally, so its
 `.sec-col` rule already made the contact form's heading sticky on «Контакты» — at the flat
@@ -169,8 +206,11 @@ headings of one rank behaving three ways is what the client reported. Note the t
 
 ## Open
 
-- **The lead paragraph on «Контакты» and «Аренда» is placeholder.** Both frames carry the same
-  «Павильон»/«Остров» string from another project. Marked `TODO(copy)`.
+- **The lead paragraph on «Контакты» is placeholder** — the «Павильон»/«Остров» string from
+  another project, marked `TODO(copy)`. «Аренда» got real copy in round 28, but it is WRITTEN
+  rather than supplied: the lead, the five space descriptions and their figures are ours. The
+  figures at least close against the designer's own — the four enclosed spaces sum to 2500 м²
+  and the smallest unit quoted is 13 м². It wants a copy pass, like the news headlines.
 - **One article exists.** `#news/1`; **thirteen** cards route to it. Round 27 filled the
   categories (a tab that filtered to nothing is not a tab) but the article behind them is
   still the single one.

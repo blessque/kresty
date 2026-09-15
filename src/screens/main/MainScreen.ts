@@ -330,16 +330,42 @@ export class MainScreen {
   };
 
   /**
+   * The light's convergence point in CSS px, and the scale it was measured at.
+   *
+   * THE SCALE COMES FROM THE RECT, NOT FROM `stageScale()`. Both `setReveal` and
+   * `setStageDim` write a SHRUNK scale into the stage transform —
+   * `s · (1 − 0.045·(1−k))` — so a rect that already carries that shrink, with
+   * the centre offset re-derived from the FULL `s`, does not describe any point
+   * on screen:
+   *
+   *   stageRect.left = W/2 − 720·s'     (left:50%, translate(−50%), scale about centre)
+   *   left + 720·s   = W/2 + 720·(s − s') = W/2 + 32.4·s·(1 − k)
+   *
+   * i.e. the light sat 32.4·s px RIGHT of centre at the start of a seam — 32 px at
+   * 1440 wide, 43 px at 1920 — and slid into place as the reveal completed. The
+   * click/flash path had the same error via `setStageDim`, masked by the white
+   * flash and the converged core. Measuring the scale that is ACTUALLY on screen
+   * makes the transform and the centre unable to disagree, whatever writes it.
+   *
+   * `translate(-50%,-50%) scale(s')` keeps the stage axis-aligned, so
+   * `width / STAGE_W` recovers s' exactly.
+   */
+  private stageCentre() {
+    const r = this.stage.getBoundingClientRect();
+    const k = r.width / STAGE_W;
+    return { x: r.left + CENTER_X * k, y: r.top + CENTER_Y * k, k };
+  }
+
+  /**
    * Link angles are measured from real rendered positions; the beams sit on
    * the BISECTORS between adjacent links — the light strikes between the
    * text, forming an upright cross (the window-grille photo motif), and is
    * free to sway without ever needing to track the links.
    */
   private measureBeams() {
-    const s = stageScale();
-    const stageRect = this.stage.getBoundingClientRect();
-    const cx = stageRect.left + CENTER_X * s;
-    const cy = stageRect.top + CENTER_Y * s;
+    // the links are stage children, so they carry the same applied scale —
+    // `linkDist` must be normalised by THAT, not by the resting one
+    const { x: cx, y: cy, k: s } = this.stageCentre();
     this.linkEls.forEach((el, i) => {
       const r = el.getBoundingClientRect();
       const lx = r.left + r.width / 2 - cx;
@@ -548,12 +574,15 @@ export class MainScreen {
       p.grain *= e;
     }
 
+    // POSITION from the measured stage, SIZE from the resting scale. The light
+    // is not a stage child, so the 4.5% composition dim has never applied to it
+    // — `scale` is the layout scale it has always been. See `stageCentre()`.
     const s = stageScale();
     const rs = this.tier.renderScale;
-    const stageRect = this.stage.getBoundingClientRect();
+    const centre = this.stageCentre();
     const state: RayFieldState = {
       timeSec: this.timeSec,
-      centerPx: [(stageRect.left + CENTER_X * s) * rs, (stageRect.top + CENTER_Y * s) * rs],
+      centerPx: [centre.x * rs, centre.y * rs],
       pointerPx: [this.pointer.smooth.x * rs, this.pointer.smooth.y * rs],
       scale: s * rs,
       signRot: this.timeSec * ROT_SPEED,
