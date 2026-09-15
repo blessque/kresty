@@ -89,6 +89,12 @@
   position: sticky;
   top: var(--sec-pin, 14vh);
   align-self: start;
+  /* CENTRED, the same declaration `.sec-col` carries — including the same
+     `--sec-col-align` escape hatch, so the two cannot drift. Round 27 left this
+     off and «Контакты» ended up with two left-aligned H2s either side of the
+     form's centred one: three headings of one rank, two alignments, on one
+     page. Matching `.sec-col` exactly is the fix, not a new rule beside it. */
+  text-align: var(--sec-col-align, center);
 }
 
 /* the blocks that own a sticky head must not clip it */

@@ -61,16 +61,39 @@ export const FIRE_VH = 2.0;
  * the way to a lighter colour. The client reported exactly that.
  *
  * So the dawn is not removed, it is CONDITIONAL — kept where its reasoning
- * holds, dropped where it never did. One stop fewer needs less room:
- *   1.0   the last line clears the frame before the colour starts moving
- *   0.4   one band, white straight into blue
- *   0.6   the settle — pure, unmoving blue before the swap
- *   0.4   bounce clearance below the fire line
- * The colour stop sits at 0.8 and the band is ±0.3 (BAND_VH / 2), so the field
- * is pure blue from 1.1 and the fire line at 1.7 gets its full settle.
+ * holds, dropped where it never did.
+ *
+ * THE FIRE LINE MUST BE REACHABLE, AND THAT IS ARITHMETIC, NOT TASTE.
+ * The zone is `HANDOFF_VH` viewports tall and the last one of them is the window
+ * itself, so the furthest `scrollTop` a reader can ever reach is
+ * `top + (HANDOFF_VH − 1.0) · viewH`. The line has to sit below that with room
+ * to spare, which is what the dark path's "0.5 bounce clearance" has always
+ * meant: 3.5 − 1.0 − 2.0 = 0.5.
+ *
+ * Round 27 shipped this wrong. A 2.4-viewport zone with the line at 1.7 puts it
+ * 0.3 viewports past the end of the scroll: the colour still ramped to blue and
+ * the swap simply never fired, leaving the reader stuck on a flat blue page with
+ * scrolling that did nothing. `MIN_TAIL_VH` below makes that unexpressible, and
+ * a colour check cannot catch it — only scrolling to the actual bottom can.
+ *
+ * The light budget, measured from the zone's top:
+ *   0.8   the single stop, white straight into blue
+ *   0.3   half a band (BAND_VH / 2) — the field is pure from 1.1
+ *   0.4   the settle
+ *   ————  the fire line at 1.5
+ *   1.5   the window (1.0) plus bounce clearance (0.5)
+ *   3.0   total
  */
-export const LIGHT_HANDOFF_VH = 2.4;
-export const LIGHT_FIRE_VH = 1.7;
+export const LIGHT_HANDOFF_VH = 3.0;
+export const LIGHT_FIRE_VH = 1.5;
+
+/**
+ * Scroll that must remain BELOW the fire line: one viewport (the window itself,
+ * which is never scrollable past) plus 0.5 of bounce clearance. `fireVh` is
+ * clamped to `vh − MIN_TAIL_VH`, so neither a default nor a `?fire=` override
+ * can put the line somewhere the reader cannot go.
+ */
+const MIN_TAIL_VH = 1.5;
 
 /**
  * Below this relative luminance a page counts as dark and keeps the dawn.
@@ -130,7 +153,15 @@ export class MainHandoff {
     const baseVh = this.dark ? HANDOFF_VH : LIGHT_HANDOFF_VH;
     const baseFire = this.dark ? FIRE_VH : LIGHT_FIRE_VH;
     this.vh = clampNum(this.hoRaw, baseVh, 1, 10);
-    this.fireVh = clampNum(this.fireRaw, baseFire, 0.5, this.vh - 0.5);
+    // the upper bound is the REACHABILITY invariant, not a safety margin: above
+    // it the line sits past the end of the scroll and the seam silently dies
+    this.fireVh = clampNum(this.fireRaw, baseFire, 0.5, this.vh - MIN_TAIL_VH);
+    if (import.meta.env.DEV && baseFire > this.vh - MIN_TAIL_VH) {
+      console.error(
+        `mainHandoff: fire line ${baseFire} is unreachable in a ${this.vh}-viewport zone ` +
+          `(max ${this.vh - MIN_TAIL_VH}) — clamped. The seam would never fire.`,
+      );
+    }
     this.el.style.setProperty('--handoff-vh', String(this.vh));
   }
 

@@ -157,10 +157,15 @@
 .news-cards {
   padding: 64px 0 0;
 }
+/* ROUND 27.1: THE TWO COLUMNS ARE CENTRED ON EACH OTHER. They were top-aligned
+   with a 56px nudge on the text — which lines up for one headline length and
+   drifts for every other, because the picture is a fixed 3:2 and the text block
+   is however many lines the Russian wraps to. Centring is the relationship the
+   frame actually draws, and it holds at any headline length. */
 .news-card {
   padding: 0 0 64px;
   color: inherit;
-  align-items: start;
+  align-items: center;
 }
 .news-card[hidden] {
   display: none;
@@ -193,8 +198,9 @@
   aspect-ratio: 3 / 2;
   object-fit: cover;
 }
+/* no top nudge: `align-items: center` on the card owns the relationship now */
 .news-card__body {
-  padding-top: 56px;
+  padding-top: 0;
 }
 /* BLUE AT REST, and that is the interactivity rule rather than an exception to
    it. This h2 is the card's link label — the whole `.news-card` is an <a> — and
@@ -280,7 +286,11 @@
 .article {
   padding: 64px 0 0;
 }
+/* The rail holds a date and a category, not a heading, so it keeps the left
+   edge of its column through `.sticky-head`'s own knob rather than a competing
+   `text-align`. Centring is for the H2 columns the client asked about. */
 .article-rail {
+  --sec-col-align: left;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
 }

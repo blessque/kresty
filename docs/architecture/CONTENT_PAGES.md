@@ -65,14 +65,26 @@ is a classifier with a canyon down the middle, not a dial. One stop fewer needs 
 
 | | dark page | light page |
 |---|---|---|
-| `HANDOFF_VH` | 3.5 | 2.4 |
+| `HANDOFF_VH` | 3.5 | 3.0 |
 | stops | 0.6 → `DAWN_MID`, 1.4 → `MAIN_BG` | 0.8 → `MAIN_BG` |
-| `FIRE_VH` | 2.0 | 1.7 |
+| `FIRE_VH` | 2.0 | 1.5 |
 
-The band is ±0.3 (`BAND_VH / 2`), so a light page is pure blue from 1.1 and the fire line at
-1.7 still gets its full 0.6 settle. `?ho=` / `?fire=` override both. **`PageShell` passes the
-page's last stop colour**; `conceptPage.ts` passes `FORM_BG` explicitly rather than relying on
-the dark default.
+The band is ±0.3 (`BAND_VH / 2`), so a light page is pure blue from 1.1 and the line at 1.5
+gets a 0.4 settle. `?ho=` / `?fire=` override both. **`PageShell` passes the page's last stop
+colour**; `conceptPage.ts` passes `FORM_BG` explicitly rather than relying on the dark default.
+
+**THE FIRE LINE MUST BE REACHABLE, and that is arithmetic, not taste.** The zone is
+`HANDOFF_VH` viewports tall and the last one is the window itself, so the furthest `scrollTop`
+anyone can reach is `top + (HANDOFF_VH − 1.0) · viewH`. The line must sit below that with
+clearance — which is all the dark path's "0.5 bounce" has ever meant: `3.5 − 1.0 − 2.0 = 0.5`.
+
+Round 27 first shipped the light path at 2.4/1.7, putting the line **0.3 viewports past the end
+of the scroll**: the colour still ramped to blue and the swap never fired, so every content
+page dead-ended on a flat blue screen that ignored scrolling. `MIN_TAIL_VH = 1.5` now clamps
+`fireVh` for defaults *and* `?fire=` alike, with a dev-time error.
+
+**A colour check cannot catch this** — the ramp was perfect. Only scrolling to the real bottom
+and asserting the route swapped does, which is why that round-trip is now part of the pass.
 
 **The transition is generic.** `TransitionController`'s `'toConcept'` means "away from main",
 not "to concept" — so main↔any page gets the fly-into-the-light and page↔page cuts, which is
