@@ -535,25 +535,108 @@
   font-size: var(--type-factoid-size);
   line-height: var(--type-factoid-lh);
 }
-.rent-spaces {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* ── the spaces, as the segmented control they are drawn as (round 28) ─────
+   Five names in the sticky heading column; the chosen one fills `.col-main`.
+   They used to be a `<ul>` beside one fixed photograph.
+
+   THE LABEL IS A SPAN INSIDE A FULL-WIDTH BLOCK BUTTON. That is what lets the
+   underline hug the word while the column's own
+   `text-align: var(--sec-col-align, center)` still decides where the word sits —
+   an inline-block button would need a second centring rule that could then
+   disagree with the H2 above it. `text-align: inherit` is required for the same
+   reason: the UA sheet centres button contents outright, which would ignore the
+   escape hatch. */
+.rent-tabs {
+  margin-top: var(--sp-text);
 }
-.rent-spaces li {
+.rent-tab {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: inherit;
   font-family: var(--font-family-display);
+  /* stated, never inherited: on Chromius's 50/120/232 axis the UA's `normal`
+     clamps to 232 = Black, and `font: inherit` in global.css does not carry a
+     weight a form control will honour. That bug has shipped twice here. */
   font-weight: var(--type-h3-weight);
   font-size: var(--type-h3-size);
   line-height: var(--type-h3-lh);
-  margin: 0 0 24px;
+  /* TERTIARY at rest, ink when chosen — the client's call. Not the blue the
+     «Новости» filters take: this control sits directly under an H2 of the same
+     family, and five blue names there read as five links out of the page.
+     `global.css` gives every <button> `color: inherit`, so an interactive
+     element is ink-by-default unless a rule says otherwise. */
+  color: var(--color-text-onlight-tertiary);
+  transition: color 240ms var(--ease-out);
 }
-/* same square as the News card, same reasoning — it fills `.col-main`'s five
-   columns rather than sitting at a fixed 559 with slack beside it */
+.rent-tab + .rent-tab {
+  margin-top: var(--sp-tight);
+}
+/* the underline is DRAWN, not toggled, so the transition has something to move */
+.rent-tab > span {
+  border-bottom: 2px solid transparent;
+  transition: border-color 240ms var(--ease-out);
+}
+.rent-tab.on {
+  color: var(--color-text-onlight-main);
+}
+.rent-tab.on > span {
+  border-bottom-color: currentColor;
+}
+@media (hover: hover) and (pointer: fine) {
+  .rent-tab:not(.on):hover {
+    color: var(--color-text-onlight-secondary);
+  }
+}
+
+/* ── a space's panel ──────────────────────────────────────────────────────── */
+
+/* The explicit guard `.news-card[hidden]` needs too: `hidden` is only a UA
+   default, and any later `display` rule on the element outranks it. */
+.rent-space[hidden] {
+  display: none;
+}
+/* THE INSET GOES ON THE TEXT CHILDREN. This column holds the photograph as
+   well, and an inset on the wrapper is inherited by the image — grid.css states
+   the rule and the round-25 bug it came from. `.article-body` does the same. */
+.rent-space > :is(p, dl, .rent-cta) {
+  padding-inline: var(--grid-text-inset);
+}
+/* 3:2, the shape the News card settled on, and the shape these renders actually
+   are (2400×1600) — so nothing is cropped away. It fills `.col-main`'s five
+   columns rather than sitting at a fixed 559 with slack beside it.
+
+   `height: auto` IS LOAD-BEARING. The `height="1600"` attribute lands as a
+   presentational hint, an explicit height outranks `aspect-ratio`, and that is
+   exactly what rendered the news card 559×1600 in round 27 — see the
+   post-mortem on `.news-card__img` above. */
 .rent-photo {
   display: block;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: auto;
+  aspect-ratio: 3 / 2;
   object-fit: cover;
+}
+/* A space's two figures, side by side and SMALL — Caption Big, not the Factoid.
+   The Factoid is 72px and this column is 559 at the design frame, so two of them
+   abreast do not fit and one per line would shout louder than the H2 beside it.
+   The page's one headline number belongs to «Общая информация». */
+.rent-facts {
+  display: flex;
+  gap: var(--grid-gutter);
+}
+.rent-fact {
+  flex: 1 1 0;
+}
+.rent-fact dt {
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  color: var(--color-text-onlight-secondary);
+}
+.rent-fact dd {
+  margin: var(--sp-tight) 0 0;
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
 }
 
 /* ── «Контакты» ──────────────────────────────────────────────────────────── */
@@ -581,17 +664,41 @@
   line-height: var(--type-caption-big-lh);
 }
 
-/* THE «ПРЕСС-СЛУЖБА» GAP WAS MISSING STRUCTURALLY, not by an oversight in one
+/* ── the flow column ──────────────────────────────────────────────────────────
+   THE «ПРЕСС-СЛУЖБА» GAP WAS MISSING STRUCTURALLY, not by an oversight in one
    rule. `.page-prose` and `.contact-pairs` both declare `margin: 0`, and their
-   wrapper is a plain `.col-main.gp-text` that the shared flow in page.css never
+   wrapper was a plain `.col-main.gp-text` that the shared flow in page.css never
    reaches — it names `.sec-body` and `.article-body` only. So the prose sat
    welded to the list with nothing between them.
 
-   The fix is to make this column a flow column like the other two rather than
-   to hang a margin on `.page-prose`: otherwise the next thing anyone adds here
-   opens the same hole, and it is invisible until someone looks for it. */
-.contacts-body > * + * {
-  margin-top: var(--sp-text);
+   The fix is to make such a column a flow column like the other two rather than
+   to hang a margin on `.page-prose`: otherwise the next thing anyone adds there
+   opens the same hole, and it is invisible until someone looks for it.
+
+   ROUND 28 RENAMED IT FROM `.contacts-body`. It was already a generic "this
+   column flows" rule wearing one page's name, and «Аренда» needs three of them —
+   a second one-off beside it is how two rules drift apart.
+
+   THE SELECTORS ARE TYPE-GENERIC ON PURPOSE (`img`, `.btn`) rather than naming
+   `.rent-photo` / `.rent-cta`: a shared rule that lists one page's classes is
+   not shared, it is two rules in a trench coat. Shape mirrors page.css's own
+   flow (`.sec-body`/`.article-body`).
+
+   NOTHING INSIDE A FLOW COLUMN MAY DECLARE A BLOCK MARGIN — `margin: 0`
+   included. These are (0,1,0) and so is `.rent-stats`, so only source order
+   decides, and this file loads after page.css. That is why these rules sit at
+   the END of the component rules, and why `margin-block: 0` is stated here once
+   instead of by every child. page.css:533-541 states the trap at length. */
+.page-flow > * {
+  margin-block: 0;
+}
+.page-flow > * + * {
+  margin-top: var(--sp-text); /* 32 — text block → text block */
+}
+.page-flow > img + *,
+.page-flow > * + img,
+.page-flow > * + .btn {
+  margin-top: var(--sp-block); /* 64 — text ↔ picture, and after the controls */
 }
 
 /* ROUND 27: the render became the real map. Same box the photo held — ten
@@ -648,6 +755,19 @@
     .page-grid
     > :is(.col-aside, .col-media, .col-main, .col-full, .col-lead) {
     grid-column: auto;
+  }
+  /* THE HEADING COLUMNS STOP STICKING, and this is the third declaration the
+     stack needs. A pinned column is only legible while it has a column BESIDE it
+     to scroll past; stacked, the thing scrolling past is directly underneath, so
+     the heading pins on top of it — on «Аренда» the five tab names sat over the
+     photograph, unreadable, which is how this was found.
+
+     `stickyHeads.ts` already assumed this rule existed: it strips `--sec-pin`
+     from any block whose column does not compute as `sticky`, and that branch was
+     dead code until now. Round 28 made the assumption true rather than deleting
+     the guard, because the guard is the right behaviour. */
+  :is(.news-page, .article-page, .rent-page, .contacts-page) :is(.sticky-head, .sec-col) {
+    position: static;
   }
   .article-related__grid {
     grid-template-columns: 1fr;

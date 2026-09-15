@@ -163,3 +163,29 @@ makes the headline rags match Figma. **Split on the PLAIN space only.**
 
 While the slider runs, the nav goes **fully transparent** (round 22; was Figma's 40 %) and
 returns on any input.
+
+---
+
+## The light's centre is MEASURED, not re-derived (round 28)
+
+`stageCentre()` takes the applied scale from the stage's own rect (`width / STAGE_W`) and
+every consumer — `update()`'s `centerPx` and `measureBeams()` — goes through it.
+
+It used to re-derive the centre as `stageRect.left + CENTER_X · stageScale()`. But `setReveal`
+and `setStageDim` both write a SHRUNK scale into that transform, `s · (1 − 0.045·(1−k))`, so
+the rect already carried a scale the offset did not:
+
+    stageRect.left = W/2 − 720·s'
+    left + 720·s   = W/2 + 720·(s − s') = W/2 + 32.4·s·(1 − k)
+
+The light therefore arrived **32.4·s px right of centre** on every scroll seam — 32px at 1440,
+43px at 1920 — and slid into place over the 900ms reveal. The click/flash path had the same
+error, masked by the white flash and the converged core.
+
+**It was never a race.** The measurement was fresh every frame; the reconstruction was wrong.
+Two sources of truth for one number, and the fix is to stop having two: the rect already
+encodes the scale, so ask it. `scale` stays on `stageScale()` — that is the light's SIZE, and
+the 4.5% composition dim has never applied to it because the light is not a stage child.
+
+Guarded by `scripts/seam-probe.mjs`, which samples the live transform every frame across a real
+seam and evaluates both formulas against `innerWidth/2`.
