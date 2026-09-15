@@ -124,8 +124,8 @@ export const NEWS: NewsItem[] = [
     id: '11',
     date: '9 августа',
     category: 'СМИ о нас',
-    title: '«Кресты» ночью: репортаж о первой подсветке набережной',
-    ...pic('embankment-night', 2400, 1019),
+    title: 'Набережная открылась для прогулок: первый репортаж',
+    ...pic('restaurant-embankment', 2400, 1600),
   },
   {
     id: '12',

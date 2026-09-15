@@ -23,13 +23,21 @@ export interface PageHeadOpts {
    * caller. Already-escaped HTML, because it carries its own <a>.
    */
   eyebrow?: string;
+  /**
+   * Markup to sit BELOW the title and lead — «Новость»'s date · category
+   * (round 27.1). It belongs to the masthead because there is exactly one
+   * article on the page: a rail that tracks the scroll is answering a question
+   * ("which section am I in") that a single article never asks.
+   * Already-escaped HTML, same contract as `eyebrow`.
+   */
+  meta?: string;
   /** omitted on «Новость», the one page the frames give no CTA */
   onPartner?: () => void;
 }
 
 export const PARTNER_CTA = 'Стать партнером';
 
-export function buildPageHead({ title, lead, eyebrow, onPartner }: PageHeadOpts): HTMLElement {
+export function buildPageHead({ title, lead, eyebrow, meta, onPartner }: PageHeadOpts): HTMLElement {
   const head = document.createElement('header');
   head.className = 'page-head';
 
@@ -40,6 +48,7 @@ export function buildPageHead({ title, lead, eyebrow, onPartner }: PageHeadOpts)
     (eyebrow ?? '') +
     `<h1 class="page-title">${escapeHtml(bindShortWords(title))}</h1>` +
     (lead ? `<p class="page-lead">${escapeHtml(bindShortWords(lead))}</p>` : '') +
+    (meta ?? '') +
     `</div>`;
   head.appendChild(grid);
 

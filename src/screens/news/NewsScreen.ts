@@ -19,11 +19,14 @@ import { T } from '../../styles/tokens.gen';
  * clickable — so the tag had to become a real control rather than blue paint on
  * an inert label. A `<button>` inside an `<a>` is invalid and behaves
  * unpredictably (the outer link swallows the click in some engines, both fire in
- * others), so the card's link moved onto the picture and the headline, leaving
- * the meta row free to hold a working filter button. The picture's link is
- * `aria-hidden` and out of the tab order: it is the same destination as the
- * headline beside it, and a screen reader announcing one card as two links is
- * worse than a picture that is not separately focusable.
+ * others), so the meta row is free to hold a working filter button.
+ *
+ * ROUND 27.1: THE WHOLE CARD IS THE TARGET. There is ONE link, on the headline,
+ * and `pages.css` stretches its `::after` across the card — so the picture, the
+ * headline and the air between them all click through, while the accessible
+ * name stays the headline and the tag button sits above it on `z-index`. Round
+ * 27's two links (picture + headline) left a dead strip down the middle, which
+ * is what the reader actually aims at.
  */
 export class NewsScreen extends ContentScreen {
   private filter: Category | null = null;
@@ -99,9 +102,12 @@ export class NewsScreen extends ContentScreen {
           // picture FILLS its position. `w`/`h` are the file's real pixels: the
           // box has to exist before the lazy image decodes, or the page grows
           // under a reader who is already scrolling.
-          ? `<a class="news-card__link" href="#news/1" tabindex="-1" aria-hidden="true">` +
-            `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
-            ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}"></a>`
+          //
+          // No link of its own — the headline's link is stretched over the whole
+          // card in CSS, so the picture, the headline and the air between them
+          // are one target with one accessible name.
+          ? `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
+            ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}">`
           : '') +
         `</div>` +
         `<div class="col-main news-card__body gp-text">` +
@@ -115,11 +121,9 @@ export class NewsScreen extends ContentScreen {
         `</p>` +
         `</div>`;
 
-      card.querySelectorAll<HTMLAnchorElement>('.news-card__link').forEach((link) => {
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.onNavigate('article');
-        });
+      card.querySelector('.news-card__link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.onNavigate('article');
       });
       // the tag filters the list to its own category — which is what makes it
       // legitimately blue rather than blue-and-inert

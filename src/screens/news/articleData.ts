@@ -101,7 +101,7 @@ export const ARTICLE: Article = {
         'использовалось как административно-жилое: здесь размещались квартиры старших ' +
         'служащих тюрьмы, канцелярия и комнаты для дежурных смен.',
     ),
-    media(pic('embankment-night', 'Набережная ночью', 2400, 1019)),
+    media(pic('restaurant-embankment', 'Набережная у ресторана', 2400, 1600)),
   ],
 };
 
@@ -120,5 +120,22 @@ export function assertArticle(a: Article) {
           `ONE media block (which renders as a slider), not two.`,
       );
     }
+    // The slider shows a photograph at its NATIVE aspect, so a panorama comes
+    // through as a letterbox strip a few centimetres tall — the client's note
+    // after round 27. Editorial photography here stays near landscape; the
+    // panoramic renders belong on the longread, which frames them deliberately.
+    if (b.kind === 'media') {
+      for (const m of b.items) {
+        if (m.w / m.h > MAX_ASPECT) {
+          console.error(
+            `articleData: "${m.src}" is ${(m.w / m.h).toFixed(2)}:1 — too wide for the ` +
+              `article (max ${MAX_ASPECT}). It will render as a letterbox strip.`,
+          );
+        }
+      }
+    }
   });
 }
+
+/** past this the slider's native-aspect fit stops reading as a photograph */
+const MAX_ASPECT = 2;

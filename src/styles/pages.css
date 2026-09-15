@@ -163,9 +163,32 @@
    is however many lines the Russian wraps to. Centring is the relationship the
    frame actually draws, and it holds at any headline length. */
 .news-card {
-  padding: 0 0 64px;
+  --news-card-gap: 64px;
+  position: relative;
+  padding: 0 0 var(--news-card-gap);
   color: inherit;
   align-items: center;
+}
+/* THE WHOLE CARD IS THE TARGET, including the air between photo and headline.
+   Round 27 put a link on the picture and another on the headline, which left a
+   dead strip down the middle of every card — the reader aims at the card, not
+   at one of its parts.
+
+   A stretched pseudo-element rather than an <a> wrapping everything, because
+   the meta row holds a filter BUTTON and a button inside a link is invalid and
+   behaves differently in every engine. The link stays around the headline (so
+   its accessible name is the headline, and the status bar shows one
+   destination) and its ::after covers the card. `inset`'s bottom stops at the
+   gap so the space BETWEEN cards is not clickable. */
+.news-card__link::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 var(--news-card-gap) 0;
+}
+/* the tag has to sit above the stretched link or it can never be pressed */
+.news-card__tag {
+  position: relative;
+  z-index: 1;
 }
 .news-card[hidden] {
   display: none;
@@ -286,22 +309,21 @@
 .article {
   padding: 64px 0 0;
 }
-/* The rail holds a date and a category, not a heading, so it keeps the left
-   edge of its column through `.sticky-head`'s own knob rather than a competing
-   `text-align`. Centring is for the H2 columns the client asked about. */
-.article-rail {
-  --sec-col-align: left;
+/* ROUND 27.1: date · category live in the masthead, under the H1 — the same row
+   the news card draws, since that is where the reader just read it. The sticky
+   `.article-rail` is gone; see ArticleScreen for why a single article has
+   nothing for a pinned column to track. */
+.article-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: var(--sp-text) 0 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
 }
-.article-date {
-  margin: 0;
-  color: var(--color-text-onlight-tertiary);
-}
-/* the rail's category label is a statement of fact, not a filter — it takes ink,
+/* the category here is a statement of fact, not a filter — it takes ink,
    because on this site blue would promise a click that is not there */
-.article-rail__tag {
-  margin: var(--sp-tight) 0 0;
+.article-meta__tag {
   color: var(--color-text-onlight-main);
 }
 /* THE READING MEASURE IS `.col-main` (round 27), columns 7–11 — the longread's

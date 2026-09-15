@@ -138,6 +138,13 @@ in dev if two `media` blocks end up adjacent. `MediaItem` now lives in `page/med
 
 ### Sticky heading columns
 
+**Only «Контакты» and «Аренда» use this.** Round 27 gave the article a sticky date rail too,
+on the grounds that the longread has one — but the longread's rail tracks *which section owns
+the frame*, a question that changes as you scroll. A single article never asks it, so the rail
+was borrowed motion; round 27.1 moved date · category into the masthead under the H1 (the
+`meta` slot on `buildPageHead`), which is where the reader just read them on the news card.
+**A pinned column has to be answering something.**
+
 `page/stickyHeads.ts` pins a heading to the vertical centre of the frame while its body
 scrolls — `(viewH − colH) / 2`, clamped to `viewH − colH − padBottom`, written per block as
 `--sec-pin`. Mark the block `data-sticky-head` and the column `.sticky-head`; `.sec-col` is

@@ -1,6 +1,5 @@
 import { ContentScreen } from '../../page/ContentScreen';
 import { MediaSlider } from '../../page/mediaSlider';
-import { StickyHeads } from '../../page/stickyHeads';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { bindShortWords } from '../../shared/ruTypography';
 import { buildPageHead } from '../../page/pageHead';
@@ -17,9 +16,15 @@ import quoteSvg from '../../assets/icon-quote.svg?raw';
  * two-up CSS grid where the longread has a slider, and images cropped to 16/9
  * regardless of what the photograph was. It read as a different site.
  *
- * Three things changed and they are all the same change: the body is a BLOCK
- * LIST (articleData.ts), pictures are the shared `MediaSlider`, and the rail is
- * a sticky column pinned to the centre of the frame like `.sec-col`.
+ * The body is a BLOCK LIST (articleData.ts) and pictures are the shared
+ * `MediaSlider`.
+ *
+ * ROUND 27.1 TOOK THE STICKY RAIL BACK OUT. Round 27 gave the date and category
+ * a pinned column because the longread has one — but the longread's rail tracks
+ * WHICH SECTION owns the frame, a question that changes as you scroll and is
+ * worth following. A single article never asks it, so the rail was borrowed
+ * motion with nothing behind it. The meta is part of the masthead now, under the
+ * H1, exactly as it reads on the news card the reader clicked to get here.
  *
  * THE MEASURE MOVED TO `.col-main`, columns 7–11. Round 25 had put it at
  * `6 / span 6` off the frame's x=615→1291, and that was right for the frame it
@@ -32,12 +37,10 @@ import quoteSvg from '../../assets/icon-quote.svg?raw';
  * out of the content area.
  */
 export class ArticleScreen extends ContentScreen {
-  private heads = new StickyHeads(this.shell.scroller);
   private sliders: MediaSlider[] = [];
 
   constructor(el: HTMLElement) {
     super(el, 'article-page');
-    this.shell.onMeasure = (viewH) => this.heads.measure(viewH);
   }
 
   protected stops() {
@@ -57,18 +60,24 @@ export class ArticleScreen extends ContentScreen {
         `<span class="news-filters__dot" aria-hidden="true"></span>` +
         `<span>${escapeHtml(ARTICLE.category)}</span>` +
         `</nav>`,
+      // ROUND 27.1: date · category belong to the H1 block. Round 27 put them in
+      // a sticky rail copied from the longread, but the longread's rail tracks
+      // WHICH SECTION you are in — it earns its stickiness by answering a
+      // question that changes as you scroll. A single article never asks it, so
+      // the rail was motion for its own sake, and the meta is simply part of the
+      // masthead the way it is on the news card it came from.
+      meta:
+        `<p class="article-meta">` +
+        `<span class="news-card__date">${escapeHtml(ARTICLE.date)}</span>` +
+        `<span class="news-filters__dot" aria-hidden="true"></span>` +
+        `<span class="article-meta__tag">${escapeHtml(ARTICLE.category)}</span>` +
+        `</p>`,
     });
     this.shell.add(head);
 
     const article = document.createElement('article');
     article.className = 'article page-grid';
-    article.dataset.stickyHead = '';
-    article.innerHTML =
-      `<div class="col-aside sticky-head article-rail gp-text">` +
-      `<p class="article-date">${escapeHtml(ARTICLE.date)}</p>` +
-      `<p class="article-rail__tag">${escapeHtml(ARTICLE.category)}</p>` +
-      `</div>` +
-      `<div class="col-main article-body"></div>`;
+    article.innerHTML = `<div class="col-main article-body"></div>`;
     this.renderBody(article.querySelector('.article-body') as HTMLElement);
     this.shell.add(article);
 
