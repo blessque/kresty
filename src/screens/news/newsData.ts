@@ -1,10 +1,21 @@
 /**
- * The news, transcribed from the designer's frames (Figma `854:251` for the
- * list, `854:185` for the article's "Читайте также" block).
+ * The news list (Figma `854:251` for the cards, `854:185` for «Читайте также»).
  *
- * The copy is REAL — dates, categories and headlines are the designer's own, not
- * lorem. The photographs are the client's existing WebPs standing in for images
- * the frames show as screenshots; marked below.
+ * ROUND 27 FILLED THE CATEGORIES. The frames draw three cards, so three is what
+ * round 24 transcribed — but the filter row offers three categories and «Все»,
+ * and with three items «Интервью» filtered to an empty page. A tab that can only
+ * ever show nothing is not a tab. The client asked for 3–5 per category, so the
+ * list below is 13 items: the designer's three verbatim, and ten written in the
+ * same register to fill the two thin categories and the empty one.
+ *
+ * EVERY CARD CARRIES INTRINSIC `w`/`h`. They are written to the `<img>` so the
+ * box is committed before decode — the same rule `MediaItem` states for the
+ * longread, and for the same reason: a lazy image that resolves its own height
+ * late grows the page under a reader who is already scrolling. That is not
+ * theoretical here. It is the bug that dragged the longread's light 585px off
+ * its icon last round.
+ *
+ * Every card still routes to `#news/1` — one article exists.
  */
 
 export type Category = 'Интервью' | 'Строительство' | 'СМИ о нас';
@@ -19,32 +30,116 @@ export interface NewsItem {
   title: string;
   /** list-card image; absent on the "read also" entries, which are text-only */
   image?: string;
+  /** intrinsic pixels of that image — required whenever `image` is set */
+  w?: number;
+  h?: number;
 }
 
-/** the three cards the list frame draws, with their real pairings */
+/** `/resources/<name>.webp` with its real pixel size, read off the files */
+const pic = (name: string, w: number, h: number) => ({
+  image: `/resources/${name}.webp`,
+  w,
+  h,
+});
+
 export const NEWS: NewsItem[] = [
+  // ── the designer's three, verbatim ──────────────────────────────────────
   {
     id: '1',
     date: '12 августа',
     category: 'Строительство',
     title: 'Завершена реконструкция дома надзирателей',
-    // TODO(photos): the frame shows a screenshot; `atrium-roof` is the closest
-    // real frame we hold — a restored interior seen from above.
-    image: '/resources/atrium-roof.webp',
+    ...pic('atrium-roof', 2400, 1600),
   },
   {
     id: '2',
     date: '12 августа',
     category: 'СМИ о нас',
     title: 'Тайны под штукатуркой: что нашли реставраторы в доме надзирателей',
-    image: '/resources/table.webp',
+    ...pic('table', 2400, 1600),
   },
   {
     id: '3',
     date: '12 августа',
     category: 'Строительство',
     title: 'Музей вместо гауптвахты: готовность дома надзирателей — 90%',
-    image: '/resources/hotel.webp',
+    ...pic('main-entrance', 2400, 1600),
+  },
+
+  // ── Строительство ───────────────────────────────────────────────────────
+  {
+    id: '4',
+    date: '7 августа',
+    category: 'Строительство',
+    title: 'Набережная раскрыта: с фасадов сняли строительные леса',
+    ...pic('komsomola-street', 2400, 1340),
+  },
+  {
+    id: '5',
+    date: '29 июля',
+    category: 'Строительство',
+    title: 'Временный паркинг открыт со стороны улицы Комсомола',
+    ...pic('temp-parking', 2400, 1611),
+  },
+  {
+    id: '6',
+    date: '18 июля',
+    category: 'Строительство',
+    title: 'Кровли обоих крестов прошли контрольное обследование',
+    ...pic('overview', 2400, 1611),
+  },
+
+  // ── Интервью ────────────────────────────────────────────────────────────
+  {
+    id: '7',
+    date: '5 августа',
+    category: 'Интервью',
+    title: 'Архитектор проекта: «Мы сохраняем не стены, а масштаб»',
+    ...pic('mice-3', 2400, 1351),
+  },
+  {
+    id: '8',
+    date: '24 июля',
+    category: 'Интервью',
+    title: 'Шеф-повар «Литеры О» — о кухне в бывшем тюремном корпусе',
+    ...pic('restaurant-litera-o', 2400, 1611),
+  },
+  {
+    id: '9',
+    date: '11 июля',
+    category: 'Интервью',
+    title: 'Как проектировали термы: разговор с автором водной программы',
+    ...pic('spa-interior', 2400, 1340),
+  },
+  {
+    id: '10',
+    date: '2 июля',
+    category: 'Интервью',
+    title: 'Гостиница в камере: интервью с автором номеров',
+    ...pic('room-3', 2400, 1611),
+  },
+
+  // ── СМИ о нас ───────────────────────────────────────────────────────────
+  {
+    id: '11',
+    date: '9 августа',
+    category: 'СМИ о нас',
+    title: '«Кресты» ночью: репортаж о первой подсветке набережной',
+    ...pic('embankment-night', 2400, 1019),
+  },
+  {
+    id: '12',
+    date: '27 июля',
+    category: 'СМИ о нас',
+    title: 'Площадь перед храмом назвали лучшим общественным пространством года',
+    ...pic('temple-square', 2000, 1117),
+  },
+  {
+    id: '13',
+    date: '15 июля',
+    category: 'СМИ о нас',
+    title: 'Что увидят первые посетители: путеводитель по будущему маршруту',
+    ...pic('temple-passage', 2400, 1611),
   },
 ];
 
@@ -63,54 +158,3 @@ export const RELATED: NewsItem[] = [
   { id: 'r6', date: '7 августа', category: 'Строительство',
     title: 'Впереди главный корпус: «Кресты» готовят к полному открытию' },
 ];
-
-/**
- * The article at `#news/1`, from frame `854:185`. Every paragraph, heading,
- * quote and list item below is the designer's copy verbatim.
- */
-export const ARTICLE = {
-  date: '12 августа',
-  category: 'Строительство' as Category,
-  title: 'Завершена реконструкция дома надзирателей',
-  lead:
-    'Дом надзирателей был возведён в конце XIX века по проекту архитектора Антония ' +
-    'Томишко в составе знаменитого тюремного ансамбля на Арсенальной набережной. Здание ' +
-    'использовалось как административно-жилое: здесь размещались квартиры старших ' +
-    'служащих тюрьмы, канцелярия и комнаты для дежурных смен. После закрытия «Крестов» ' +
-    'в 2017 году дом надзирателей, как и другие постройки комплекса, перешёл в ведение ' +
-    'городских структур, однако долгое время оставался законсервированным. Реконструкция ' +
-    'началась в 2023 году. За два года специалисты укрепили фундамент и несущие стены, ' +
-    'восстановили исторические фасады с характерными элементами кирпичного стиля, ' +
-    'заменили перекрытия и инженерные коммуникации.',
-  h2: 'Заголовок второго уровня',
-  body2:
-    'Дом надзирателей был возведён в конце XIX века по проекту архитектора Антония ' +
-    'Томишко в составе знаменитого тюремного ансамбля на Арсенальной набережной. Здание ' +
-    'использовалось как административно-жилое: здесь размещались квартиры старших ' +
-    'служащих тюрьмы, канцелярия и комнаты для дежурных смен. После закрытия «Крестов» ' +
-    'в 2017 году дом надзирателей, как и другие постройки комплекса, перешёл в ведение ' +
-    'городских структур, однако долгое время оставался законсервированным.',
-  h3: 'Заголовок третьего уровня',
-  body3:
-    'Реконструкция началась в 2023 году. За два года специалисты укрепили фундамент ' +
-    'и несущие стены, восстановили исторические фасады с характерными элементами ' +
-    'кирпичного стиля, заменили перекрытия и инженерные коммуникации.',
-  /** the two-image composition with the arrows */
-  gallery: ['/resources/atrium-floor.webp', '/resources/forum.webp'],
-  listLead:
-    'Теперь в здании разместится экспозиция «Тюрьма и власть», рассказывающая ' +
-    'о повседневной жизни дореволюционной пенитенциарной системы:',
-  list: [
-    'Планируется также открыть лекторий, сувенирную лавку и кафе',
-    'Полное открытие музейного комплекса «Кресты» для посетителей ожидается в следующем году',
-    'На время работ будет предусмотрен проход через главный вход',
-  ],
-  quote: 'Восстановили исторические фасады с характерными элементами кирпичного стиля',
-  quoteBy: 'Василий Петров',
-  closing:
-    'Дом надзирателей был возведён в конце XIX века по проекту архитектора Антония ' +
-    'Томишко в составе знаменитого тюремного ансамбля на Арсенальной набережной. Здание ' +
-    'использовалось как административно-жилое: здесь размещались квартиры старших ' +
-    'служащих тюрьмы, канцелярия и комнаты для дежурных смен.',
-  closingImage: '/resources/kids-playground.webp',
-};

@@ -19,6 +19,7 @@
   --ref-amber: #fe9300;
 
   /* ── type scale, FLUID (round 26). See the note at the foot. ── */
+  --fs-factoid: clamp(60px, 5vw, 72px); /* 4.5rem → 72px @ 1440 */
   --fs-h1: clamp(40px, 3.75vw, 54px); /* 3.375rem → 54px @ 1440 */
   --fs-h2: 40px; /* 2.5rem — constant; mobile and desktop agree */
   --fs-lead: clamp(28px, 2.2222vw, 32px); /* 2rem → 32px @ 1440 */
@@ -59,6 +60,7 @@
   --color-button-ondark: var(--ref-white-1000); /* #ffffff */
 
   /* ── text styles, composed. Size and leading pair per style. ── */
+  --type-factoid-size: var(--fs-factoid);  --type-factoid-lh: var(--lh-1-1);  --type-factoid-weight: var(--font-weight-medium); /* Factoid */
   --type-h1-size: var(--fs-h1);  --type-h1-lh: var(--lh-1-1);  --type-h1-weight: var(--font-weight-medium); /* H1 */
   --type-h2-size: var(--fs-h2);  --type-h2-lh: var(--lh-1-1);  --type-h2-weight: var(--font-weight-medium); /* H2 */
   --type-h3-size: var(--fs-lead);  --type-h3-lh: var(--lh-1-2);  --type-h3-weight: var(--font-weight-medium); /* H3 */
@@ -108,6 +110,7 @@
    positioned on a hard 272px radius in stage coordinates, so they would
    part company with their own geometry. ── */
 #screen-main {
+  --type-factoid-size: 72px; /* Factoid — fixed inside the scaled stage */
   --type-h1-size: 54px; /* H1 — fixed inside the scaled stage */
   --type-h2-size: 40px; /* H2 — fixed inside the scaled stage */
   --type-h3-size: 32px; /* H3 — fixed inside the scaled stage */

@@ -9,11 +9,21 @@ import { T } from '../../styles/tokens.gen';
 /**
  * «Новости» — the list (Figma `854:251`).
  *
- * A card is a square photograph in the LEFT column and date · category ·
- * headline in the RIGHT. The visible gap between them is not a gutter: the
- * columns meet at the page centre and the image simply does not fill its
- * column, which is exactly what `styles/grid.css` documents about this page.
- * Nothing here sets a horizontal position — the grid does.
+ * A card is a photograph in the LEFT column and date · category · headline in
+ * the RIGHT. The visible gap between them is the SKIPPED COLUMN 6, not a gutter
+ * — the picture fills `.col-media` exactly. Nothing here sets a horizontal
+ * position; the grid does.
+ *
+ * ROUND 27: THE CARD IS AN `<article>`, NOT AN `<a>`.
+ * The client asked for the category tags to be blue, and on this site blue means
+ * clickable — so the tag had to become a real control rather than blue paint on
+ * an inert label. A `<button>` inside an `<a>` is invalid and behaves
+ * unpredictably (the outer link swallows the click in some engines, both fire in
+ * others), so the card's link moved onto the picture and the headline, leaving
+ * the meta row free to hold a working filter button. The picture's link is
+ * `aria-hidden` and out of the tab order: it is the same destination as the
+ * headline beside it, and a screen reader announcing one card as two links is
+ * worse than a picture that is not separately focusable.
  */
 export class NewsScreen extends ContentScreen {
   private filter: Category | null = null;
@@ -79,34 +89,46 @@ export class NewsScreen extends ContentScreen {
     const wrap = document.createElement('div');
     wrap.className = 'news-cards';
     for (const n of NEWS) {
-      const a = document.createElement('a');
-      a.className = 'news-card page-grid';
-      a.href = '#news/1';
-      a.dataset.category = n.category;
-      a.innerHTML =
+      const card = document.createElement('article');
+      card.className = 'news-card page-grid';
+      card.dataset.category = n.category;
+      card.innerHTML =
         `<div class="col-media">` +
         (n.image
-          // ROUND 25: no anchor class. `.col-media` is five columns = 559.333 at
-          // the design frame, which is the square's own width, so it FILLS its
-          // position instead of leaving slack the old two-column grid had to
-          // explain. The air before the headline is now the skipped column 6.
-          ? `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
-            ` loading="lazy" decoding="async" width="1200" height="1200">`
+          // `.col-media` is five columns = 559.333 at the design frame, so the
+          // picture FILLS its position. `w`/`h` are the file's real pixels: the
+          // box has to exist before the lazy image decodes, or the page grows
+          // under a reader who is already scrolling.
+          ? `<a class="news-card__link" href="#news/1" tabindex="-1" aria-hidden="true">` +
+            `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
+            ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}"></a>`
           : '') +
         `</div>` +
         `<div class="col-main news-card__body gp-text">` +
-        `<h2 class="news-card__title">${escapeHtml(bindShortWords(n.title))}</h2>` +
+        `<h2 class="news-card__title">` +
+        `<a class="news-card__link" href="#news/1">${escapeHtml(bindShortWords(n.title))}</a>` +
+        `</h2>` +
         `<p class="news-card__meta">` +
-        `<span>${escapeHtml(n.date)}</span>` +
+        `<span class="news-card__date">${escapeHtml(n.date)}</span>` +
         `<span class="news-filters__dot" aria-hidden="true"></span>` +
-        `<span>${escapeHtml(n.category)}</span>` +
+        `<button type="button" class="news-card__tag">${escapeHtml(n.category)}</button>` +
         `</p>` +
         `</div>`;
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.onNavigate('article');
+
+      card.querySelectorAll<HTMLAnchorElement>('.news-card__link').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.onNavigate('article');
+        });
       });
-      wrap.appendChild(a);
+      // the tag filters the list to its own category — which is what makes it
+      // legitimately blue rather than blue-and-inert
+      card.querySelector('.news-card__tag')?.addEventListener('click', () => {
+        this.filter = n.category;
+        this.applyFilter();
+        this.el.querySelector('.news-filters')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      wrap.appendChild(card);
     }
     return wrap;
   }

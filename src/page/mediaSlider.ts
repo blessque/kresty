@@ -1,6 +1,22 @@
 import { asset } from '../shared/assetUrl';
 import { escapeHtml } from '../shared/escapeHtml';
-import type { MediaItem } from '../screens/concept/pageSections';
+
+/**
+ * One picture. `w`/`h` are the file's INTRINSIC pixels and they are required,
+ * not decorative: they are written to the `<img>` so the box is committed
+ * before decode. Without that a late image resolves its own height, shifts
+ * everything below it and desyncs the measured scroll track mid-scroll.
+ *
+ * They also replace a global `aspect-ratio: 3/2`, which the round-26 photography
+ * breaks in both directions: four of the renders are portrait (down to 0.67) and
+ * three are panoramas (up to 4.80).
+ */
+export interface MediaItem {
+  src: string;
+  alt: string;
+  w: number;
+  h: number;
+}
 
 /**
  * THE PICTURE BLOCK — one photograph, or several as a slider (round 26).

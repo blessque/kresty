@@ -28,22 +28,14 @@ import { T } from '../../styles/tokens.gen';
  */
 
 /**
- * One picture. `w`/`h` are the file's INTRINSIC pixels and they are required,
- * not decorative: they are written to the `<img>` so the box is committed
- * before decode. Without that a late image resolves its own height, shifts
- * every section below it and desyncs the measured scroll track mid-scroll —
- * `sectionRun.ts` carries the same warning about its own figure.
- *
- * They also replace the global `aspect-ratio: 3/2`, which the round-26
- * photography breaks in both directions: four of the renders are portrait (down
- * to 0.67) and three are panoramas (up to 4.80).
+ * ROUND 27: `MediaItem` MOVED TO `page/mediaSlider.ts` and is re-exported here.
+ * It was defined in this file and imported by the shared slider, which made
+ * `src/page/` — furniture every page uses — depend on one screen's data module.
+ * With the news article as a second consumer that stopped being a curiosity: the
+ * type belongs to the component that renders it.
  */
-export interface MediaItem {
-  src: string;
-  alt: string;
-  w: number;
-  h: number;
-}
+import type { MediaItem } from '../../page/mediaSlider';
+export type { MediaItem };
 
 /**
  * A section's body is an ORDERED LIST OF BLOCKS (round 26), which is what turns

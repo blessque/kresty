@@ -52,6 +52,34 @@ export const HANDOFF_VH = 3.5;
 export const FIRE_VH = 2.0;
 
 /**
+ * THE SAME BUDGET FOR A PAGE THAT IS ALREADY LIGHT (round 27).
+ *
+ * `DAWN_MID` exists to bridge «О Крестах»'s ~7 % lightness contact form to a
+ * 62 % brand blue — travel no single band can cross without turning to mush.
+ * The four content pages end WHITE, and there the same mid-tone is a dip down
+ * into a dark blue and back up again: the reader watches the page get darker on
+ * the way to a lighter colour. The client reported exactly that.
+ *
+ * So the dawn is not removed, it is CONDITIONAL — kept where its reasoning
+ * holds, dropped where it never did. One stop fewer needs less room:
+ *   1.0   the last line clears the frame before the colour starts moving
+ *   0.4   one band, white straight into blue
+ *   0.6   the settle — pure, unmoving blue before the swap
+ *   0.4   bounce clearance below the fire line
+ * The colour stop sits at 0.8 and the band is ±0.3 (BAND_VH / 2), so the field
+ * is pure blue from 1.1 and the fire line at 1.7 gets its full settle.
+ */
+export const LIGHT_HANDOFF_VH = 2.4;
+export const LIGHT_FIRE_VH = 1.7;
+
+/**
+ * Below this relative luminance a page counts as dark and keeps the dawn.
+ * The two real inputs sit nowhere near it — `#050b1d` is 0.006 and `#ffffff` is
+ * 1.0 — so this is a classifier with a canyon down the middle, not a dial.
+ */
+const DARK_MAX_L = 0.2;
+
+/**
  * Hysteresis, in viewports: how far back up the reader must scroll before the
  * trigger can arm again. Also where a return from the main screen lands, which
  * is why it is one number — the two are the same guard from opposite sides.
@@ -65,16 +93,20 @@ export class MainHandoff {
   private fired = false;
   private vh = HANDOFF_VH;
   private fireVh = FIRE_VH;
+  /** does the page this zone follows end dark? defaults true — the old behaviour */
+  private dark = true;
+  private readonly hoRaw: string | null;
+  private readonly fireRaw: string | null;
 
   /** fires once when the reader crosses the line on a pure blue field */
   onCross: () => void = () => {};
 
   constructor(scroller: HTMLElement) {
     const q = new URLSearchParams(location.search);
-    this.vh = clampNum(q.get('ho'), HANDOFF_VH, 1, 10);
-    this.fireVh = clampNum(q.get('fire'), FIRE_VH, 0.5, this.vh - 0.5);
+    this.hoRaw = q.get('ho');
+    this.fireRaw = q.get('fire');
     this.el.className = 'main-handoff';
-    this.el.style.setProperty('--handoff-vh', String(this.vh));
+    this.applyBudget();
     scroller.appendChild(this.el);
   }
 
@@ -82,13 +114,39 @@ export class MainHandoff {
     return this.el.offsetTop;
   }
 
-  /** the two stops that carry the page from the form's dark into main's blue */
-  stops(viewH: number): ColorStop[] {
+  /**
+   * Tell the zone what colour it is leaving. Called before `stops()` — the
+   * incoming colour decides both the ramp's shape and the zone's height, and
+   * the height has to reach the DOM before anything measures `offsetTop`.
+   */
+  setFrom(color: string) {
+    const dark = luminance(color) < DARK_MAX_L;
+    if (dark === this.dark) return;
+    this.dark = dark;
+    this.applyBudget();
+  }
+
+  private applyBudget() {
+    const baseVh = this.dark ? HANDOFF_VH : LIGHT_HANDOFF_VH;
+    const baseFire = this.dark ? FIRE_VH : LIGHT_FIRE_VH;
+    this.vh = clampNum(this.hoRaw, baseVh, 1, 10);
+    this.fireVh = clampNum(this.fireRaw, baseFire, 0.5, this.vh - 0.5);
+    this.el.style.setProperty('--handoff-vh', String(this.vh));
+  }
+
+  /**
+   * The stops that carry the page into main's blue: two through the dawn from a
+   * dark page, ONE straight across from a light one.
+   */
+  stops(viewH: number, from?: string): ColorStop[] {
+    if (from !== undefined) this.setFrom(from);
     const t = this.top;
-    return [
-      { top: t + 0.6 * viewH, color: DAWN_MID },
-      { top: t + 1.4 * viewH, color: MAIN_BG },
-    ];
+    return this.dark
+      ? [
+          { top: t + 0.6 * viewH, color: DAWN_MID },
+          { top: t + 1.4 * viewH, color: MAIN_BG },
+        ]
+      : [{ top: t + 0.8 * viewH, color: MAIN_BG }];
   }
 
   /** where a return from the main screen should land: past the dawn, disarmed */
@@ -137,4 +195,20 @@ export class MainHandoff {
 function clampNum(raw: string | null, dflt: number, lo: number, hi: number): number {
   const v = raw === null ? NaN : Number(raw);
   return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
+}
+
+/**
+ * WCAG relative luminance of a `#rgb`/`#rrggbb` string. Perceptual rather than a
+ * channel average, because the question being asked is "does this read as dark",
+ * and the gamma ramp is most of the answer at the dark end.
+ */
+function luminance(hex: string): number {
+  const h = hex.trim().replace('#', '');
+  const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h;
+  if (full.length < 6) return 0;
+  const ch = (i: number) => {
+    const s = parseInt(full.slice(i, i + 2), 16) / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
 }
