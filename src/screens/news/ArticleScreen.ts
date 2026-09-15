@@ -3,7 +3,7 @@ import { MediaSlider } from '../../page/mediaSlider';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { bindShortWords } from '../../shared/ruTypography';
 import { buildPageHead } from '../../page/pageHead';
-import { RELATED } from './newsData';
+import { RELATED, type Category } from './newsData';
 import { ARTICLE, assertArticle, type ArticleBlock } from './articleData';
 import { T } from '../../styles/tokens.gen';
 import quoteSvg from '../../assets/icon-quote.svg?raw';
@@ -37,6 +37,13 @@ import quoteSvg from '../../assets/icon-quote.svg?raw';
  * out of the content area.
  */
 export class ArticleScreen extends ContentScreen {
+  /**
+   * The breadcrumb's category was followed. Wired in `main.ts` — the composition
+   * root — so this screen never learns that a news LIST exists, the same reason
+   * `ScrollIntent` is wired there rather than inside `MainScreen`.
+   */
+  onCategory: (c: Category) => void = () => {};
+
   private sliders: MediaSlider[] = [];
 
   constructor(el: HTMLElement) {
@@ -54,11 +61,16 @@ export class ArticleScreen extends ContentScreen {
     // to hand-build a head that differed from every other page's in four ways.
     const head = buildPageHead({
       title: ARTICLE.title,
+      // ROUND 27.3: THE CATEGORY IS A LINK HERE, and only here. It is a
+      // breadcrumb — the whole point of the trail is that each step goes back to
+      // the wider thing it belongs to, so a category that is not clickable is a
+      // breadcrumb pretending to be a label. Blue follows from that, it is not
+      // the reason for it.
       eyebrow:
         `<nav class="article-crumbs">` +
         `<a href="#news" data-to="news">Новости</a>` +
         `<span class="news-filters__dot" aria-hidden="true"></span>` +
-        `<span>${escapeHtml(ARTICLE.category)}</span>` +
+        `<a href="#news" data-to="category">${escapeHtml(ARTICLE.category)}</a>` +
         `</nav>`,
       // ROUND 27.1: date · category belong to the H1 block. Round 27 put them in
       // a sticky rail copied from the longread, but the longread's rail tracks
@@ -66,12 +78,10 @@ export class ArticleScreen extends ContentScreen {
       // question that changes as you scroll. A single article never asks it, so
       // the rail was motion for its own sake, and the meta is simply part of the
       // masthead the way it is on the news card it came from.
-      meta:
-        `<p class="article-meta">` +
-        `<span class="news-card__date">${escapeHtml(ARTICLE.date)}</span>` +
-        `<span class="news-filters__dot" aria-hidden="true"></span>` +
-        `<span class="article-meta__tag">${escapeHtml(ARTICLE.category)}</span>` +
-        `</p>`,
+      // THE DATE ALONE. Round 27.1 repeated the category here, two lines under
+      // the breadcrumb that already names it — the same word twice in one
+      // masthead, the second time saying nothing the first did not.
+      meta: `<p class="article-meta"><span class="news-card__date">${escapeHtml(ARTICLE.date)}</span></p>`,
     });
     this.shell.add(head);
 
@@ -85,6 +95,13 @@ export class ArticleScreen extends ContentScreen {
 
     head.querySelector('[data-to="news"]')?.addEventListener('click', (e) => {
       e.preventDefault();
+      this.onNavigate('news');
+    });
+    head.querySelector('[data-to="category"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      // filter first, then navigate: the list reads `filter` while it builds, so
+      // a first-ever visit comes up already filtered rather than flashing all 13
+      this.onCategory(ARTICLE.category);
       this.onNavigate('news');
     });
 

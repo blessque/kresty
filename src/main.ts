@@ -53,12 +53,19 @@ async function boot() {
   // `#contacts` hash and a real nav link until now, which TUNING_LOG had flagged
   // as "must be replaced before the client sees the nav as finished". It moved
   // to `#icons`, off the nav, keeping `?admin` and `?icon=N` for the deck.
+  const news = new NewsScreen(el('screen-news'));
+  const article = new ArticleScreen(el('screen-article'));
+  // The article's breadcrumb goes back up to its own category. Wired HERE for
+  // the same reason `ScrollIntent` is: neither screen should learn the other
+  // exists, and the composition root is the one place that already knows both.
+  article.onCategory = (c) => news.showCategory(c);
+
   const router = new Router(main, {
     main,
     concept: new ConceptScreen(el('screen-concept')),
     contacts: new ContactsPage(el('screen-contacts-page')),
-    news: new NewsScreen(el('screen-news')),
-    article: new ArticleScreen(el('screen-article')),
+    news,
+    article,
     rent: new RentScreen(el('screen-rent')),
     icons: new ContactsScreen(el('screen-contacts')),
   });

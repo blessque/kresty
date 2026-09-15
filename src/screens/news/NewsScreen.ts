@@ -35,6 +35,17 @@ export class NewsScreen extends ContentScreen {
     super(el, 'news-page');
   }
 
+  /**
+   * Show one category, from outside — the article's breadcrumb following its way
+   * back up. Safe before `build()`: `buildFilters` and `buildCards` both read
+   * `filter` as they go, so a list that has never been opened comes up already
+   * filtered instead of rendering all thirteen and then hiding nine.
+   */
+  showCategory(c: Category | null) {
+    this.filter = c;
+    this.applyFilter();
+  }
+
   protected stops() {
     // one flat field; the shell adds the dawn and main's blue below it
     return [{ top: 0, color: T.bgLightMain }];
@@ -95,6 +106,11 @@ export class NewsScreen extends ContentScreen {
       const card = document.createElement('article');
       card.className = 'news-card page-grid';
       card.dataset.category = n.category;
+      // Honour a filter set BEFORE this list was ever built — the article's
+      // breadcrumb can arrive here first. `buildFilters` already reads `filter`
+      // for the active tab; without the same read here the tab came up correct
+      // above thirteen unfiltered cards.
+      card.hidden = this.filter !== null && n.category !== this.filter;
       card.innerHTML =
         `<div class="col-media">` +
         (n.image
