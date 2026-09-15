@@ -72,7 +72,20 @@ export abstract class ContentScreen implements Screen {
     return this.shell.restoreTop();
   }
 
+  /**
+   * Re-measure after a layout change.
+   *
+   * The default re-runs the shell's measurement against the stops the page gave
+   * once at build time, which is right for the four flat-white pages — their
+   * single stop is at 0 and cannot move. A page whose stops are derived from
+   * section positions overrides this to re-derive them, because those positions
+   * change with every width.
+   */
+  protected remeasure() {
+    this.shell.measure();
+  }
+
   private onResize = () => {
-    if (this.built) this.shell.measure();
+    if (this.built) this.remeasure();
   };
 }

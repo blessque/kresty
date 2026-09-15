@@ -84,13 +84,17 @@ function navSpec(
  * and `kontakty` still carry the `#concept` / `#contacts` routes, so
  * scripts/interact-test.mjs keeps driving `#nav-kontseptsia`.
  *
- * ROUND 24: only «Музей» routes nowhere now — «Аренда» and «События» have pages.
+ * ROUND 28: EVERY LINK ROUTES. «Музей» was the last one that did not, and the
+ * `Route | null` on the spec now has no `null` left in the table — it is kept
+ * because a sixth label arriving before its page is the normal order of events,
+ * not because anything is missing today.
+ *
  * The labels are Figma's own: «События» (Events), not «Новости», even though the
  * page it opens is titled «Новости». That is the designer's distinction between
  * the nav's voice and the page's, not an inconsistency to tidy.
  */
 export const NAV_LINKS: NavLinkSpec[] = [
-  navSpec(0, 'muzey', 'Музей', null), // no design yet
+  navSpec(0, 'muzey', 'Музей', 'museum'),
   navSpec(1, 'kontseptsia', 'О «Крестах»', 'concept'),
   navSpec(2, 'kontakty', 'Контакты', 'contacts'),
   navSpec(3, 'arenda', 'Аренда', 'rent'),

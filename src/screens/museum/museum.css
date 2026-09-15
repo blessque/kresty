@@ -1,0 +1,312 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   «МУЗЕЙ» (round 28) — four eras on a field that descends from near-black to
+   white, with one light cross bisected by the left edge.
+
+   Horizontal POSITION comes from `.page-grid` (styles/grid.css); the flow comes
+   from `page.css`'s `.mus-body` rules. What is here is the sticky era column,
+   the two things pinned to the viewport, and the ink.
+
+   ── the `.mus-*` names are deliberate ────────────────────────────────────────
+   «О Крестах»'s `.sec-*` vocabulary is the same shape and was NOT reused. Its
+   sizing hangs off `--sec-pin` / `--sec-pad-top` / `--sec-body-lead`, which
+   `motionParams.applyMotionCss()` writes onto `document.documentElement` from a
+   module-level singleton. Those properties survive that screen being hidden, so
+   a shared vocabulary would mean the concept page's tuning panel silently
+   driving this page too — no error, no visible cause.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* THE INK IS A VARIABLE, and it is the whole reason the white ending works.
+   `MuseumScreen` writes it every frame from the same blend factor `.page-bg`
+   was painted with, so the copy inverts exactly in step with the field instead
+   of switching at a boundary — which, across a 0.6-viewport crossfade, would be
+   white text on a half-white field for a third of a second.
+
+   The fallback is the on-dark ink, so the page is readable for the frames
+   before the first rAF and if script never runs at all. */
+.museum-page {
+  color: var(--mus-ink, var(--color-text-ondark-main));
+}
+
+/* NO background here. `.page-bg` is the single source of the page colour — a
+   colour on any element above it sits as an unfading band across the crossfade
+   (page.css says the same thing for the shared shell). */
+
+/* ── the two viewport-pinned things ──────────────────────────────────────────
+   Both are SIBLINGS of `.page-scroll`: a scroll container's absolutely
+   positioned children scroll away with its content. The canvas additionally may
+   never live inside anything sticky — `position: sticky` creates a stacking
+   context, which would isolate its `screen` blend from `.page-bg` and kill the
+   light outright.
+
+   `z-index: 0` on both, the same as `.page-bg`, with DOM order deciding between
+   them: `.page-bg` is PREPENDED to the screen and these are appended, so they
+   paint above it. `.page-scroll` is `z-index: 1`, so the content is above both.
+   There is no integer between 0 and 1 to be more explicit with.
+
+   The id scope is not decoration — round 16.1 lost a debugging round to a bare
+   class being outranked by an id-scoped `canvas` rule. */
+#screen-museum canvas.museum-light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  /* light-on-black out of the shader, screened onto the field. This is also why
+     the light is ABSENT rather than faint on the white section: `screen` is
+     1 − (1−a)(1−b), which can only lighten, and white has no headroom. */
+  mix-blend-mode: screen;
+  opacity: 0;
+}
+
+/* The designer's flat vector, for the field the shader cannot survive.
+   `museumCross.ts` explains why it is this file re-framed and not `sign.svg`.
+
+   Centred on x = 0 so the VIEWPORT crops it to its right half — exactly what
+   the convergence point at x = 0 does to the light. `--mus-rot` is written by
+   `MuseumScreen` and is the NEGATIVE of the shader's angle; the two media turn
+   opposite ways for the same number, which was measured, not assumed.
+
+   The box is the drawing's own 1400×1400 bounding box at the 1440×900 frame it
+   was drawn on, i.e. 1400/900 viewport heights. The ink fills the box edge to
+   edge (the re-framed viewBox IS the bounding box), so this is the ink size and
+   not a size with a margin to divide out. */
+#screen-museum .museum-cross {
+  --mus-cross-size: 155.6vh;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--mus-cross-size);
+  height: var(--mus-cross-size);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  /* the brief's own value: main accent blue, and 30 % applied as the element's
+     opacity by `MuseumScreen` so it can also fade with the field */
+  color: var(--color-link);
+  transform: translate(-50%, -50%) rotate(var(--mus-rot, 0deg));
+}
+#screen-museum .museum-cross svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* The asset ships the frame's own pale `#D2F4FF` on every path. A presentation
+   attribute loses to any CSS declaration, so the file stays a byte-for-byte
+   copy of what the designer delivered and the recolour lives here. */
+#screen-museum .museum-cross svg path {
+  fill: currentColor;
+}
+
+/* ── a section ───────────────────────────────────────────────────────────── */
+
+.mus {
+  position: relative;
+  /* THE BODY LEADS THE ERA HERE, which is the opposite of «О Крестах» and comes
+     straight off the frames: the kicker sits ~9vh into the section and the era
+     name ~44vh, i.e. the copy starts first and the title arrives as it reaches
+     the middle. (The longread's `--sec-body-lead: 50vh` does the reverse, and
+     copying it put a screen of empty column beside every section.) So the
+     section's top padding is small and the era's position is the sticky centre,
+     not a measured offset. */
+  padding: 14vh 0 20vh;
+  overflow: visible;
+  /* A FLOOR, because the era title is pinned to the vertical MIDDLE. Two
+     sections whose combined height is near one viewport put both of their
+     titles on screen at once — «Забвение» is three blocks long and did exactly
+     that, showing «Забвение» leaving at the top while «Свобода личности»
+     arrived at the bottom, which reads as a layout fault rather than a
+     transition. A section that owns at least a screen and a half hands over
+     cleanly no matter how little copy it carries. */
+  min-height: 150vh;
+}
+.mus:first-of-type {
+  padding-top: 24vh;
+}
+.mus-grid {
+  overflow: visible;
+}
+
+/* GRID, not flex, and `align-self: start` — a sticky flex item under the
+   default `align-items: stretch` is full-height, has nowhere to travel, and
+   silently never sticks. Nothing ABOVE this may carry `will-change`, `filter`
+   or a transform either: any of them steals sticky's containing block. (A
+   transform on the sticky element ITSELF is fine, and is what centres it.)
+
+   `top: 50%` + `translateY(-50%)` pins the era on the vertical middle of the
+   viewport, which is where the light's convergence point is — so the title sits
+   inside the cross at every viewport height, with nothing measured in script.
+   «О Крестах» needs a per-section measured `--sec-pin` for this because its
+   column heights swing 400px between sections; here there are four short
+   headings and the centring is exact by construction. */
+.mus-col {
+  position: sticky;
+  top: 50%;
+  align-self: start;
+  transform: translateY(-50%);
+  text-align: center;
+  /* written per frame by MuseumScreen — see `eraFade()` */
+  opacity: var(--mus-era-op, 1);
+}
+
+.mus-era {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h2-weight);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
+  margin: 0;
+  padding-inline: var(--grid-text-inset);
+  /* H2 is a FLAT 40px at every width while the column shrinks below 1440, so
+     hyphenation is load-bearing here for the same reason it is on `.sec-h2` —
+     see the sweep in concept.css. Needs `lang="ru"` on <html>, which is set;
+     without it this silently no-ops. 13 is the highest limit that never
+     overflows, and highest is what you want because it hyphenates least. */
+  hyphens: auto;
+  hyphenate-limit-chars: 13 6 4;
+}
+
+.mus-years {
+  font-weight: var(--type-caption-big-weight);
+  font-size: var(--type-caption-big-size);
+  line-height: var(--type-caption-big-lh);
+  margin: 12px 0 0;
+  padding-inline: var(--grid-text-inset);
+  /* Secondary ink as an OPACITY rather than a second colour: `--mus-ink` runs
+     from white to near-black across the page, and there is no single secondary
+     token that is correct at both ends. */
+  opacity: 0.6;
+}
+
+/* ── the body column ─────────────────────────────────────────────────────── */
+
+/* NO BLOCK MARGIN ANYWHERE BELOW — and "none" includes `margin: 0`. Every
+   vertical gap in here is declared in page.css's flow rules as a relationship
+   between two siblings; this sheet loads after it, and `.mus-body p` at (0,1,1)
+   would beat the flow's (0,1,0) twice over and collapse the gap it meant to
+   leave alone. */
+.mus-body {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  /* No lead-in. See `.mus` — on this page the copy arrives first and the era
+     name catches up with it at the middle of the frame. */
+  text-align: left;
+}
+.mus-body > p,
+.mus-body > ul {
+  padding-inline: var(--grid-text-inset);
+}
+
+.mus-h3 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  padding-inline: var(--grid-text-inset);
+}
+
+/* THE SAME STAR THE NEWS PAGE DRAWS. `src/assets/star-bullet.svg` is the
+   designer's file byte-for-byte, and round 27 already masks it for both the blue
+   tag separator and the ink list bullet — one file, three uses, and the mask is
+   what lets each take its own colour. A `clip-path: polygon()` shipped here
+   first and was visibly wrong: the real outline is four QUADRATIC curves
+   pinching to sharp points, and straight edges between those points read as a
+   notched diamond. */
+.mus-list {
+  list-style: none;
+  padding-left: 0;
+}
+.mus-list li {
+  position: relative;
+  padding-left: 40px;
+}
+.mus-list li + li {
+  margin-top: var(--sp-tight);
+}
+.mus-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  /* centred on the first line box: half a line, minus half the mark */
+  top: calc(0.5 * var(--type-base-lh) * 1em - 12px);
+  width: 24px;
+  height: 24px;
+  /* Amber because the frame draws it amber. It is decorative and carries no
+     interactive meaning, which is what keeps it out of the sitewide "blue means
+     clickable" rule. */
+  background: var(--color-mark-star);
+  mask: url(../../assets/star-bullet.svg) center / contain no-repeat;
+}
+
+/* ── the chrome: white on the dark fields, blue on the white one ─────────────
+   The wordmark and the chevrons are `--color-link` blue sitewide, which is the
+   "blue means interactive" rule and correct on the four white pages. On #081b5a
+   it is the one thing on screen with no contrast. `--mus-chrome` is written per
+   frame from the same `whiteness` the ink uses and runs the OTHER way — white
+   while the field is dark, the link blue by the time it is white.
+
+   The fallback is white, so the page is legible before the first rAF. */
+#screen-museum .ms-btn {
+  color: var(--mus-chrome, var(--color-text-ondark-main));
+}
+#screen-museum .ms-btn[disabled] {
+  opacity: 0.4;
+}
+/* page.css sets this to `--color-link` unconditionally */
+#screen-museum .page-home svg path {
+  fill: var(--mus-chrome, var(--color-text-ondark-main));
+}
+
+/* ── the picture block hugs its tallest slide ────────────────────────────────
+   `--ms-h` is a flat 410px everywhere else — the designer's own number for
+   «О Крестах», where the photographs are mixed portrait and landscape.
+   «Музей»'s are all wide: 1304×728 renders 559×312 in the body column, so the
+   constant left 49px of dead air ABOVE AND BELOW every slide and 189px between
+   a photo and the paragraph under it.
+
+   `MuseumRun.fitFrames()` writes a per-block `--ms-h` from the slides' own
+   intrinsic aspects instead. **`height: auto` is NOT the fix** and was tried:
+   the slides are `loading="lazy"` with `width/height` attributes and
+   `width: auto; height: auto` in CSS, so before decode those attributes supply
+   only an aspect-ratio — which needs a definite side — and every frame measured
+   0×0. That is round 27's desync bug exactly, and the fixed height is what was
+   hiding it. The height stays definite; only its value changes. */
+
+/* ── the narrow fallback ─────────────────────────────────────────────────────
+   1160 is the measured breakpoint the rest of the site collapses at. Below it
+   the grid is ONE column — and resetting the template is not enough: an
+   explicit `grid-column: 7` survives into a one-column grid and CREATES
+   IMPLICIT COLUMNS, which reads exactly like a media query that failed to
+   match. Every role class this page uses has to be named in the placement
+   reset. */
+@media (max-width: 1160px) {
+  .museum-page .page-grid {
+    grid-template-columns: 1fr;
+  }
+  .museum-page .page-grid > :is(.col-aside, .col-main, .col-lead, .col-full) {
+    grid-column: auto;
+    /* THE THIRD DECLARATION, and it is not optional either. `1fr` is
+       `minmax(auto, 1fr)`, so the track floors at its content's MIN-CONTENT —
+       and `.ms-frame` is deliberately `100% + one column + one gutter` wide.
+       The track grew to fit it and the body column measured 1501px inside a
+       1100px viewport: photographs running off the right edge, the next slide
+       visible beside them, and the whole column wider than the window. Measured
+       at 1100 and 900, identical. `min-width: 0` is what lets a grid item be
+       narrower than its own overflowing child. */
+    min-width: 0;
+  }
+  /* the column flows; there is nothing left to pin it against */
+  .mus-col {
+    position: static;
+    transform: none;
+    text-align: left;
+  }
+  .mus-body {
+    padding-top: 24px;
+  }
+  .mus {
+    padding-top: 18vh;
+  }
+}

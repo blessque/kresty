@@ -53,6 +53,23 @@ export class PageBackground {
   pure = true;
   /** index of the stop currently owning the frame; −1 is the lead-in white */
   index = -1;
+  /**
+   * The running crossfade, 0…1 — and the index it is heading TOWARD, which is
+   * always the higher of the blending pair.
+   *
+   * ROUND 28, for «Музей», whose last field is white: the shader light cannot
+   * survive there (`screen` only lightens), so it crossfades into a vector cross
+   * while the copy's ink inverts and the film grain fades out. All three must
+   * move on EXACTLY the number this class painted with — recomputing the same
+   * smoothstep in the page would be a second source of truth that drifts the
+   * moment a band width or a stop moves, and the failure would be a frame of
+   * white text on a white field.
+   *
+   * `index` alone cannot say this: a blend is either (cur → cur+1) or
+   * (cur−1 → cur), and both report the same `cur`.
+   */
+  blend = 0;
+  toIndex = -1;
 
   constructor(screen: HTMLElement) {
     this.el.className = 'page-bg';
@@ -96,11 +113,13 @@ export class PageBackground {
     let from = this.colorOf(cur);
     let to = from;
     let t = 0;
+    let toIdx = cur;
     const next = cur + 1;
     if (next < n) {
       const band = viewH * (this.stops[next].band ?? this.bandVh);
       if (sample > this.stops[next].top - band / 2) {
         to = this.colorOf(next);
+        toIdx = next;
         t = smoothstep(this.stops[next].top - band / 2, this.stops[next].top + band / 2, sample);
       }
     }
@@ -109,11 +128,14 @@ export class PageBackground {
       if (sample < this.stops[cur].top + band / 2) {
         from = this.colorOf(cur - 1);
         to = this.colorOf(cur);
+        toIdx = cur;
         t = smoothstep(this.stops[cur].top - band / 2, this.stops[cur].top + band / 2, sample);
       }
     }
 
     this.index = cur;
+    this.blend = t;
+    this.toIndex = toIdx;
     this.pure = t <= 0 || t >= 1;
     const bg = t <= 0 ? from : t >= 1 ? to : this.mix(from, to, t);
     if (bg !== this.last) {

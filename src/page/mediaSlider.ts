@@ -53,7 +53,7 @@ export interface MediaItem {
  */
 
 /** the frame's own height for the strip, px at the 1440 design frame */
-const STRIP_H = 410;
+export const STRIP_H = 410;
 
 export interface MediaSliderHost {
   /**

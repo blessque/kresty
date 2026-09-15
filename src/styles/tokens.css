@@ -76,6 +76,19 @@
   --dawn-mid: #2b4a7a;
 
   /**
+   * The frame's small four-pointed star, where it is DECORATIVE — «Музей»'s
+   * list marks (round 28). Amber, per the frame, and named rather than reaching
+   * for `--ref-amber` directly: the `--ref-*` layer is private to the generated
+   * set, and a screen sheet asking for "the mark colour" should not have to know
+   * which primitive currently answers.
+   *
+   * Note this is NOT the same star as `.news-filters__dot`, which is blue
+   * because it separates links. Colour follows interactivity here as everywhere;
+   * these marks are not clickable and so are not blue.
+   */
+  --color-mark-star: var(--ref-amber);
+
+  /**
    * Photographic scrims. Tuned against the shader in TUNING_LOG, measured
    * against the light rather than picked from a palette — these are effect
    * values and forcing them into the colour set would be a bad mapping.

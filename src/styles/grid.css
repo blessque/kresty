@@ -193,8 +193,10 @@
 /* THE MASTHEAD MEASURE (round 26) — six columns from column 2, so 148.667 →
    824.667, 676 wide. H1 + the lead paragraph under it is the universal opening
    of every page, and this is the one place it lives: «Новости», «Новость»,
-   «Аренда», «Контакты», «О Крестах», and a «Музей» page that does not exist yet
-   gets it by calling `buildPageHead` with no CSS at all.
+   «Аренда», «Контакты», «О Крестах» and «Музей» each get it by calling
+   `buildPageHead` with no CSS at all. (Round 28 widened that call's `lead` to
+   accept several paragraphs — «Музей» opens with two — rather than let one page
+   hand-roll a masthead and start the drift again.)
 
    It replaces three different answers — `.col-full` (1142) on the content
    pages, `.col-main` (559 at x=732) on «О Крестах», and a hand-built head on

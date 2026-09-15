@@ -13,6 +13,7 @@ import './styles/pages.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
 import './screens/contacts/contacts.css';
+import './screens/museum/museum.css';
 
 import { MainScreen } from './screens/main/MainScreen';
 import { ConceptScreen } from './screens/concept/ConceptScreen';
@@ -21,6 +22,7 @@ import { ContactsPage } from './screens/contacts/ContactsPage';
 import { NewsScreen } from './screens/news/NewsScreen';
 import { ArticleScreen } from './screens/news/ArticleScreen';
 import { RentScreen } from './screens/rent/RentScreen';
+import { MuseumScreen } from './screens/museum/MuseumScreen';
 import { Router } from './router';
 import { ScrollIntent } from './shared/scrollIntent';
 
@@ -46,8 +48,9 @@ async function boot() {
   const el = (id: string) => document.getElementById(id)!;
   const main = new MainScreen(el('screen-main'));
 
-  // ROUND 24: seven routes, one registry. Adding a page is one entry here and
-  // one in `HASHES` — it used to be five places in router.ts.
+  // ROUND 24: eight routes now, one registry. Adding a page is one entry here
+  // and one in `HASHES` — it used to be five places in router.ts. «Музей»
+  // (round 28) was the last dead nav link; nothing in the nav routes nowhere.
   //
   // `icons` is the round-12 light-on-arbitrary-SVG showcase. It kept the
   // `#contacts` hash and a real nav link until now, which TUNING_LOG had flagged
@@ -67,6 +70,7 @@ async function boot() {
     news,
     article,
     rent: new RentScreen(el('screen-rent')),
+    museum: new MuseumScreen(el('screen-museum')),
     icons: new ContactsScreen(el('screen-contacts')),
   });
 

@@ -540,7 +540,8 @@
    meant to leave alone. Those rules must not mention margin at all. If a gap
    looks wrong, it is one of the four rules below. */
 .sec-body > * + *,
-.article-body > * + * {
+.article-body > * + *,
+.mus-body > * + * {
   margin-top: var(--sp-text);
 }
 
@@ -561,15 +562,19 @@
 .article-body > * + .ms,
 .article-body > .ms + *,
 .article-body > * + .article-quote,
-.article-body > .article-quote + * {
+.article-body > .article-quote + *,
+.mus-body > * + .ms,
+.mus-body > .ms + * {
   margin-top: var(--sp-block);
 }
 
 /* a heading opens a new thought: more air above it than between paragraphs,
    less below it, so it binds to the text it introduces */
-.article-body > * + :is(h2, h3) {
+.article-body > * + :is(h2, h3),
+.mus-body > * + :is(h2, h3) {
   margin-top: var(--sp-block);
 }
-.article-body > :is(h2, h3) + * {
+.article-body > :is(h2, h3) + *,
+.mus-body > :is(h2, h3) + * {
   margin-top: var(--sp-tight);
 }

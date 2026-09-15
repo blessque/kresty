@@ -15,7 +15,8 @@ import { buildPageHead } from '../../page/pageHead';
  * Verified after the move: all seven captions still place.
  *
  * What remains here is the copy and the spacing class. The type, the colour and
- * the grid position are `buildPageHead`'s, so a future «Музей» page is one call.
+ * the grid position are `buildPageHead`'s, which is what made «Музей» one call
+ * when it landed in round 28.
  */
 
 const TITLE = 'О «Крестах»';

@@ -5083,3 +5083,315 @@ row filters (3 → 1 cards with the underline following), all four seams land on
 probe clean. One new token fell out: `--type-glyph-lh: 1` for a lone decorative character (the
 article's quote mark), because the type scale's smallest ratio adds half a line of air under a
 glyph that has no second line.
+
+---
+
+## Round 28 (2026-09-15) — «Музей»: a cross that turns instead of travelling
+
+Four eras, a field descending near-black → navy → slate → white, one light cross bisected by
+the frame's left edge. Figma `1049:1021`. The last dead nav link is gone.
+
+### The light is a different problem to «О Крестах»'s, and reusing it would have been wrong
+
+`pageLight.ts` is almost entirely a solution to **travel**. Its icon slides past the frame, so
+the shader result is baked once per station and MOVED on the compositor — hence a canvas two
+viewports tall, a measured `SectionGeom` table, `envelope()`, a hysteresis owner test, a
+station invariant and `iconY`'s three-phase clamp. The assertion all of that protects is
+*0 GPU submissions across 60 scrolling frames*.
+
+A cross pinned at `(x = 0, y = 50vh)` does not travel. Every one of those mechanisms is dropped
+and the canvas is one viewport that simply re-renders — the MAIN SCREEN's cost profile, not a
+regression against the concept page's. **The budget it keeps instead is the one that matters
+for a page you read:**
+
+> a reader who is not scrolling and not moving the cursor submits nothing at all
+
+`render()` dedupes on (rotation quantised to ¼°, cursor quantised to 20 cells, size).
+Measured 60/60 frames idle and 60/60 scrolling at 1440×900.
+
+No 90 ms cursor settle, unlike round 25's — that timer exists because a bake there can pull a
+70–90 ms mask rasterize with it. One mask here, and it never changes.
+
+### `signSize` IS THE SLIT, NOT THE RAYS — the first number was 4.8× too big
+
+The vector the designer draws on the white section is 1400px across, so 2.2 viewport heights
+looked like the answer. It is not: that vector is the **rays**, and in the shader the rays'
+reach comes from `falloffL`. `signSize` is the emblem — the slit the light comes through.
+
+At 2.2vh the slit filled the frame, every pixel became a source, the `#031721` field washed out
+to a pale blue and the masthead copy was unreadable on top of it. Sized like the hero's
+380-on-a-1440-stage instead: **0.46vh**.
+
+### Exposure is also how far the light LIFTS THE FIELD
+
+`mix-blend-mode: screen` is `1 − (1−a)(1−b)`. On a page where the light is the background behind
+body copy, the gain is not only brightness, it is how much of the field survives.
+
+| exposure | result at 1440×900 on `#081b5a` |
+|---|---|
+| 1.3 (concept's) | field lifted to a pale blue, white copy unreadable |
+| 0.6 | **shipped** — beams read as solid light, field still dark |
+| 0.35 | beams too short and concentrated; reads as a spotlight, not McCall |
+
+Render scale caps at **1.5**, not the concept light's 2: that one bakes and then costs nothing,
+this one re-renders on the frames the reader is also scrolling text and decoding photographs,
+and pixel count is quadratic. `?sign=` / `?exp=` / `?fall=` / `?rot=` / `?ls=` are how all of
+this was dialled — three numbers did not warrant a panel.
+
+### THE SHADER ROTATES THE OPPOSITE WAY TO CSS FOR THE SAME NUMBER
+
+The shader rotates the coordinates it **samples** the mask with, so the image turns against the
+sign; `rotate()` turns the drawing itself. Measured by reading ray angles off a circle around
+the convergence point (`?rot=` pins the angle so this stays reproducible):
+
+```
+signRot  +10°   →  rays move  −10°     (WebGPU and WebGL2 agree)
+rotate(40deg)   →  rays move  +40°
+```
+
+So `--mus-rot` is written as the NEGATIVE of the shader's angle. Left unnegated the two
+counter-rotate through the crossfade.
+
+**Do not check this by eye.** The emblem is 8-fold with a 45° period, so a 40° step lands one
+ray almost exactly where another was — a wrong sign reads as "about right", and a correct one
+reads as a 5° twitch. The measurement is the only honest version.
+
+### The two emblems are NOT the same drawing
+
+Reusing `assets/sign.svg` for the vector is the obvious move and it is wrong. Measured wedge
+width as a fraction of the emblem's span:
+
+```
+sign.svg                 17.7 / 722  = 3.5 %
+cross-vector-big.svg     33.7 / 1400 = 2.4 %
+```
+
+Same motif, different proportions — the hero's emblem puts visibly fatter rays on the white
+section than the frame draws. `assets/cross-vector.svg` is the designer's file byte-for-byte
+with only its viewBox opened from the delivered `0 0 545 1135` crop to the drawing's own
+bounding box `-855 -265 1400 1400`, because **rotating a pre-cropped half rotates its straight
+cut edge into view**.
+
+What the two share is centre, footprint and direction. Their ray angles do not match and cannot
+be made to (different drawings, plus the mask is uploaded Y-flipped, which mirrors the light's
+rays): measured on a circle, the light sits at ≈ −56/−15/−7/+11/+17° and the vector at
+±18/±27/±63/±72°. The handover is a dissolve between two drawings of one motif, over a
+0.6-viewport band during which the angle moves ~10°.
+
+### The white ending is one number with four consumers
+
+`screen` cannot darken, so on white the light is not faint, it is **absent**. That is the point
+of the section, and it means four things must cross the boundary together or the page shows
+white text on a white field:
+
+```
+whiteness → canvas opacity 1−w · vector w×0.3 · --mus-ink mix(#fff→#031721) · --grain-k 1−w
+```
+
+All four read `PageBackground.blend`/`.toIndex` — **the blend factor the colour track actually
+painted with**. A second copy of that smoothstep in the page would agree today and drift the
+first time a band width or a stop moved, and the failure mode is invisible copy rather than an
+error. `index` alone cannot express it: a blend is either (cur → cur+1) or (cur−1 → cur) and
+both report the same `cur`, hence `toIndex`.
+
+It is *whiteness*, not "progress past white" — the field leaves white again at the seam, and a
+cross that only knew it had arrived would sit blue-on-blue over the handoff.
+
+### The seam skips `DAWN_MID`
+
+`DAWN_MID` exists because the leap from a ~7 %-lightness page to the 62 % brand blue is more
+travel than one band can carry without flattening into mush. A page whose last field is WHITE
+has no such gap, and routing through `#2b4a7a` makes the ending dip dark before it brightens.
+`MainHandoff.dawn = false`; the four existing white pages were left alone.
+
+Measured at the swap, page's-last-frame against main's-first: **max Δ 6**, rising to 24 at
+120 ms and 86 at 300 ms as the light intentionally blooms open. (The 6 is the film grain, which
+is at full strength on the blue on both sides.)
+
+### Layout findings
+
+- **The body LEADS the era**, the reverse of the longread. The frames put the kicker ~9vh into
+  a section and the era name ~44vh. Copying `--sec-body-lead: 50vh` put a screen of empty
+  column beside every section.
+- **`min-height: 150vh` on a section is load-bearing.** A sticky column is on screen from the
+  moment its section's top edge is, so at a boundary the outgoing era sits at the top of the
+  frame while the incoming one arrives at the bottom. «Забвение» is three blocks long and did
+  exactly that. The floor plus `fadeEras()` (opacity by distance from the frame's middle) keeps
+  one era in the light at a time. «О Крестах» never shows this because its light's envelope
+  fades each station and the eye follows the light.
+- `.mus-col` is `sticky; top: 50%; translateY(-50%)` — the era centres on the viewport middle,
+  which is where the convergence point is, with nothing measured in script. A transform on the
+  sticky element itself is fine; one on an ANCESTOR steals sticky's containing block.
+- The `.mus-*` vocabulary deliberately does not reuse `.sec-*`: that sheet's sizing hangs off
+  root custom properties written by `applyMotionCss()` from a module-level singleton that
+  survives its screen being hidden, so sharing it would let the concept page's tuning panel
+  drive this one silently.
+
+Verified: all eight routes cold-load; «Музей» navigates and seams; field is exactly
+`rgb(86, 183, 230)` with light and cross both at 0 before the swap; 60fps idle and scrolling;
+one column at 1024 (template AND placement); the cross rotates on the forced WebGL2 fallback
+with the same measured angles; `lint:tokens` + `tokens:check` + `tsc` + build + headline probe
+clean.
+
+**Open:** §4's two renders came off the frame and exist nowhere else in the project — the
+winter street is only 1280×859. Ask the designer for the source. The masthead CTA says
+«Стать партнером» like the other four where the frame draws «Связаться».
+
+---
+
+## Round 28.1 (2026-09-15) — the client's pass on «Музей»: the light comes alive
+
+Seven notes on round 28. Five were layout; two overturned round 28's own reasoning.
+
+### THE LIGHT IS LIVE NOW, AND BAKING IT WAS THE WRONG INSTINCT
+
+Round 28 froze `timeSec` at 0 and redrew only on scroll or cursor, inheriting «О Крестах»'s
+*0 GPU submissions across 60 scrolling frames*. Client: **"why do we use a baked version? there
+is only one glowing element on the whole page. can we make it dynamic, like on the main?"**
+
+That budget is right on the concept page, where a second GPU context runs beside Three.js and
+six stations each want their own mask. Here it bought nothing anybody could see and cost the
+thing worth having. With the clock stopped, **`breathe`, `shimmer`, the dust drift, the fiber
+comb and the slow `vnoise` gate on the god-rays (`gAmt *= smoothstep(…, vnoise(u_time*0.06))`)
+are all inert BY CONSTRUCTION** — so the page was showing a photograph of the hero rather than
+the hero, and no dial could have fixed it because the terms were multiplied by a constant.
+
+Now: one full-viewport pass per frame at render scale 1.5, no dedupe key (with a running clock
+every frame genuinely differs, so a key is a comparison that never matches). **Measured 60 fps
+idle, 59 fps scrolling.** The rAF stops with the route, so the cost is bounded by visibility.
+
+The cursor stays quantised to 20 cells. That was never only a render budget — `u_parallax`
+deforms the field toward the pointer, and the brief has always said *disturbed dust, never
+literally follow the mouse*.
+
+### `signSize` SETS THE RAYS' WIDTH EVEN THOUGH IT DOES NOT SET THEIR LENGTH
+
+Round 28 recorded "`signSize` is the slit, not the rays — their reach is `falloffL`" and sized
+the emblem like the hero's 380-on-1440 (0.46vh). The reasoning is correct and **it is only half
+the fact**. A small slit makes thin needles; the frame's own light-beam renders and the
+designer's vector both draw WIDE soft wedges. Client: *"a cross is way too small. I like the
+size of the vector cross. Why not making a glowing one the same big?"*
+
+So `signSize` goes to **2.2vh = the vector's own 1400px ink**, and the two crosses are now one
+size — which is what makes the handover read as one object changing medium rather than two props
+being swapped.
+
+**`signSize` and `exposure` are a pair; do not move one alone.** At 2.2 every pixel of the frame
+is a source, so exposure falls 0.6 → **0.25** and `falloffL` 990 → **700**. Calibrated against
+the frame's own hero render rather than by eye, sampled at three points in the open field:
+
+```
+designer's render   rgb(37,37,33) · rgb(40,40,34) · rgb(32,31,26)
+shipped             rgb(25,46,60) · rgb(30,52,67) · rgb(15,37,48)
+```
+
+Comparable luminance; the hue differs because the frame's field is a warm neutral and the page's
+is `#031721`, which is a palette decision and not something to chase with an exposure dial.
+
+### A GRID ITEM NEEDS `min-width: 0` OR AN OVERFLOWING CHILD WIDENS THE TRACK
+
+The client's screenshot showed photographs running off the right edge with the next slide
+visible beside them. Cause: `1fr` is `minmax(auto, 1fr)`, so the track floors at its content's
+MIN-CONTENT, and `.ms-frame` is deliberately `100% + one column + one gutter` wide. **The body
+column measured 1501px inside a 1100px viewport**, identical at 900.
+
+This is a THIRD declaration the 1160 collapse needs, after the template and the placement reset.
+Worth checking wherever a `.ms` block lands in a one-column grid.
+
+### THE FIXED 410px FRAME WAS HIDING ROUND 27'S BUG, AND `height: auto` REVEALED IT
+
+Client: *"too big vertical gaps."* Measured: a 1304×728 photo renders 559×312 in the body
+column inside a 410px frame, so **49px of dead air above AND below every slide** and 189px from
+a photo to the paragraph under it.
+
+`height: auto` on the frame is the obvious fix and it is wrong: slides are `loading="lazy"` with
+`width`/`height` attributes and `width: auto; height: auto` in CSS, so before decode those
+attributes supply only an aspect-ratio — which needs a definite side — and **every frame
+measured 0×0**. That is round 27's desync verbatim; the fixed height was what had been hiding
+it. `MuseumRun.fitFrames()` writes a per-block `--ms-h` from the slides' INTRINSIC aspects
+(known before the first byte arrives), capped at the shared 410. Photo→text: 189 → **140**, all
+of it the design system's own steps.
+
+### Three smaller ones
+
+- **A clip-path is not the icon.** The star bullets used `polygon()`, the same approximation
+  `.news-filters__dot` draws. The real mark is `public/resources/Star-640.svg` — four QUADRATIC
+  curves pinching to sharp points — and straight edges between those points read as a notched
+  diamond. It is driven as a `mask` so the mark still takes its colour from CSS. **The asset was
+  already in the repo**; approximating a shape the project owns is the mistake.
+- **The chrome runs the OTHER way to the ink.** The wordmark and the chevrons are
+  `--color-link` blue sitewide — correct on the four white pages, and the one thing with no
+  contrast on `#081b5a`. `--mus-chrome` interpolates white → link blue on the same `whiteness`
+  the ink uses, so they are legible on the dark fields and interactive-blue by the white one.
+- **The masthead CTA is secondary**, `.btn--secondary` on dark (transparent plate, white
+  stroke), labelled **«Связаться»** — the frame's own word on this page, against the other four
+  pages' «Стать партнером». `buildPageHead` gained a `cta` override for it.
+
+Verified after: `lint:tokens` + `tokens:check` + `tsc` + build + headline probe clean; all eight
+routes error-free with «О Крестах» unchanged at 20056; seam still exactly `rgb(86,183,230)` with
+light and cross at 0 before the swap; one column at 1024 with no overflow at 1100 or 900.
+
+### 28.2 — «why baked instead of the real one from the main screen?»
+
+The client asked again after 28.1's live clock, and they were right: **the clock was half the
+answer.** The light was not the main screen's at all. Round 28 built it by copying
+`screens/concept/pageLight.ts` — the nearest precedent for "the hero light on a page" — and
+**that class does not use «Сияние» either.** It overrides seven of its params from
+«О Крестах»'s `MOTION` set (dialled for ~200px silhouettes that must read as objects) and ships
+`grain: 0` and `octaves: 0` besides. Inherited wholesale:
+
+```
+dissolve   1    → 0.41    «Сияние» IS the dissolved logo; 0.41 is «Прорезь»
+grain      0.06 → 0       the register is "grainy, sculptural" — a client rule
+octaves    4    → 0       the fbm dust switched off entirely
+layers     3    → 4
+godrays / bloom / core / falloff / parallax   all re-tuned
+```
+
+**`octaves: 0` is what did the visible damage.** It feeds the volumetric noise, so the light had
+no dust in it and read as a smooth pre-rendered gradient — a baked look, produced by a param,
+which no clock could have fixed. `grain: 0` removed the other half of the texture, and
+`dissolve: 0.41` gave hard-edged wedges where «Сияние» is feathered zoom-blur trails.
+
+Now: **the preset is spread untouched**, `layers`/`octaves` come from the perf tier exactly as
+`MainScreen` supplies them, and only the three things the composition forces differ —
+`centerPx`, `signSize`, `signRot` — plus ONE gain (`0.22`) on godrays/bloom/core/haze, because
+the emblem is ~4× the hero's and those terms are not normalised for size. Every param that gets
+a local opinion is a step back toward a lookalike.
+
+Side effect worth recording: **single-pixel sampling is no longer a stable measurement** on this
+page. With `grain` and the clock live, every frame genuinely differs — the same three field
+points swung 23–43 between exposures purely on noise phase. Compare region means, or look.
+
+Verified: `lint:tokens` + `tokens:check` + `tsc` + build clean; 60fps idle and scrolling; seam
+still exactly `rgb(86,183,230)` with light and cross at 0; all eight routes error-free with
+«О Крестах» unchanged at 20056.
+
+### 28.3 — rebasing onto round 27, which solved two of the same problems first
+
+Round 27 (PR #13) landed on `main` while this round was in progress and reached for the same
+two fixes. Both times **its version derives what this round declared**, and the rebase dropped
+ours:
+
+- **The dawn.** Round 28 added a `MainHandoff.dawn` boolean for «Музей» to set false. Round 27's
+  `setFrom()` reads the incoming colour's relative LUMINANCE and drops the dawn above 0.2, with
+  `PageShell` passing the page's last stop. A flag is a second, manual answer to a question
+  already answered — and one that can disagree with the track it describes. Deleted; «Музей»
+  gets the light path (3.0 / 1.5) with no museum code at all.
+- **The star.** Round 28 masked `public/resources/Star-640.svg`. Round 27 had already shipped
+  `src/assets/star-bullet.svg` — the designer's file, masked for BOTH the news tag separator and
+  the news list bullet. One file, three uses. (This is also what the client's "we already use
+  the icon on other pages, find it" was pointing at; it was true before this round started.)
+- **`MediaItem`.** Both rounds moved it out of `pageSections` into `page/mediaSlider` for the
+  same reason. Theirs was already on `main`, so this round's share of that change is a one-line
+  `export` on `STRIP_H`.
+
+Worth generalising: **where two sessions reach for the same fix, keep the one that derives it.**
+A flag that a caller must remember to set is a chance to forget; a luminance test cannot be
+forgotten. `.claude/rules` already says to stage explicit paths because parallel sessions
+collide — this is the same hazard one level up, in the design rather than the index.
+
+Verified after the rebase: all eight routes error-free, seam ramps white → `#56b7e6` with no
+`#2b4a7a` and still fires, `lint:tokens` + `tokens:check` + `tsc` + build clean. Note
+`#contacts` no longer reaches `networkidle` — round 27's Yandex iframe keeps the connection
+open, so route smoke tests need `domcontentloaded` plus a wait.

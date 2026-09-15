@@ -1,8 +1,16 @@
-# Content pages — «Новости», «Новость», «Аренда», «Контакты»
+# Content pages — «Новости», «Новость», «Аренда», «Контакты», «Музей»
 
-Four pages that are the same page with different words (round 24). Everything they share
-lives in `src/page/`; everything that differs is a `ContentScreen` subclass and a block in
-`src/styles/pages.css`.
+Four pages that are the same page with different words (round 24), plus one that is not
+(round 28). Everything they share lives in `src/page/`; everything that differs is a
+`ContentScreen` subclass and a block in `src/styles/pages.css`.
+
+**«Музей» is the page that stretched the shell** — it has a rAF, a GPU canvas and a four-stop
+colour run ending on white, where the other four are flat and static. It still extends
+`ContentScreen`, and what it needed from `src/page/` was four small widenings rather than a
+second shell: `ContentScreen.remeasure()`, `pageHead`'s multi-paragraph lead and `cta`/`dark`
+overrides, and `PageBackground.blend`/`toIndex`. (The dawn it needs skipping is round 27's
+`MainHandoff.setFrom()`, which derives it from luminance — no flag.) Read `docs/architecture/MUSEUM.md` before touching
+any of them — each one has a page depending on the reason it exists.
 
 ---
 
@@ -169,7 +177,9 @@ headings of one rank behaving three ways is what the client reported. Note the t
 - **Ten of the thirteen headlines are written, not the designer's.** The three from frame
   `854:251` are verbatim; the rest fill the two thin categories and the empty one, in the same
   register, and want a copy pass.
-- **«Музей» still routes nowhere** — no design yet.
+- **«Музей»'s two closing renders are low-res.** The temple square came off the frame at
+  3000×2000 and is fine; the winter street is only 1280×859 and exists nowhere else in the
+  project. Ask the designer for the source. → `museumSections.ts`
 - **«Контакты» carries the repo's first third-party embed** — the Yandex Maps iframe widget.
   No API key, no `<script>`, no dependency, but it is a request to Yandex on every view, and
   the pin's coordinates were derived from the address rather than from the object's own card.

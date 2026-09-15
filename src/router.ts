@@ -7,7 +7,15 @@ import { TransitionController } from './screens/transition/TransitionController'
  * `startScreen` — which was fine for three and untenable for seven. Adding a
  * page is now one entry in `SCREENS` plus one line in `HASHES`.
  */
-export type Route = 'main' | 'concept' | 'contacts' | 'news' | 'article' | 'rent' | 'icons';
+export type Route =
+  | 'main'
+  | 'concept'
+  | 'contacts'
+  | 'news'
+  | 'article'
+  | 'rent'
+  | 'museum'
+  | 'icons';
 
 /**
  * The whole contract a screen owes the router. Deliberately tiny: a screen never
@@ -51,6 +59,7 @@ const HASHES: Record<string, Route> = {
   '#contacts': 'contacts',
   '#news': 'news',
   '#rent': 'rent',
+  '#museum': 'museum',
   '#icons': 'icons',
 };
 
@@ -74,6 +83,7 @@ const SCREEN_IDS: Record<Route, true> = {
   news: true,
   article: true,
   rent: true,
+  museum: true,
   icons: true,
 };
 
