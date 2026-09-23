@@ -123,7 +123,7 @@ export class NewsScreen extends ContentScreen {
           // No link of its own — the headline's link is stretched over the whole
           // card in CSS, so the picture, the headline and the air between them
           // are one target with one accessible name.
-          ? `<img class="news-card__img" src="${asset(encodeURI(n.image))}" alt=""` +
+          ? `<img class="news-card__img shimmer" src="${asset(encodeURI(n.image))}" alt=""` +
             ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}">`
           : '') +
         `</div>` +

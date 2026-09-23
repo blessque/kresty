@@ -51,7 +51,7 @@ export function buildHero(): HTMLElement {
   el.className = 'concept-hero';
 
   el.innerHTML =
-    `<img class="concept-hero__img" src="${asset('/resources/embankment-hero.webp')}"` +
+    `<img class="concept-hero__img shimmer" src="${asset('/resources/embankment-hero.webp')}"` +
     // Intrinsic pixels for the same reason every MediaItem carries them: the box
     // is committed before decode. This one is ABOVE the fold and the first thing
     // the map's scroll geometry is measured against, so a late reflow here moves

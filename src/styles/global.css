@@ -69,6 +69,53 @@ button {
   mix-blend-mode: overlay;
 }
 
+/* ── PHOTO PLACEHOLDER (round 31.5) ──────────────────────────────────────────
+   Content photographs carry `.shimmer`: a sheen crosses the reserved box until
+   the image paints over it. Every such image already has intrinsic width/height
+   (or a definite slide height), so the box exists before a byte arrives — the
+   placeholder fills space that was always reserved, it moves nothing.
+
+   `shared/imgShimmer.ts` adds `is-loaded` / `is-failed`, and the animation is
+   OFF in both. That is load-bearing, not tidiness: a background animation
+   repaints every frame it runs, and behind an `object-fit: contain` slide the
+   letterbox would keep shimmering around the finished photo.
+
+   Translucent tints rather than tokens because they must read on white pages
+   AND on the deep section fields and «Музей»'s near-black — a mid-grey veil and
+   a white sheen do, any single opaque colour would not. The main screen's own
+   photo slider and showreel are NOT placeholders: they reveal with their own
+   motion, and the headline invariant forbids a second visual state there. */
+.shimmer:not(.is-loaded) {
+  background-color: rgba(128, 128, 128, 0.16);
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  animation: ph-sheen 1.6s linear infinite;
+}
+.shimmer.is-failed {
+  animation: none;
+  background-image: none;
+}
+/* at 100% the band sits off the left edge, at 0% off the right: left → right */
+@keyframes ph-sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer:not(.is-loaded) {
+    animation: none;
+  }
+}
+
 #white-flash {
   position: fixed;
   inset: 0;

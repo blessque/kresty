@@ -115,7 +115,7 @@ export class MediaSlider {
     this.strip.innerHTML = items
       .map(
         (m) =>
-          `<img class="ms-shot" src="${asset(encodeURI(m.src))}"` +
+          `<img class="ms-shot shimmer" src="${asset(encodeURI(m.src))}"` +
           ` alt="${escapeHtml(m.alt)}" loading="lazy" decoding="async"` +
           // intrinsic pixels, so the box is committed before decode — the
           // reason `pageSections.ts` requires w/h on every MediaItem

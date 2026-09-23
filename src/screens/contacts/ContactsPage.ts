@@ -63,6 +63,19 @@ const MAP_URL =
     scroll: 'false',
   }).toString();
 
+/** the same place as a link, for the placeholder and for when the widget never arrives */
+const MAP_LINK =
+  'https://yandex.ru/maps/?' +
+  new URLSearchParams({ ll: MAP_CENTRE, z: '16', text: 'Кресты, Арсенальная набережная, 7' }).toString();
+
+/**
+ * How long a map that has STARTED loading gets before the placeholder says so
+ * and offers the link (round 31.5). Counted from the moment the block nears the
+ * viewport, not from page load: the iframe is `loading="lazy"`, so before that
+ * the browser has not even asked for it.
+ */
+const MAP_TIMEOUT_MS = 10000;
+
 function pairs(rows: [string, string][]): string {
   return rows
     .map(([k, v]) => {
@@ -118,15 +131,32 @@ export class ContactsPage extends ContentScreen {
     // full width, inside the margins — `.col-full` is columns 2–11, and that IS
     // the frame's 1142 measure (10 × 92.667 + 9 × 24 = 1142.667). Ten columns
     // is what the map was asked for, so the span needed no new class.
+    //
+    // ROUND 31.5: A PLACEHOLDER UNDER THE MAP. A third-party widget is the one
+    // thing on the page that can simply not arrive — offline, blocked by a
+    // tracker filter (it pulls ad scripts), or slow — and an empty 2:1 hole in
+    // the page reads as broken. The placeholder is the same shimmer the photos
+    // use, carries the address and a link, and stays under the iframe, which
+    // fades in over it on `load`. If nothing has loaded MAP_TIMEOUT_MS after the
+    // block came near the viewport, it says so and the link is the way out.
     const map = document.createElement('section');
     map.className = 'page-block page-grid';
     map.innerHTML =
       `<div class="col-full">` +
-      `<iframe class="contacts-map" src="${escapeHtml(MAP_URL)}"` +
+      `<div class="contacts-map" data-state="loading">` +
+      `<div class="contacts-map__ph shimmer">` +
+      `<p class="contacts-map__addr">${escapeHtml(bindShortWords('Санкт-Петербург, Арсенальная набережная, 7'))}</p>` +
+      `<p class="contacts-map__msg" aria-live="polite">Карта загружается…</p>` +
+      `<a class="contacts-map__link" href="${escapeHtml(MAP_LINK)}" target="_blank" rel="noopener">` +
+      `Открыть в Яндекс Картах</a>` +
+      `</div>` +
+      `<iframe class="contacts-map__frame" src="${escapeHtml(MAP_URL)}"` +
       ` title="Кресты на карте Санкт-Петербурга" loading="lazy"` +
       ` allowfullscreen></iframe>` +
+      `</div>` +
       `</div>`;
     this.shell.add(map);
+    this.watchMap(map.querySelector('.contacts-map') as HTMLElement);
 
     // «Аренда помещений» — the shared form with this page's heading
     const form = new ContactForm(this.shell.scroller, {
@@ -157,5 +187,60 @@ export class ContactsPage extends ContentScreen {
     // and `PageShell.measure()` derives its colour stops from the viewport
     // height alone — nothing it computes depends on the font. Dropped with the
     // pin rather than left as a call that looks load-bearing and is not.
+  }
+
+  /**
+   * loading → ready | failed.
+   *
+   * THE IFRAME'S `load` IS NOT PROOF THE MAP ARRIVED. Measured with Yandex
+   * blocked: `load` still fires, because the browser loads its own error page
+   * into the frame — and that page is as cross-origin as the real one, so
+   * nothing inside can be inspected to tell them apart. So when the block nears
+   * the viewport a `no-cors` probe of the same URL goes out: its response is
+   * opaque, but a blocked or offline request REJECTS, which is the one signal
+   * the frame cannot give. Ready = frame loaded AND probe answered; failed =
+   * probe rejected, or nothing within MAP_TIMEOUT_MS.
+   */
+  private watchMap(box: HTMLElement) {
+    const frame = box.querySelector('iframe') as HTMLIFrameElement;
+    const ph = box.querySelector('.contacts-map__ph') as HTMLElement;
+    const msg = box.querySelector('.contacts-map__msg') as HTMLElement;
+    let loaded = false;
+    let reachable: boolean | null = null;
+    let timer = 0;
+    const settle = () => {
+      if (box.dataset.state !== 'loading') return;
+      if (reachable === false) {
+        clearTimeout(timer);
+        box.dataset.state = 'failed';
+        ph.classList.add('is-failed');
+        msg.textContent = 'Карта не загрузилась';
+      } else if (loaded && reachable) {
+        clearTimeout(timer);
+        box.dataset.state = 'ready';
+        ph.classList.add('is-loaded'); // stops the sheen under the map
+      }
+    };
+    frame.addEventListener('load', () => {
+      loaded = true;
+      settle();
+    });
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        fetch(MAP_URL, { mode: 'no-cors' }).then(
+          () => (reachable = true),
+          () => (reachable = false),
+        ).finally(settle);
+        timer = window.setTimeout(() => {
+          reachable = reachable ?? false; // nothing answered in time
+          if (!loaded) reachable = false;
+          settle();
+        }, MAP_TIMEOUT_MS);
+      },
+      { rootMargin: '200px 0px' },
+    );
+    io.observe(box);
   }
 }

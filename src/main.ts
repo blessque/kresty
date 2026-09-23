@@ -25,6 +25,7 @@ import { RentScreen } from './screens/rent/RentScreen';
 import { MuseumScreen } from './screens/museum/MuseumScreen';
 import { Router } from './router';
 import { ScrollIntent } from './shared/scrollIntent';
+import { watchImageLoads } from './shared/imgShimmer';
 
 // global film grain overlay (tiny generated noise tile, blend: overlay)
 function makeGrain() {
@@ -44,6 +45,8 @@ function makeGrain() {
 
 async function boot() {
   makeGrain();
+  // before any screen builds, so no photo can finish loading unobserved
+  watchImageLoads();
 
   const el = (id: string) => document.getElementById(id)!;
   const main = new MainScreen(el('screen-main'));

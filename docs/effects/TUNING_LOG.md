@@ -5869,3 +5869,25 @@ Cost +15 % (rung 2: 5.6 → 6.7 ms WebGPU on M1); main still 0 slow windows in 2
 The radial smear does NOT help because the march noise is not mask detail — it is where along
 a ~14 px step each pixel happens to sample.
 
+### 31.5 — loading placeholders: a sheen for photos, a fallback for the map
+
+**Photos.** Content photographs carry `.shimmer` (slider/solo shots, news cards, «Аренда»,
+the map drawer's photo, «О Крестах»'s hero): a sheen crosses the already-reserved box until
+the image paints. `shared/imgShimmer.ts` marks `is-loaded` / `is-failed` from ONE capture
+listener on the document (`load`/`error` don't bubble, but capture) and the animation stops in
+both — left running it repaints forever and shows in a `contain` slide's letterbox. **Trap:** an
+image can finish while DETACHED (slider strips are built before insertion) and that `load`
+never reaches the document, so a MutationObserver marks whatever arrives already `complete`.
+Verified with `.webp` requests held: visible photos animate; released, 9/9 marked loaded, 0
+stuck. The main screen's slider/showreel are deliberately excluded (their own reveal; the
+headline invariant).
+
+**Map.** The Yandex iframe sits over a placeholder (address, «Карта загружается…», a link to
+Yandex Maps) and fades in. **Trap: the iframe's `load` fires even when Yandex is blocked** — the
+browser loads its error page into the frame, which is just as cross-origin as the real one.
+So a `no-cors` probe of the same URL goes out when the block nears the viewport; opaque on
+success, it REJECTS when blocked or offline. Ready = frame loaded AND probe answered; failed =
+probe rejected or nothing in 10 s (counted from nearing the viewport — the iframe is lazy).
+Verified both: normal → `ready`, frame opacity 1; Yandex aborted → `failed`, «Карта не
+загрузилась» + the link.
+

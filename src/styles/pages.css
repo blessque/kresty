@@ -749,10 +749,53 @@
    a UA default gives an iframe a 2px inset border that no other element here
    has, and it reads as a misaligned edge against the column. */
 .contacts-map {
-  display: block;
+  position: relative;
   width: 100%;
   aspect-ratio: 2 / 1;
+}
+/* the widget, over its placeholder; fades in on `load` (ContactsPage.watchMap) */
+.contacts-map__frame {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   border: 0;
+  opacity: 0;
+  transition: opacity 400ms var(--ease-out);
+}
+.contacts-map[data-state='ready'] .contacts-map__frame {
+  opacity: 1;
+}
+/* ROUND 31.5: what shows until the map arrives, and instead of it if it never
+   does. The `.shimmer` sheen is global.css's; `is-loaded` / `is-failed` stop it. */
+.contacts-map__ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+.contacts-map__addr,
+.contacts-map__msg {
+  margin: 0;
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+}
+.contacts-map__msg {
+  color: var(--color-text-onlight-secondary);
+}
+.contacts-map__link {
+  margin-top: 8px;
+  color: var(--color-link);
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
 }
 
 /* The shared form is dark by default (it was built for «О Крестах»'s dark

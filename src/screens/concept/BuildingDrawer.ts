@@ -126,7 +126,7 @@ export class BuildingDrawer {
 function hero(info: BuildingInfo): string {
   if (!info.photo) return '';
   return `<div class="bld-hero">
-    <img class="bld-photo" src="${escapeHtml(asset(info.photo))}" alt="" aria-hidden="true">
+    <img class="bld-photo shimmer" src="${escapeHtml(asset(info.photo))}" alt="" aria-hidden="true">
   </div>`;
 }
 

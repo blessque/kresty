@@ -289,7 +289,7 @@ export class RentScreen extends ContentScreen {
       panel.role = 'tabpanel';
       panel.setAttribute('aria-labelledby', tab.id);
       panel.innerHTML =
-        `<img class="rent-photo" src="${asset(encodeURI(s.photo))}"` +
+        `<img class="rent-photo shimmer" src="${asset(encodeURI(s.photo))}"` +
         ` alt="${escapeHtml(s.alt)}" decoding="async"${on ? '' : ' loading="lazy"'}` +
         ` width="2400" height="1600">` +
         `<p class="page-prose">${escapeHtml(bindShortWords(s.body))}</p>` +
