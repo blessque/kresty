@@ -23,6 +23,7 @@ is already top-left). Everything is computed in reference px: `p = (fragPx − u
 | `u_sceneDim` | hover "gallery dark": light surge |
 | `u_modeMix` | 0 holographic white/rainbow (blue bg) → 1 dusty warm amber (dark scene) |
 | `u_layers`, `u_octaves` | perf tier: dust parallax layers (≤3), fbm octaves (≤4) |
+| `u_raySteps` | god-ray march steps, clamped 8..32 — the frame governor's rung (round 31); was derived as `clamp(layers·8 + octaves·4, 12, 32)` |
 
 ## Variant params (preset-driven, tweened on switch)
 
@@ -65,6 +66,14 @@ blank.
 ## Section order inside the fragment shader
 
 1. polar coords + pointer offset
+
+Steps 2–8's field half lives in **`proceduralField()`** (round 31), returning a `Field`
+struct (`col`, `crossGlyph`, `core`). `main`/`fs` call it only when it can reach the screen:
+`slitMix < 0.999` (a crossfade) or no mask (the cross-glyph fallback). Every shipped light
+runs `slitMix: 1`, where the field was computed per pixel and multiplied by zero — skipping it
+halves the frame (33.8 → 15.1 ms at 5.2 MPx on M1) and is pixel-identical (≤ 1/255, measured
+on both backends).
+
 2. dust (layered fbm in rotating polar domain, radial-lattice jitter vs rings,
    constant angular frequency — never scale it by r)
 3. motes (Cartesian cells, radially-oriented gaussians, drift + edge fade,
@@ -96,7 +105,25 @@ static) — fixed offsets deposit ghost copies of the mask edges ("ladders").
 
 ## WebGPU uniform packing
 
-Single 288-byte buffer = 18 vec4s, packed in `WebGPURayFieldRenderer.render()`. The mask
+Single 304-byte buffer = 19 vec4s (`FLOATS = 76`), packed in `WebGPURayFieldRenderer.render()`. The mask
 texture + sampler bind at `@binding(1)`/`@binding(2)` (bind group rebuilt on `setSignMask`).
 Field order there and in the WGSL `struct U` must match exactly — update both together
-(p0..p9 comments name the slots; `p9` = godrays, bloom, dissolve, spare).
+(p0..p11 comments name the slots; `p10.w` is spare, `p11` = hoverDir.xy, hoverAmt, raySteps).
+
+## Quality governor (round 31)
+
+Cost is fill rate: pixels × (12 bloom taps + `raySteps` × 3 chromatic taps). `shared/frameGovernor.ts`
+picks a rung from `LADDER` — `{scale 2, 32} → {1.5, 32} → {1.25, 28} → {1, 24} → {0.75, 24} →
+{0.6, 20}` — from measured frame time: > 10 % of a 60-frame window over 20 ms steps down; 5 s
+with no slow frames probes one rung up, never above the default rung 2; a probe that has to be
+undone locks it for the session, as do two step-downs. The GPU name (`RayFieldRenderer.gpuName`)
+only seeds the start (Intel / low tier → rung 3, else 2).
+**Pixels go before steps**: fewer steps turn the march's per-pixel jitter into a stipple,
+fewer pixels only soften a light that is soft anyway (`dissolve 1`, grain in CSS `#grain`).
+
+Consumers: `MainScreen`, `museumLight` and `pageLight` (live since 31.1) all feed it and resize on
+a change. `RayFieldState.scissorPx` shades a sub-rectangle — how «О Крестах»'s 2-viewport canvas
+pays for one viewport. `?bake` restores the concept page's old bake. Dev switches: `?perf` (HUD), `?rung=N`, `?rs=`, `?steps=`, `?light=off`
+(no GPU submit — the compositor baseline), `?field=on` (the pre-31 cost). Query goes BEFORE
+the hash: `/?perf#museum`. `npm run bench:light` times the shader per rung, synced per
+frame — Apple GPUs' hidden-surface removal otherwise shades only the last of N opaque draws.

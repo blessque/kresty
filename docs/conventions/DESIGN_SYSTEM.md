@@ -10,10 +10,12 @@ stays quiet on the pre-token debt recorded in `scripts/token-baseline.json` — 
 catches hand edits to the generated files. `/designcheck` is the full on-demand audit.
 
 Two type-layout probes fail closed and are part of a pass, not optional: **`npm run probe:heads`**
-(`scripts/head-sweep.mjs`) sweeps the section heading bands across eight widths on the three
-longreads and exits non-zero on the first overflow — hyphenation is off, and this is what pays
-for that; **`npm run spec:figma`** reports every box's grid alignment, which is how round 29's
-inset removal was verified rather than eyeballed.
+(`scripts/head-sweep.mjs`) sweeps the 72px section openers across eight widths on the **two**
+longreads that have them — `.sec-loud` on «О Крестах», `.mus-era` on «Музей» — and exits non-zero
+on the first overflow; hyphenation is off, and this is what pays for that. («Новость» left the
+sweep in round 29.2: its subheadings are back in the body column at the measure every paragraph
+already wraps to, so there is nothing to catch.) **`npm run spec:figma`** reports every box's grid
+alignment, which is how round 29's inset removal was verified rather than eyeballed.
 
 ---
 
@@ -81,16 +83,24 @@ a heading.
   ray canvas composites with `mix-blend-mode: screen` and `#grain` sits at 7 % overlay, so
   sampling a screenshot is the wrong test. Read the computed `background-color`.
 - **The UA sheet gives `h2` `font-size: 1.5em`, so a type style set on a WRAPPER multiplies.**
-  Round 29 put 72px on `.head-wide` and «Музей»'s era name came out at **108px** — larger than
-  the site's H1, and plausible enough on screen to read as a design choice rather than a bug.
-  The selector is `h2.head-wide, .head-wide > h2, .article-body > h2`: **the type goes on the
-  heading element, never on the band that positions it.**
+  Round 29 put 72px on the band that positioned «Музей»'s era name and it came out at **108px** —
+  larger than the site's H1, and plausible enough on screen to read as a design choice rather than
+  a bug. Round 29.2 removed the trap at its root rather than routing around it: **the 72px
+  treatment is not put on a heading element at all.** `.loud` is only ever a `<p>`, so there is no
+  `1.5em` in the chain to multiply and no wrapper/heading pair to get the wrong way round. The
+  wider rule this leaves: a **size** set on a container that a heading will inherit through is a
+  trap in either direction — set the size on the element that carries the text.
 - **Two rules at the same specificity are decided by SOURCE ORDER, and the sheet order here is
   not obvious.** `pages.css` loads before `concept.css` and `museum.css`, so a `font-size` on
-  `.sec-h2` or `.mus-era` silently beats `.head-wide` and puts a 72px band back at 40 — which is
-  why neither restates its type. The same trap the other way round: `.article-body h2` (H3
-  tokens, 32px) and `.article-body > h2` (Factoid) are both (0,1,1), so leaving the old rule in
-  place "harmlessly" would have kept one of the three longreads at 32px.
+  `.sec-loud` or `.mus-era` silently beats `.loud` and puts a 72px opener back at 40 — which is
+  why neither restates its type (`.sec-loud` carries **no declarations at all**, deliberately:
+  the type is `.loud` and the measure is `.col-full`, both shared with «Музей», and the class
+  survives only as the probe's selector and a named hook). The same trap the other way round
+  inside ONE sheet: `.article-body h2` and `.article-body > h2` are both (0,1,1) and sit 250
+  lines apart in `pages.css`, so source order decides between them and the descendant selector
+  loses. Round 29 hit it in both directions — first by leaving an old H3-token rule "harmlessly"
+  in place, then by giving `> h2` a bleed — which is why the article's h2 now takes its **size**
+  from one rule and nothing else claims it.
 - **The lint's EXEMPT list is where raw values hide** — `tokens.css`, `tokens.gen.css`,
   `fonts.css`, `waterPanel.css`. A raw brand blue sat in `waterPanel.css` unflagged until
   round 22.1.
@@ -117,8 +127,14 @@ a heading.
 .col-media  2 / span 5    559.333   the square photo
 .col-main   7 / span 5    559.333   body copy, both kinds of page
 .col-full   2 / -2       1142.667   the full MEASURE — ten columns, not twelve
-.head-wide  2 / -2       1142.672   the longread section heading, in Factoid
 ```
+
+**There are FOUR role classes, not five.** Round 29 shipped a `.head-wide` at `2 / -2` for the
+longread section opener; round 29.2 deleted it as a duplicate of `.col-full`, which already means
+"the ten-column measure" and was already named in every placement reset. The opener is
+`.col-full` plus `.loud` — one class for where it sits, one for how it is set — and «Музей»'s
+narrow breakpoint lost the extra `.mus-head > .head-wide` line it needed as a result. A second
+class for an existing position is a second thing to remember to reset.
 
 At 1440: `12 × 92.667 + 11 × 24 = 1376`. Column *n* starts at `32 + (n−1) × 116.667`.
 **Columns 1 and 12 are skipped on every frame**, which is why `.col-full` is `2 / -2`.
@@ -150,19 +166,19 @@ At 1440: `12 × 92.667 + 11 × 24 = 1376`. Column *n* starts at `32 + (n−1) ×
   grid **creates implicit columns** (measured `348px 539px` at 1024). Miss one class and that
   element alone conjures them — which reads as a partially-applied media query.
 - **ROUND 29: THERE IS NO `hyphens: auto` LEFT ON THE SITE, and that is a consequence of the
-  heading band, not a reversal.** Hyphenation was load-bearing while the longread h2 was a FLAT
-  40px in a four-column aside: the type stopped shrinking below 1440 while the column kept
-  going, so **1366 and below is where it broke** (+21px, rising to +83 at 1180), and it needed
-  `lang="ru"` (set, or it silently no-ops) plus `hyphenate-limit-chars: 13 6 4` — 13 being the
-  highest limit that never overflows, swept, and the highest is what you want because it
-  hyphenates least. The band changes **both** terms: ten columns instead of four, and
-  `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. At 72px a mid-word break is the
-  most visible thing on the page, and `hyphens: auto` breaks to balance the rag rather than only
-  to avoid overflow — so it goes, and **`npm run probe:heads` is what makes that safe**: it
-  sweeps eight widths over the three longreads and exits non-zero on the first overflow. Worst
-  measured clearance (negative is clearance): concept **−2.8 at 1200**, museum −175 at 1165,
-  article −3.7 at 1165. **«О Крестах» runs on under 3px**, so a copy edit to any
-  `PAGE_SECTIONS.h2` must re-run the probe. Round 23's `max-width: min(15em, 80%)` clearance
+  opener leaving the aside, not a reversal.** Hyphenation was load-bearing while the longread's
+  section opener was a FLAT 40px h2 in a four-column aside: the type stopped shrinking below 1440
+  while the column kept going, so **1366 and below is where it broke** (+21px, rising to +83 at
+  1180), and it needed `lang="ru"` (set, or it silently no-ops) plus
+  `hyphenate-limit-chars: 13 6 4` — 13 being the highest limit that never overflows, swept, and
+  the highest is what you want because it hyphenates least. The loud changes **both** terms: ten
+  columns instead of four, and `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. At 72px
+  a mid-word break is the most visible thing on the page, and `hyphens: auto` breaks to balance
+  the rag rather than only to avoid overflow — so it goes, and **`npm run probe:heads` is what
+  makes that safe**: it sweeps eight widths over the two routes that carry a loud and exits
+  non-zero on the first overflow. Worst measured clearance (negative is clearance): concept
+  **−2.8 at 1200**, museum −175 at 1165. **«О Крестах» runs on under 3px**, so a copy edit to any
+  `PAGE_SECTIONS.lead` must re-run the probe. Round 23's `max-width: min(15em, 80%)` clearance
   hack is deleted; the grid gives 140.667px of clearance structurally (a gutter plus the skipped
   column 6).
 
@@ -217,13 +233,40 @@ plus one in each of `build-tokens.mjs`'s two maps; the generator then emits
 `#screen-main` without being told to. If a style seems to be missing, that is the procedure —
 not a one-off `font-size` at the call site.
 
-**Round 29 made Factoid a HEADING style, not only a figure and a pull-quote.** Every section
-heading on the three longreads — «О Крестах», «Музей», «Новость» — is now a ten-column band at
-72/110% (`.head-wide`; frame `1253:701` draws the hotel heading 237px tall, which is
-`3 × 72 × 1.1` and can be nothing else). Only «Аренда» and «Контакты» keep `.page-h2` at 40.
-So the site's H2 token is now the *flat-page* heading and Factoid is the longread one, which is
-the opposite of what "the second-largest style" suggests — check which page you are on before
-reaching for either.
+### Factoid is THE LOUD — a treatment, not a heading level (round 29.2)
+
+**`.loud` is the big opening statement of a section on the two longreads**: Factoid, 72/110%,
+weight 150, at the ten-column measure. Frame `1253:701` settles the size arithmetically — the
+hotel opener is drawn 237px tall, which is `3 × 72 × 1.1` and can be nothing else. Two classes,
+one job each: **`.loud` is the type, `.col-full` is the position.** It is `<p class="sec-loud
+loud col-full">` on «О Крестах», `<div class="col-full"><p class="mus-era loud">` on «Музей»
+(the years sit under it and are not 72px), and the shared `ContactForm` emits the first form
+when `wideHead` is true.
+
+**It is never a heading element, and round 29's first pass got that wrong.** It shipped the
+openers as `<h2 class="sec-h2 head-wide">`, which conflated a visual treatment with a semantic
+level: the site's H2 then meant 72px on the longreads and 40px on the flat pages. The client's
+correction — *"these big texts are no longer H2 … H2 remain H2 style (40 px)"* — is the rule
+now. **H2 is 40px on every page**, `.page-h2` and `.article-body h2` alike; the size a block is
+set at says nothing about its rank. (Two `<h2>`s predating round 29 still sit at 32 — see
+**Open** at the foot of this file.)
+
+The content decides the tag, not the size. «О Крестах»'s openers are propositions —
+«Остановиться в роскошном отеле в исторических зданиях-крестах» is a sentence beginning with a
+verb — so a `<p>` is plainly right. «Музей»'s era names («Экономическая свобода», «Забвение»)
+genuinely *are* titles and were the close call; they are still `<p>`, because one H2 cannot mean
+two sizes and the treatment is exactly what the two longreads share.
+
+**NAMED `loud`, NOT `lead`.** Three things on this site already answer to "lead" and none of them
+is this: `--fs-lead` is **32px** (H3's size primitive), `.page-lead` is the masthead's **24px**
+paragraph, and `ContactForm.lead` is a sentence of body copy. A fourth meaning would be the same
+conflation one level down. (The *data* field on `PageSection` is called `lead` — that is the
+content's role in its section, where the class is the treatment. `PageSection.h2` was renamed in
+round 29.2 precisely because calling the field `h2` is what led to it being emitted as one.)
+
+The flat pages have no loud at all. «Аренда» and «Контакты» open their sections with `.page-h2`
+at 40 in `.col-aside`: those sections are short, and a 72px opener over three lines of prose is a
+title looking for a page.
 
 **A style carries its WEIGHT too**, so moving between two styles is never just a size change.
 
@@ -321,3 +364,34 @@ and still serves the form submit and the page heads.)
   content-sized). All four variants must measure identically at a given label.
 - Press is `scale(1.02)`, not Kowalski's 0.97: that 0.97 is measured from REST and this plate
   is already at 1.07 on hover, so 1.07 × 0.95 is the same proportional dip.
+
+---
+
+## Open
+
+**THE ELEMENT MATCHES THE STYLE, ON EVERY ROUTE (29.3).** Walking every route and listing each
+heading element against its computed size is the only way to see a mismatch, because an `<h2>`
+at H3's size looks like a deliberately smaller heading in a screenshot:
+
+```
+route      elements
+main       —
+#concept   h1.page-title 54 · p.sec-loud.loud.col-full 72
+#museum    h1.page-title 54 · p.mus-era.loud 72 · h3.mus-h3 32
+#news      h1.page-title 54 · h3.news-card__title 32
+#news/1    h1.page-title 54 · h2 40 · h3 32 · h3.article-related__title 32
+#rent      h1.page-title 54 · h2.page-h2 40
+#contacts  h1.page-title 54 · h2.page-h2 40
+drawer     h3.bld-name 32 (the map's building drawer, «О Крестах»)
+```
+
+The rule it asserts: **h1 = 54, h2 = 40, h3 = 32, the 72px opener is `p.loud`** — no element
+at a size that belongs to another rank. Three `<h2>`s drawn at H3 (`.news-card__title`,
+`.article-related__title`, `.bld-name`) were fixed by changing the ELEMENT to `<h3>`, not the
+size, so the designer's frames are untouched. The article's `h3` went the other way: it wore
+Caption Big (24) while «Музей»'s `h3` in the same role is 32, so it moved to `--type-h3-*` —
+the one visible change. Known and accepted: «Новости» now goes h1 → h3 with no h2 between
+(the card titles are list items, not sections); that is an outline skip, not a WCAG failure.
+
+Re-run the walk after any heading change; it is the same audit the blue-means-interactive rule
+needs (`colour !== --color-link || el.closest('a')`), so do both in one pass.

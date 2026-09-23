@@ -5629,3 +5629,200 @@ runway" — true of `--sec-pin`'s travel, not of the block's height.
 inverted rather than deleted: four heading columns, none pinning, all agreeing on alignment, and
 the column measured travelling 500/500px with its body. The assertion round 28 actually cared
 about — three headings of one rank must not behave three ways — is the one that survives.
+
+### 29.2 — a treatment is not a level
+
+The client, on the 72px section openers: *"these big texts are no longer H2. They are leads
+(louds, or any other class you name it). They have nothing to do with H2. H2 remain H2 style
+(40 px). Check the semantics everywhere."*
+
+Round 29 had emitted them as `<h2 class="sec-h2 head-wide">`, and the name is the whole error.
+The brief said *apply Factoid styling for H2 on longreads*, so a treatment was carried onto the
+element that happened to be wearing it — with the result that **the site's H2 meant 72px on the
+longreads and 40px on «Аренда»**. Nothing broke; a rank simply stopped meaning one thing.
+
+The read that catches it is on the CONTENT, not the CSS. «Остановиться в роскошном отеле в
+исторических зданиях-крестах» is a sentence beginning with a verb. So is every other one of
+them. They were never titles, and `PageSection.h2` as a field name is what made them look like
+titles to everyone downstream, including me — the rename to `.lead` is the fix at the source.
+
+```
+  treatment   `.loud`      72/110 % Factoid, type only        styles/pages.css
+  measure     `.col-full`  the ten columns, already existed   styles/grid.css
+  element     `<p>`        never a heading
+  rank        `<h2>`       40px, every page, no exceptions
+```
+
+**`.head-wide` was a duplicate of `.col-full` and is deleted.** Inventing a class for "the
+ten-column measure" when the role class for exactly that already existed also cost «Музей» a
+breakpoint rule: its narrow reset already named `.col-full`, so `.mus-head > .head-wide` had to
+be added and can now go. One fewer place for the collapse to be forgotten.
+
+**Named `loud`, not `lead`, and the client offered both.** Three things on this site already
+answer to "lead" and none of them is this — `--fs-lead` is 32px (H3's size primitive),
+`.page-lead` is the masthead's 24px paragraph, and `ContactForm.lead` is a sentence of body
+copy. A fourth meaning is the same conflation one level down. (The DATA field is `lead` and the
+class is `loud`: one names the content's role in the section, the other the treatment.)
+
+**«Музей» was the close call.** «Экономическая свобода» and «Забвение» are titles in a way
+«О Крестах»'s openers are not, so an `<h2>` at 72px was defensible there. It loses to the rule:
+one rank cannot mean two sizes, and the treatment is the thing the two longreads share. The era
+is a `<p class="mus-era loud">` and the page's only heading element is its H1.
+
+**«Новость» goes the other way.** Its `h2` sits BETWEEN PARAGRAPHS — a subheading of flowing
+prose, not the statement that opens a section — so it is back to 40px in the body column with
+no bleed. It is 40 rather than round 27's `--type-h3-*` (32), which was an h2 wearing H3's size:
+the same conflation again, and *H2 remain H2 style* settles it. `probe:heads` drops that route
+with it; there is nothing left to overflow.
+
+### The audit «check the semantics everywhere» asked for
+
+Every route, every heading element, computed size:
+
+```
+  main       —
+  #concept   h1.page-title 54 · p.sec-loud.loud.col-full 72
+  #museum    h1.page-title 54 · p.mus-era.loud 72 · h3.mus-h3 32
+  #news      h1.page-title 54 · h2.news-card__title 32              ← pre-existing
+  #news/1    h1.page-title 54 · h2 40 · h3 24 · h2.article-related__title 32  ← pre-existing
+  #rent      h1.page-title 54 · h2.page-h2 40
+  #contacts  h1.page-title 54 · h2.page-h2 40
+```
+
+**Two `<h2>`s are still not 40px, and both predate this round** — `.news-card__title` (2600802)
+and `.article-related__title` (06c491a), each an h2 set at `--type-h3-*`. They are the same
+conflation, and they are LEFT ALONE: making them 40 is a visible design change to «Новости» and
+to «Читайте также», on pages the client did not raise. Reported rather than fixed. The one-line
+change, if it is ever wanted, is `--type-h3-*` → `--type-h2-*` in both rules.
+
+Worth stating as the general rule, because this is the second round to trip on it: **the failure
+is never in the CSS, it is in the name.** `sec-h2`, `PageSection.h2`, `.news-card__title` as an
+h2 at H3's size — each is a name asserting a rank the design does not intend, and each survived
+review because the page looked right.
+
+### 29.3 — the two pre-existing mismatches, closed
+
+The client repeated the note — *"H2 remain H2 style (40 px). Check the semantics everywhere"* —
+so "reported, not fixed" was the wrong call. Fixed by moving the ELEMENT to the style the
+designer drew rather than the size to the element, which changes no pixels:
+`.news-card__title`, `.article-related__title` and the map drawer's `.bld-name` are `<h3>` now
+(all three were `<h2>` at `--type-h3-*`; the drawer was missed by the 29.2 walk because it is
+hidden until a building is clicked — **a DOM walk only sees what is rendered**). The article's
+`h3` was the same conflation in reverse — an h3 at Caption Big (24) where «Музей»'s h3 in the
+same role is 32 — and went to `--type-h3-*`; that is the one visible change. Re-walked: every
+h2 40, every h3 32, every opener `p.loud` 72. `probe:heads` and `probe:headline` pass.
+
+## Round 30 (2026-09-23) — the client's copy, and a slider that always slides
+
+**Copy.** «О Крестах» from `references/О Крестах.docx`: a five-paragraph masthead lead, all five
+sections re-worded (museum → «Посмотреть иначе», offices → «Работать в истории»), picture
+positions taken from the docx's `------` rules. Six drawer entries: b01's brief; b08 «Кафе на
+Комсомола» → «Торговая галерея», b11 «Сервисный корпус» → «Гастрокластер», b13 «Кафе на
+набережной» → «Арендный корпус», b17 «Навес» → «Офисный корпус», each with `kind` and residents
+re-written so the drawer does not contradict its own title. **Three names now repeat** (b08/b09,
+b03/b13, b07/b17) — the client's text, applied as written. The map's roof captions (`mapMarks.ts`,
+e.g. b08 «Офисы А1») are designer-authored and already disagreed with the drawer before this; the
+docx scopes itself to "описания зданий", so they are untouched. «Контакты»: the new lead, and
+Аренда / Сотрудничество / Для СМИ replace the visitor-desk rows; the rent phone is the client's
+own `+7 (000) 000-00-00` placeholder.
+
+**Sliders.** Round 29 let a set that fits the viewport sit still (`safe center`, travel 0) — five
+of nine at 1440, and every one at 2560. The client: that is weird. Two layers: every «О Крестах»
+set was topped up with photographs the site already had, placed by meaning (the atrium dome for
+«лобби под сводчатым куполом», the night river view for «виды на Неву», the museum's own exhibit
+shots for «подлинные предметы прошлого», ул. Комсомола for the gastro cluster that stands on it);
+then `MediaSlider.fill()` echoes a set's own slides until it travels ≥ 0.6 × frame. Verified by
+the strip's computed transform at 20/50/80 % of its view range: −183/−458/−733 on a pair that
+previously did not move.
+
+### 30.1 — three sliders a page, never two on one screen
+
+Round 30's top-up overshot: nine strips on «О Крестах», and the client's screenshot showed two in
+one frame with one paragraph between. Rule: ≤ 3 sliders per page, a full viewport between any
+two, everything else single. «О Крестах» keeps rooms / restaurants / excursion routes; the six
+other sets are single photographs chosen for their sentence (the night river for «виды на Неву»,
+the dome for the lobby, the café at the main entrance for the gastro cluster, the cell wall for
+«подлинные предметы», the congress hall for offices). «Музей» keeps bunks and «Забвение»; the
+tally/duty pair split into singles, the duty office moving under «Сохранился служебный
+телефон…». **Measurement trap: `getClientRects().length` does not isolate the route on show** —
+every screen stays mounted, so the first sweep counted «О Крестах»'s strips on «Музей» and
+«Новость». `checkVisibility({ opacityProperty, visibilityProperty })` does. **Second trap: 900
+tall is not the worst case** — «Музей» passed at 1440×900 and failed at 2560×1440 (gap 1418).
+`probe:seam` can fail on an HTTP 400 from an ad tracker inside the Yandex map on «Контакты»;
+that is third-party noise, not a regression.
+
+## Round 31 (2026-09-23) — the light on weak GPUs: measured, not baked
+
+Report: the light stutters on Intel Macs in every browser, and in Safari on M1. Asked for a
+Three.js or CSS-blur alternative for weak devices. **Neither was built, on purpose.** Three.js
+would run the same fragments on the same GPU (its `GodRaysPass` is a technique, not a
+shortcut, and it would break the library-free main screen); a large CSS blur is its own heavy
+pass on exactly these GPUs, and a rotating blurred sprite is the baked look round 28.1
+rejected. The cost is fill rate, so the fix is fewer pixels, fewer steps and less wasted
+work — the same light.
+
+**1. The field that was thrown away.** All three lights run `slitMix: 1`, and the shader
+still computed the whole procedural field per pixel (~10 fbm, beams, motes, ghosts) before
+`mix(field, slit, 1)` discarded it. Now `proceduralField()` runs only for a crossfade or the
+no-mask fallback. Proven identical by rendering the SAME state through the real renderers
+with the pre-change source swapped in at compile time (`shaderSource` / `createShaderModule`
+patched): max Δ 1/255 on WebGL2, 0 on WebGPU, across skip / crossfade / no-mask / 16-step.
+
+**2. `raySteps` is its own field** (was `clamp(layers·8 + octaves·4)`), in the contract, both
+twins (`u_raySteps`, `p11.w`) and the WebGL2 name list.
+
+**3. A frame-time governor** (`shared/frameGovernor.ts`, see RAY_FIELD.md), default desktop
+rung = scale 1.5.
+
+GPU time per frame, 1440×900 viewport, M1, `npm run bench:light`:
+
+| rung | scale | steps | MPx | before (field computed) | now |
+|---|---|---|---|---|---|
+| 0 | 2 | 32 | 5.18 | **33.8 ms** (the reported 30 fps) | 15.1 |
+| 1 (default) | 1.5 | 32 | 2.92 | 19.5 | **8.9** |
+| 2 | 1.25 | 28 | 2.02 | — | 6.3 |
+| 3 (Intel start) | 1 | 24 | 1.30 | — | **4.1** |
+| 4 | 0.75 | 24 | 0.73 | — | 2.7 |
+| 5 | 0.6 | 20 | 0.47 | — | 2.1 |
+
+So the default is **3.8× cheaper** than what shipped and the Intel start **~8×**, before the
+governor steps down at all. Stage 3 of the plan (a multi-pass low-res radial blur) is NOT
+built: it waits for `?perf` numbers from the Intel iMac showing rung 5 still cannot hold.
+
+**Traps, each of which returned a wrong number first:**
+- **A bench that syncs once reads 1.1 ms for 5 MPx.** Apple GPUs are tile-based with
+  hidden-surface removal: N opaque full-screen draws in one render pass shade only the last.
+  Sync every frame.
+- **Browser frame time cannot see a win under 16.7 ms** — vsync caps it. Time the GPU.
+- **Fewer steps is the wrong first lever.** Frozen-frame A/B: at scale 0.6, 12 steps is a
+  lifted, stippled field and 24 is the light; at scale 1, 28 beats 20. Pixels go first.
+- **A probe that may climb to rung 0 will.** First live run: 1 → 0, 25 % slow, back to 1,
+  up to 0 again. Probes stop at rung 1 now; scale 2 looked identical anyway.
+- **`/#museum?perf` does not set `?perf`** — it is inside the hash. `/?perf#museum`.
+
+### 31.1 — «why baking versions?»: every light is live, and the governor had to get stricter
+
+Client: make the museum cross and the «О Крестах» icons as live as the main screen. The museum
+was already live (28.1) but kept the baked era's 20-cell cursor grid; «О Крестах» still baked
+with `timeSec: 0`. Now both ease the cursor like `SmoothPointer` (τ 0.4), and the icon light
+redraws every visible frame with a running clock. The 2-viewport canvas and its translate stay —
+they are what keep light and icon locked while scrolling — and a new `scissorPx` shades only the
+on-screen band. `?bake` keeps the old path for A/B. Proof it is live: two stills 1.2 s apart on a
+motionless page differ over the whole icon; under `?bake` they are byte-identical.
+
+**The live icons exposed that the governor's trigger was too tolerant.** Scrolling «О Крестах»
+at rung 1 on an M1 Retina dropped 24 of 360 frames (7 %) — 0 at rung 3, 0 with `?light=off`.
+Re-measured the MAIN screen the same way: **4–10 slow frames per second at rung 1, zero at
+rung 2** — real stutter the 25 % trigger never saw, and very likely what "Safari on M1" meant.
+The earlier "0 % slow" HUD reading was one lucky window. So:
+
+- trigger 25 % → **10 %** of a window (six slow frames a second; a GC pause still passes);
+- default start rung 1 → **2** (scale 1.25 / 28 steps — indistinguishable in the A/B);
+- a probe that has to be undone **locks the governor** (one bad window a session, not two);
+- probes **never climb above the default rung** — above it they only ever bought a ~2 s burst
+  of dropped frames on every page, every session, for sharpness nobody could see.
+
+Result, 20 s on each page at 1440×900 @2x: main 0/20 windows with a slow frame, «Музей» 0/20
+while scrolling, «О Крестах» 0/19 after entry. Its first window (6 slow frames) is the GPU
+context plus mask rasterizing — identical under `?bake`, and inside the governor's warm-up.
+

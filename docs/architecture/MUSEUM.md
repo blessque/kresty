@@ -53,11 +53,10 @@ comb and the slow `vnoise` gate on the god-rays are all inert **by construction*
 was a photograph of the hero rather than the hero. There is exactly one glowing element on this
 page and nothing else on the GPU; it can afford a clock.
 
-The cursor is still quantised to 20 cells (5×4) even though every frame draws — `u_parallax`
-deforms the field toward the pointer, and the brief has always said *disturbed dust, never
-literally follow the mouse*. The quantisation enforces that; it was never only a render budget.
-No settle timer, unlike «О Крестах» — a bake there can pull a 70–90 ms mask rasterize with it,
-and here the single mask never changes.
+**Round 31: the cursor is EASED, not quantised** — `SmoothPointer`'s τ 0.4 s, the main screen's
+feel. The 20-cell grid (5×4) it replaced was a leftover of the baked light and made the cross
+jump between 20 poses; *disturbed dust, never literally follow the mouse* is satisfied by
+inertia, exactly as on the main screen.
 
 ### The numbers, and how they were got
 

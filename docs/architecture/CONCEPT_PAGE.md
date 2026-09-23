@@ -104,6 +104,11 @@ same defaults**, so the page is correct with no JS.
   mean |∇luminance| over lit pixels **4.28 → 5.68**.
 - **`?ls=<k>` now exists.** It was documented here since round 16.1 and never built (nothing
   read `ls`; the constant also lives in `conceptPage.ts`, not `ConceptScreen.ts`).
+- **Round 31: the icon light is LIVE by default** — redrawn every visible frame with the running
+  clock (`breathe`/`shimmer` finally alive) and an eased cursor, fed to the frame governor. The
+  2-viewport canvas and its `translate3d` stay, so the light never chases the scroll; a
+  `scissorPx` band shades only the on-screen viewport, so it costs what the main screen costs.
+  Everything below about bakes, cells and the settle timer is now **`?bake` only**.
 - **The cursor moves the light again, in 5 × 4 = 20 quantised cells.** Three things were off,
   not one: `MOTION.parallax` was 0 (which zeroes every consumer of `q`), `bake()` was never
   called on cursor movement despite its own doc comment saying it was, and **the pointer was
@@ -116,13 +121,25 @@ same defaults**, so the page is correct with no JS.
   faster than they complete. Round 16.1's property is intact: **60 scrolling frames still make 0
   GPU submissions.**
 
-## The heading band, and the column that still sticks (round 29)
+## The section opener, and the column that still sticks (round 29)
 
-**ROUND 29: THE H2 LEFT THE COLUMN.** Each `.sec` now opens with
-`<div class="sec-head page-grid"><h2 class="sec-h2 head-wide">` above `.sec-grid` — the
-ten-column FACTOID band the three longreads share (see CONTENT_PAGES and DESIGN_SYSTEM), with
+**ROUND 29: THE OPENER LEFT THE COLUMN.** Each `.sec` now opens with
+`<div class="sec-head page-grid"><p class="sec-loud loud col-full">` above `.sec-grid` — the
+ten-column FACTOID treatment «Музей» shares (see CONTENT_PAGES and DESIGN_SYSTEM), with
 `padding: var(--sp-page) 0`. The frame draws 92 and 116.5 above and below; those are the two
 nearest neighbours of one scale value, and taking the scale value is the point of having one.
+
+**ROUND 29.2: IT IS A `<p>`, NOT AN `<h2>`, and the data field is `lead`.** The first pass
+emitted `<h2 class="sec-h2 head-wide">`, which made the site's H2 mean 72px here and 40px on
+«Аренда» — a visual treatment wearing a semantic level. Every one of these is a PROPOSITION,
+not a title: «Остановиться в роскошном отеле в исторических зданиях-крестах» is a sentence
+beginning with a verb. `PageSection.h2` was renamed to **`PageSection.lead`** with it, because
+calling the field `h2` is what led to it being emitted as one. Three classes, three jobs:
+`.loud` is the type (`--type-factoid-*`, in `styles/pages.css`), `.col-full` is the position
+(the role class that already meant the ten-column measure — round 29's duplicate `.head-wide`
+is deleted), and **`.sec-loud` carries no declarations at all**. It is the probe's selector and
+a named hook; `concept.css` loads after `pages.css`, so anything restated on it would silently
+win and put the opener back at 40px.
 
 It is a **separate `.page-grid`**, not a third item inside `.sec-grid`. Both lay out identically
 to the pixel, but a full-width item in the section's own grid would make the sticky aside a
@@ -142,8 +159,8 @@ own `--sec-icon-inline` margin now says everything.
 centres is `(viewH − colH)/2`; `sectionRun.measure()` writes each section's own `--sec-pin` in
 px, clamped by the station invariant, and `MOTION.centre = 0` restores a flat `pin` in vh.
 
-**MEASURED CONSEQUENCE OF THE BAND: `colH` stopped swinging.** It was 400–530 across the run and
-changed with every re-wrap of a Russian heading; with the icon alone it is a **constant 264**.
+**MEASURED CONSEQUENCE OF THE OPENER LEAVING: `colH` stopped swinging.** It was 400–530 across the
+run and changed with every re-wrap of a Russian line; with the icon alone it is a **constant 264**.
 `--sec-pin` went ~230 → **318** at 1440×900, and the station invariant
 `pin + colH + padBottom ≤ viewH` now clears by **+206px at every section** instead of clamping.
 The clamp was the thing putting blocks above centre; it no longer binds.
@@ -163,12 +180,12 @@ not gate the envelope.
 `motionParams.ts` and the CSS fallback `padding-top: var(--sec-body-lead, 34vh)` in
 `concept.css`. The page has to be correct with no JS.
 
-**Hyphenation is OFF on `.sec-h2`** (round 29), and `npm run probe:heads` is what makes that
+**Hyphenation is OFF on `.sec-loud`** (round 29), and `npm run probe:heads` is what makes that
 safe. It was load-bearing at a FLAT 40px in a four-column column — «для размышлений» is one
-unbreakable 407px NBSP run against a 442px measure — and the band changes both terms: ten
+unbreakable 407px NBSP run against a 442px measure — and the loud changes both terms: ten
 columns, and `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. **«О Крестах» is the
-tightest of the three routes and runs on 2.8px of clearance at 1200**, so a copy edit to any
-`PAGE_SECTIONS.h2` must re-run the probe. At 72px a mid-word break is the most visible thing on
+tighter of the two swept routes and runs on 2.8px of clearance at 1200**, so a copy edit to any
+`PAGE_SECTIONS.lead` must re-run the probe. At 72px a mid-word break is the most visible thing on
 the page, which is why `hyphens: auto` was not simply left on as insurance.
 
 **This page collapses on HEIGHT as well as width, and round 29's picture strip has to know.**

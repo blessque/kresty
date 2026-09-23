@@ -233,6 +233,27 @@ picture sets across the three longreads, **five are two-photo sets** that measur
 `flex-start` exactly at the overflow boundary, which is the decision made from the content
 rather than from a flag. Measured travels: 0, 0, 445, 1198, 0.
 
+**Round 30 reversed "a pair sits centred": every slider pans.** The client found a still strip
+mid-page simply weird. `MediaSlider.fill()` appends ECHOES of the set's own slides (same file,
+`alt=""`, `aria-hidden`, class `.ms-echo`) until `--ms-travel` ≥ `MIN_TRAVEL` (0.6) × the frame
+width, rebuilt only when the frame width changes. No echoes when the pan is off (reduced motion,
+no scroll timelines): there the strip is a hand-scroller and repeats would read as duplicates, so
+`safe center` still centres a short set in exactly those two cases. Measured on all 13 strips:
+minimum travel 846 @1280, 916 @1440, 1234 @1920, 1608 @2560 — zero static strips. The
+photographs were also topped up from the site's own library first, so echoes are the fallback
+rather than the content.
+
+**Round 30.1 — AT MOST THREE SLIDERS A PAGE, AND NEVER TWO ON ONE SCREEN.** Topping every set up
+left «О Крестах» with nine strips, two in frame around a single paragraph; the client ruled it
+out. Every other picture is a single figure. The rule is a DATA decision (`media()` with one item
+vs several) and is guarded by `npm run probe:sliders` (`scripts/slider-sweep.mjs`), which fails
+on > 3 visible strips or on any gap between two strips shorter than the viewport height, swept
+across 1280×800 … 2560×1440 — a tall screen is the worst case because the gap is prose (set by
+width) and the screen is height. Now: «О Крестах» 3 (rooms · restaurants · excursion routes,
+gaps ≥ 2768), «Музей» 2 (bunks · «Забвение», ≥ 2991), «Новость» 1. «Музей»'s tally/duty pair
+became two singles because it sat 1418px from the bunks strip — clean at 900 tall, two strips
+in frame at 1440.
+
 **Slides are `height: var(--ms-h); width: auto`** — definite height, width derived from the
 intrinsic ratio. That is a *stronger* guard against round 27's 0×0 lazy-image desync than the
 fixed box it replaces, not a weaker one. `.ms-frame` keeps `overflow: clip` (it bounds the
