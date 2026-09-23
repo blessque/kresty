@@ -136,11 +136,12 @@ export class ContactsPage extends ContentScreen {
     press.className = 'page-block page-grid';
     press.innerHTML =
       `<div class="col-aside"><h2 class="page-h2">Пресс-служба</h2></div>` +
-      // `.contacts-body` makes this a FLOW column like `.sec-body` and
+      // `.page-flow` makes this a FLOW column like `.sec-body` and
       // `.article-body`. Without it the prose and the list both declare
       // `margin: 0` and no rule in page.css reaches them, so they rendered
-      // welded together with no gap at all.
-      `<div class="col-main contacts-body">` +
+      // welded together with no gap at all. (Named `.contacts-body` until round
+      // 28, when «Аренда» needed the same thing three times over.)
+      `<div class="col-main page-flow">` +
       `<p class="page-prose">${escapeHtml(bindShortWords(PRESS_LEAD))}</p>` +
       `<dl class="contact-pairs">${pairs([['Электронная почта', 'kresty@spb.ru']])}</dl>` +
       `</div>`;

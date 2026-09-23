@@ -138,6 +138,28 @@ explained. `.anchor-outer` / `.anchor-inner` are deleted.
   designer's own `(1142 − 2×24)/3 = 364.67` falls straight out of it.
 - **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
   which `.col-main` now names directly.
+- **«Аренда»'s five spaces are a segmented control (round 28).** A vertical `role="tablist"` in
+  the sticky heading column under an H2 «Помещения»; `.col-main` holds all five panels with
+  four `hidden`. The label is a `<span>` inside a FULL-WIDTH BLOCK button, which is what lets
+  the underline hug the word while the column's own `text-align: var(--sec-col-align, center)`
+  still decides where the word sits — an inline-block button would need a second centring rule
+  that could then disagree with the H2 above it. `text-align: inherit` is required with it: the
+  UA sheet centres button contents outright and would ignore the escape hatch. Tabs are
+  tertiary at rest, ink + underline when chosen. **`select()` ends with `shell.measure()`** —
+  the panels are different heights, so a switch moves every colour stop below it and the
+  handoff's `offsetTop`; `NewsScreen.applyFilter` ends the same way for the same reason.
+  A hidden panel is `display: none`, so its `loading="lazy"` photograph never fetches until
+  first shown — one `pointerenter` warms it.
+
+### The flow column — `.page-flow`
+
+`.contacts-body` renamed (round 28): it was already a generic "this column flows" rule wearing
+one page's name, and «Аренда» needed three. The selectors are type-generic (`img`, `.btn`)
+rather than naming `.rent-photo` / `.rent-cta`, because a shared rule that lists one page's
+classes is not shared. `margin-block: 0` is stated once on the column instead of by every
+child, and **nothing inside may declare a block margin — `margin: 0` included**: those are
+(0,1,0) and so is `.rent-stats`, so only source order decides. The rules therefore sit at the
+END of `pages.css`'s component rules.
 
 Below 1160 the pages stack, and **that takes two declarations**: the template *and* the
 placement, listing every role class — round 29 adds `.mus-head > .head-wide` to that list — or
@@ -248,12 +270,29 @@ page that wants one without the other becomes a puzzle.
 rule and the band's are BOTH (0,1,1), so source order decides — leaving the old one "harmlessly
 in place" would have silently kept the article at 32px while the other two longreads went to 72.
 
+**What round 28 built here, and what is left of it.** «Аренда» was the one content page round
+27's pass never reached, so round 28 gave all four of its blocks a pinned heading through
+`page/stickyHeads.ts` — `(viewH − colH) / 2`, clamped to `viewH − colH − padBottom`, written
+per block as `--sec-pin`. Round 29 removed the pinning from every HEADING. Two findings from
+that round outlive the mechanism and are worth keeping:
+
+- **Sticky travel is capped by the BLOCK's own height, not the page's.** A short block releases
+  its heading almost at once — «Общая информация» held for ~110px of a 400px scroll. Any test
+  of pinning has to be written against a block with runway, or it passes on nothing happening.
+- **A pinned column is only legible while there is a column BESIDE it to scroll past.** Stacked
+  below 1160 the thing scrolling past is directly underneath, so the heading pins on top of it;
+  «Аренда»'s five tab names sat over the photograph. Anything that pins again needs the
+  un-stick as a third declaration beside the template and the placement reset.
+
 ---
 
 ## Open
 
-- **The lead paragraph on «Контакты» and «Аренда» is placeholder.** Both frames carry the same
-  «Павильон»/«Остров» string from another project. Marked `TODO(copy)`.
+- **The lead paragraph on «Контакты» is placeholder** — the «Павильон»/«Остров» string from
+  another project, marked `TODO(copy)`. «Аренда» got real copy in round 28, but it is WRITTEN
+  rather than supplied: the lead, the five space descriptions and their figures are ours. The
+  figures at least close against the designer's own — the four enclosed spaces sum to 2500 м²
+  and the smallest unit quoted is 13 м². It wants a copy pass, like the news headlines.
 - **One article exists.** `#news/1`; **thirteen** cards route to it. Round 27 filled the
   categories (a tab that filtered to nothing is not a tab) but the article behind them is
   still the single one.
