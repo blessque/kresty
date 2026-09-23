@@ -5843,3 +5843,29 @@ repeat round 28.2's damage: there `grain: 0` was one of two textures removed fro
 no `#grain` context argued for it — here the texture survives, at the right resolution. The
 shader's 1/255 dither stays; that is anti-banding, not grain.
 
+### 31.4 — the sand was the jitter, not the grain
+
+31.3 zeroed the shader grain and the client, after a hard refresh: *"the grain is still there"*
+— sandy speckle along the ray edges, strongest over the photo slider. It was never the grain
+term. The bloom spiral and the god-ray march are both jittered per pixel (the anti-ladder
+dither), and below display resolution each jittered canvas pixel is stretched ~1.6×.
+
+Measured, high-pass noise in a ray annulus at rung 2 over a photo (`bgMix 1`), with each jitter
+pinned in turn: current **3.41**; bloom jitter fixed 1.98; march jitter fixed 2.30; both 0.47.
+So roughly half each. Levers, measured:
+
+| change | noise | cost |
+|---|---|---|
+| G-channel (bloom source) blur 6 → 18 px | 3.41 → 2.21 | 0 (built once); shape Δ 0.34/255 |
+| B-channel radial smear ±3.5 → ±6 %, blur 1.5 → 3 | ~no change | shape Δ 1.1/255 — rejected |
+| bloom taps 12 → 24 | → 1.99 | +12 fetches/px |
+| march jitter over HALF a step, centred | → **1.14** with the two above | 0 |
+| … a third of a step | → 0.90 | 0 — more ladder risk for little |
+
+Shipped: G blur 18 (`rasterizeMask` default, so the concept icons get it too), 24 bloom taps,
+march start `duv * (0.25 + 0.5·jit)`. **Noise 3.41 → 1.14**, no ladders at the centre or at
+the lowest rung (0.6 / 20 steps), twins identical (mean Δ 0.00/255 WebGL2 vs WebGPU).
+Cost +15 % (rung 2: 5.6 → 6.7 ms WebGPU on M1); main still 0 slow windows in 20 s at rung 2.
+The radial smear does NOT help because the march noise is not mask detail — it is where along
+a ~14 px step each pixel happens to sample.
+

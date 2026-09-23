@@ -202,16 +202,18 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   float core = signMask(uv0) * (1.0 - u_dissolve);
 
   // bloom halo: spiral taps of the mask -> a glow that keeps the shape;
-  // per-pixel spiral rotation turns 12 discrete taps into smooth noise
+  // per-pixel spiral rotation turns discrete taps into smooth noise.
+  // ROUND 31.4: 24 taps, was 12 — the jitter's residue is 1/√taps, and below
+  // display resolution (the frame governor's rungs) it read as sand in the rays
   float bloomR = 0.085 * (1.0 + 1.2 * u_dissolve); // dissolved = wider, softer
   float bloom = 0.0;
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 24; i++) {
     float fi = float(i);
-    float rad = (fi + 0.5) / 12.0 * bloomR;
+    float rad = (fi + 0.5) / 24.0 * bloomR;
     float ang = fi * 2.399963 + jit * 6.2831;
     bloom += signMaskSoft(uv0 + vec2(cos(ang), sin(ang)) * rad) * (1.0 - rad / (bloomR * 1.06));
   }
-  bloom /= 6.0;
+  bloom /= 12.0;
 
   // god-rays: march from the fragment back toward the light center,
   // accumulating the mask — light streaming out through the slits.
@@ -222,7 +224,10 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   vec3 acc = vec3(0.0);
   float illum = 1.0;
   float decay = mix(0.93, 0.968, u_dissolve); // dissolved trails reach further
-  vec2 s = uv0 - duv * jit; // dithered march start: banding -> hidden noise
+  // dithered march start: banding -> hidden noise. ROUND 31.4: across HALF a
+  // step, centred, not a whole one — the full span was the other half of the
+  // sand; half still hides the ladders (checked at the lowest rung, 0.6 / 20)
+  vec2 s = uv0 - duv * (0.25 + 0.5 * jit);
   for (int i = 0; i < 32; i++) {
     if (i >= N) break;
     s -= duv;

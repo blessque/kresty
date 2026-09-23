@@ -26,6 +26,12 @@
  */
 
 export interface RasterizeMaskOptions {
+  /** G channel's round blur, px at `size` — what the bloom's jittered taps read */
+  softBlur?: number;
+  /** B channel's radial smear, ± fraction of scale about the centre */
+  smearSpan?: number;
+  /** B channel's smoothing floor, px */
+  smearBlur?: number;
   /** `src` is SVG markup to be blob-URL'd, rather than a URL to fetch */
   raw?: boolean;
   /** texture edge, px */
@@ -230,6 +236,13 @@ export async function rasterizeMask(
       : { dx: 0, dy: 0, dw: size, dh: size };
 
   const flipY = opts.flipY ?? false;
+  // ROUND 31.4: 18, was 6. The bloom's jittered taps read this channel, so its
+  // smoothness IS the bloom's noise floor: 3.41 → 2.21 high-pass noise in the
+  // rays for a 0.34/255 change in the light's overall shape. The bloom is a
+  // blur anyway; pre-blurring its source only takes the sand out.
+  const softBlur = opts.softBlur ?? 18;
+  const smearSpan = opts.smearSpan ?? 0.035;
+  const smearBlur = opts.smearBlur ?? 1.5;
   const draw = (blurPx: number) => {
     const ctx = makeCtx(size);
     if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
@@ -244,9 +257,9 @@ export async function rasterizeMask(
     const K = 13;
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 1 / K;
-    ctx.filter = 'blur(1.5px)';
+    ctx.filter = `blur(${smearBlur}px)`;
     for (let k = 0; k < K; k++) {
-      const s = 0.965 + (0.07 * k) / (K - 1); // 0.965 .. 1.035
+      const s = 1 - smearSpan + (2 * smearSpan * k) / (K - 1); // default 0.965 .. 1.035
       const q = scaledAboutCentre(place, size, s);
       drawSource(ctx, img, q, size, flipY);
     }
@@ -254,7 +267,7 @@ export async function rasterizeMask(
   };
 
   const crisp = draw(0);
-  const soft = draw(6);
+  const soft = draw(softBlur);
   const smear = smearDraw();
   const cv = document.createElement('canvas');
   cv.width = size;

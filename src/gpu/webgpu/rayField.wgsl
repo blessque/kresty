@@ -162,13 +162,14 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   // bloom halo; per-pixel spiral rotation turns 12 discrete taps into noise
   let bloomR = 0.085 * (1.0 + 1.2 * dissolve); // dissolved = wider, softer
   var bloom = 0.0;
-  for (var i = 0; i < 12; i++) {
+  // ROUND 31.4: 24 taps, was 12 — see the GLSL twin
+  for (var i = 0; i < 24; i++) {
     let fi = f32(i);
-    let rad = (fi + 0.5) / 12.0 * bloomR;
+    let rad = (fi + 0.5) / 24.0 * bloomR;
     let ang = fi * 2.399963 + jit * 6.2831;
     bloom = bloom + signMaskSoft(uv0 + vec2f(cos(ang), sin(ang)) * rad) * (1.0 - rad / (bloomR * 1.06));
   }
-  bloom = bloom / 6.0;
+  bloom = bloom / 12.0;
 
   let N = i32(clamp(u.p11.w, 8.0, 32.0)); // raySteps
   let caS = u.p3.w * 3.5; // ca
@@ -176,7 +177,8 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   var acc = vec3f(0.0);
   var illum = 1.0;
   let decay = mix(0.93, 0.968, dissolve); // dissolved trails reach further
-  var s = uv0 - duv * jit; // dithered march start: banding -> hidden noise
+  // dithered march start across HALF a step, centred (round 31.4 — see GLSL)
+  var s = uv0 - duv * (0.25 + 0.5 * jit);
   for (var i = 0; i < 32; i++) {
     if (i >= N) { break; }
     s = s - duv;
