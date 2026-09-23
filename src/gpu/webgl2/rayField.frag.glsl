@@ -15,6 +15,7 @@ uniform vec4 u_beamHover;    // 0..1 per nav beam
 uniform float u_bgMix;       // 0 flat blue, 1 photo showreel underneath
 uniform float u_layers;      // parallax dust layers (perf tier)
 uniform float u_octaves;     // fbm octaves (perf tier)
+uniform float u_raySteps;    // god-ray march steps, 8..32 (quality governor)
 
 // ---- variant params (reference-px distances) --------------------------
 uniform float u_primaryK;
@@ -215,7 +216,7 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   // god-rays: march from the fragment back toward the light center,
   // accumulating the mask — light streaming out through the slits.
   // per-channel chromatic scale about the center = prism fringing.
-  int N = int(clamp(u_layers * 8.0 + u_octaves * 4.0, 12.0, 32.0));
+  int N = int(clamp(u_raySteps, 8.0, 32.0));
   float caS = u_ca * 3.5;
   vec2 duv = (uv0 - lightUv) / float(N);
   vec3 acc = vec3(0.0);
@@ -257,17 +258,22 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   return col * life;
 }
 
-void main() {
-  // top-left-origin pixel space (matches DOM measurements + WGSL)
-  vec2 fragPx = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
-  // reference-px space around the convergence point
-  vec2 p = (fragPx - u_center) / max(u_scale, 1e-4);
-  float r = length(p) + 1e-4;
-  float th = atan(p.y, p.x);
+// ROUND 31: THE PROCEDURAL FIELD IS A FUNCTION SO IT CAN BE SKIPPED. Every
+// shipped light runs `slitMix: 1`, where `col = mix(field, slit, 1)` throws the
+// field away — yet it was computed for every pixel: ~10 fbm evaluations (dust
+// layers × octaves, turbulence, haze), four beams with fiber combs, motes, ten
+// secondary lobes and the ghost chain. Pure ALU, which is exactly what an Intel
+// iGPU is short of. `main` now calls this only when the result can reach the
+// screen: a crossfade (`slitMix` < 1, variant switches) or no mask yet (the
+// cross-glyph fallback reads `crossGlyph`/`core` from here). Output is
+// unchanged by construction — the skipped branch was multiplied by zero.
+struct Field {
+  vec3 col;
+  vec3 crossGlyph;
+  float core;
+};
 
-  // pointer offset from convergence, reference px
-  vec2 q = (u_pointer - u_center) / max(u_scale, 1e-4);
-
+Field proceduralField(vec2 p, vec2 q, float r, float th) {
   int hm = int(u_hoverMode + 0.5);
   int cm = int(u_compositeMode + 0.5);
 
@@ -551,6 +557,25 @@ void main() {
     }
   }
 
+  return Field(field, crossGlyph, core);
+}
+
+void main() {
+  // top-left-origin pixel space (matches DOM measurements + WGSL)
+  vec2 fragPx = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
+  // reference-px space around the convergence point
+  vec2 p = (fragPx - u_center) / max(u_scale, 1e-4);
+  float r = length(p) + 1e-4;
+  float th = atan(p.y, p.x);
+
+  // pointer offset from convergence, reference px
+  vec2 q = (u_pointer - u_center) / max(u_scale, 1e-4);
+
+  // only when the field can reach the screen — see proceduralField()
+  Field f = Field(vec3(0.0), vec3(0.0), 0.0);
+  if (u_slitMix < 0.999 || u_hasMask < 0.5) f = proceduralField(p, q, r, th);
+  vec3 field = f.col;
+
   // ---- «Прорезь»: the logo as light, blended over the field ------------
   vec3 col = field;
   if (u_slitMix > 0.001) {
@@ -561,7 +586,7 @@ void main() {
     // never blank: fall back to the procedural cross glow if the mask is absent
     vec3 slit = (u_hasMask > 0.5)
       ? slitLight(p, q, r, u_hoverDir, min(u_hoverAmt, 1.0), hash21(fragPx))
-      : (crossGlyph + vec3(core));
+      : (f.crossGlyph + vec3(f.core));
     col = mix(field, slit, u_slitMix);
   }
 

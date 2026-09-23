@@ -4,6 +4,7 @@ import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 import type { PerfTier } from '../../shared/performanceTier';
+import * as governor from '../../shared/frameGovernor';
 
 /**
  * «Музей»'s light: ONE cross, pinned to the left edge, turning as you read.
@@ -140,6 +141,9 @@ export class MuseumLight {
   /** the perf tier's own dust settings, exactly as the main screen uses them */
   private layers = 3;
   private octaves = 4;
+  /** the tier's ceilings on render scale and ray steps; the governor moves below them */
+  private tierScale = 1;
+  private tierSteps = 32;
   /** shader runs since load — the per-frame-cost assertion reads this */
   renderCount = 0;
 
@@ -163,7 +167,9 @@ export class MuseumLight {
   async ensure(tier: PerfTier): Promise<void> {
     if (this.renderer || this.pending) return;
     this.pending = true;
-    this.renderScale = Math.min(tier.renderScale, renderScaleOverride() ?? RENDER_SCALE_MAX);
+    this.tierScale = Math.min(tier.renderScale, renderScaleOverride() ?? RENDER_SCALE_MAX);
+    this.tierSteps = tier.raySteps;
+    this.renderScale = this.liveScale();
     // THE TIER'S OWN NUMBERS, like MainScreen. Round 28 hard-coded `layers: 4,
     // octaves: 0` — copied from the concept light — and `octaves` is what feeds
     // the volumetric noise, so the light had no dust in it at all.
@@ -188,6 +194,8 @@ export class MuseumLight {
         this.renderer = r;
       }
       console.info(`[kresty] museum light backend: ${this.renderer.backend}`);
+      governor.seed(this.renderer.gpuName, tier.low);
+      this.renderScale = this.liveScale();
       this.applySize();
       void this.uploadMask();
     } finally {
@@ -227,6 +235,34 @@ export class MuseumLight {
     this.viewW = w;
     this.viewH = h;
     this.applySize();
+  }
+
+  /**
+   * Round 31: the frame governor's rung, under this page's own ceilings (the
+   * tier's DPR/mobile cap, `RENDER_SCALE_MAX`, `?ls=`). Called when the rung
+   * moves; resizes only if the number actually changed.
+   */
+  refreshQuality() {
+    const rs = this.liveScale();
+    if (rs === this.renderScale) return;
+    this.renderScale = rs;
+    this.applySize();
+  }
+
+  private liveScale(): number {
+    return Math.min(governor.quality().renderScale, this.tierScale);
+  }
+
+  get scale(): number {
+    return this.renderScale;
+  }
+
+  get steps(): number {
+    return Math.min(governor.quality().raySteps, this.tierSteps);
+  }
+
+  get canvasSize(): string {
+    return `${this.canvas.width}×${this.canvas.height}`;
   }
 
   private applySize() {
@@ -301,13 +337,14 @@ export class MuseumLight {
       bgMix: 0,
       sceneDim: 0,
       modeMix: 0, // never warms: there is no idle showreel here
-      slitMix: 1,
-      // march steps = clamp(layers·8 + octaves·4, 12, 32)
+      // `?field=on` nudges under the shader's skip threshold — see frameGovernor
+      slitMix: governor.FIELD_FORCED ? 0.9985 : 1,
       layers: this.layers,
       octaves: this.octaves,
+      raySteps: this.steps,
       params: p,
     };
-    this.renderer.render(state);
+    if (!governor.LIGHT_OFF) this.renderer.render(state);
   }
 
   /** guarded on the string changing, so a still reader writes no style at all */

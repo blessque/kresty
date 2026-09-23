@@ -4,6 +4,8 @@ import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 import { MOTION } from './motionParams';
+import * as governor from '../../shared/frameGovernor';
+import { getPerfTier } from '../../shared/performanceTier';
 
 /**
  * The envelope's shape. `smoothstep` is what shipped and is the default, so the
@@ -80,6 +82,20 @@ function shape(t: number): number {
  *
  * Re-baking is free of visible cost because it can only happen at
  * `envelope() === 0` — the same property that makes the mask swap invisible.
+ *
+ * ROUND 31: THE LIGHT IS LIVE BY DEFAULT, and the bake is `?bake` for A/B.
+ * Client: *"why baking versions?"* — and round 28.1 already recorded what a
+ * frozen clock costs: `breathe` and `shimmer` inert by construction, a
+ * photograph of the light instead of the light. The bake existed because the
+ * shader could not afford a frame; round 31 made it 2–4× cheaper and gave it a
+ * frame-time governor, so `live()` now redraws every visible frame with the
+ * running clock and a smoothed cursor.
+ *
+ * The 2-viewport canvas and its `translate3d` STAY: they are what keep the
+ * light locked to the icon while the page scrolls, and a redraw at a fixed
+ * canvas position cannot lag the scroll. What a live light must not do is shade
+ * the viewport that is off screen, so `live()` passes the visible band as a
+ * scissor — the cost is one viewport, the same as the main screen's.
  */
 
 /** the «Сияние» preset, read back out of the shipped variants so it cannot drift */
@@ -109,6 +125,7 @@ const REF_COVERAGE = 0.0806;
  * «Контакты» numbers, handed over verbatim as a "Copy URL" link in round 13;
  * `MOTION_DEFAULTS` now carries them, so there is still exactly one copy.
  *
+ * (Pre-round-31 / `?bake` only — the live light runs the clock.)
  * `freeze` was never represented: there is no clock to stop, because the light
  * is redrawn only when the scroll or the cursor actually moves it. `breathe`
  * and `shimmer` are therefore inert by construction, exactly as they were on
@@ -140,6 +157,10 @@ interface BakeArgs {
   pointer: [number, number];
   /** apparent size of the icon ink in CSS px — the DOM box it must fill */
   px: number;
+  /** live mode only: the running clock, and the on-screen band in canvas-local
+   *  CSS px `[top, height]` — the only rows worth shading */
+  timeSec?: number;
+  band?: [number, number];
 }
 
 export class PageLight {
@@ -195,6 +216,14 @@ export class PageLight {
         this.renderer = r;
       }
       console.info(`[kresty] page light backend: ${this.renderer.backend}`);
+      // Round 31: this light BAKES, so it never feeds the frame governor — it
+      // takes whatever rung the device has settled on (usually on the main
+      // screen, where readers arrive first). A lower rung is a smaller bake: on
+      // a weak GPU that is the 70–117 ms hitch shrinking, and the result is
+      // moved on the compositor either way.
+      governor.seed(this.renderer.gpuName, getPerfTier().low);
+      this.scaleCap = renderScale;
+      this.renderScale = Math.min(renderScale, governor.quality().renderScale);
       this.applySize();
       this.activeIdx = -1; // force the first mask upload
       this.prewarm();
@@ -246,6 +275,26 @@ export class PageLight {
     this.viewW = w;
     this.viewH = h;
     this.applySize();
+  }
+
+  /** the caller's render-scale ceiling (tier + `?ls=`); the governor moves below it */
+  private scaleCap = 1;
+
+  /** a governor rung change: resize only if the scale actually moved */
+  refreshQuality() {
+    if (!this.renderer) return;
+    const rs = Math.min(this.scaleCap, governor.quality().renderScale);
+    if (rs === this.renderScale) return;
+    this.renderScale = rs;
+    this.applySize();
+  }
+
+  get scale(): number {
+    return this.renderScale;
+  }
+
+  get canvasSize(): string {
+    return `${this.canvas.width}×${this.canvas.height}`;
   }
 
   private applySize() {
@@ -363,7 +412,36 @@ export class PageLight {
     if (!this.renderer) return;
     const args: BakeArgs = { idx, anchorX, pointer, px };
     this.lastBake = args;
+    this.select(idx);
+    this.render(args);
+  }
 
+  /**
+   * Round 31: the live light — call EVERY visible frame. Same geometry as
+   * `bake()`, plus the running clock, and `canvasTop` (the canvas's own
+   * translate, `iconY − viewH`) so only the on-screen band is shaded.
+   */
+  live(
+    idx: number,
+    anchorX: number,
+    pointer: [number, number],
+    px: number,
+    timeSec: number,
+    canvasTop: number,
+  ) {
+    if (!this.renderer) return;
+    // the viewport [0, viewH] in canvas-local px, clamped to the canvas
+    const top = Math.max(0, -canvasTop);
+    const bottom = Math.min(this.viewH * CANVAS_VH, this.viewH - canvasTop);
+    const band: [number, number] = [top, Math.max(0, bottom - top)];
+    const args: BakeArgs = { idx, anchorX, pointer, px, timeSec, band };
+    this.lastBake = args;
+    this.select(idx);
+    this.render(args);
+  }
+
+  /** make `idx`'s mask the uploaded one; async, and repeats the last draw when it lands */
+  private select(idx: number) {
     if (idx !== this.activeIdx) {
       this.activeIdx = idx;
       void this.maskFor(idx).then((m) => {
@@ -378,17 +456,18 @@ export class PageLight {
         if (this.lastBake?.idx === idx) this.render(this.lastBake);
       });
     }
-    this.render(args);
   }
 
-  private render({ idx, anchorX, pointer, px }: BakeArgs) {
+  private render({ idx, anchorX, pointer, px, timeSec, band }: BakeArgs) {
     if (!this.renderer || !this.viewH) return;
     const centerPx: [number, number] = [anchorX, this.viewH];
 
-    const key = `${idx}|${Math.round(anchorX)}|${Math.round(px)}|${Math.round(
-      pointer[0]
-    )}|${Math.round(pointer[1])}`;
-    if (key === this.lastKey) return;
+    // a live frame always differs (the clock runs), so it skips the dedupe
+    const key =
+      timeSec === undefined
+        ? `${idx}|${Math.round(anchorX)}|${Math.round(px)}|${Math.round(pointer[0])}|${Math.round(pointer[1])}`
+        : '';
+    if (key && key === this.lastKey) return;
     this.lastKey = key;
     this.renderCount++;
 
@@ -422,7 +501,8 @@ export class PageLight {
     };
 
     const state: RayFieldState = {
-      timeSec: 0,
+      // live: the running clock, so `breathe` and `shimmer` work; baked: 0
+      timeSec: timeSec ?? 0,
       centerPx: [centerPx[0] * rs, centerPx[1] * rs],
       pointerPx: [pointer[0] * rs, pointer[1] * rs],
       scale: rs,
@@ -443,11 +523,15 @@ export class PageLight {
       sceneDim: 0,
       modeMix: 0, // never warms: there is no idle showreel here
       slitMix: 1,
-      layers: 4, // march steps = clamp(layers·8 + octaves·4, 12, 32) → 32
+      layers: 4,
       octaves: 0,
+      raySteps: governor.quality().raySteps,
+      scissorPx: band
+        ? [0, Math.floor(band[0] * rs), this.canvas.width, Math.ceil(band[1] * rs)]
+        : undefined,
       params: p,
     };
-    this.renderer.render(state);
+    if (!governor.LIGHT_OFF) this.renderer.render(state);
   }
 
   /** hide without tearing the context down — the reader may scroll back */

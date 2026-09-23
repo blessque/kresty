@@ -153,6 +153,22 @@ export interface RayFieldState {
   slitMix: number;
   layers: number;
   octaves: number;
+  /**
+   * God-ray march steps, clamped 8..32 in the shader (round 31). The march is
+   * the dominant per-pixel cost — each step is three texture fetches, one per
+   * chromatic channel. It used to be DERIVED, `clamp(layers·8 + octaves·4, 12,
+   * 32)`, which tied ray quality to the dust settings; the quality governor
+   * (`shared/frameGovernor.ts`) has to move it on its own.
+   */
+  raySteps: number;
+  /**
+   * Shade only this rectangle — internal canvas px, top-left origin, `[x, y, w,
+   * h]` (round 31). Pixels outside are left undefined (cleared), so it is only
+   * for a canvas larger than what is on screen: «О Крестах»'s light canvas is
+   * two viewports tall so the compositor can move it, and a LIVE light there
+   * must not pay for the viewport that is off screen. Omitted = whole canvas.
+   */
+  scissorPx?: [number, number, number, number];
   params: RayFieldParams;
 }
 
@@ -164,4 +180,11 @@ export interface RayFieldRenderer {
   render(state: RayFieldState): void;
   destroy(): void;
   readonly backend: 'webgpu' | 'webgl2';
+  /**
+   * What the device calls its GPU, best effort, after `init()` (round 31) —
+   * "ANGLE (Intel Inc., Intel(R) Iris(TM) Plus Graphics…)", "apple metal-3",
+   * or Safari's deliberately generic "Apple GPU". It seeds the quality
+   * governor's starting rung and nothing else: frame time decides from there.
+   */
+  readonly gpuName: string;
 }

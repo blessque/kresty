@@ -23,7 +23,7 @@ struct U {
   p8: vec4f, // modeMix, slitMix, hasMask, signSize
   p9: vec4f, // godrays, bloom, dissolve, signRot
   p10: vec4f, // lightR, lightG, lightB, (spare)
-  p11: vec4f, // hoverDirX, hoverDirY, hoverAmt, (spare)
+  p11: vec4f, // hoverDirX, hoverDirY, hoverAmt, raySteps
 };
 
 @group(0) @binding(0) var<uniform> u: U;
@@ -170,7 +170,7 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   }
   bloom = bloom / 6.0;
 
-  let N = i32(clamp(u.p5.w * 8.0 + u.p6.x * 4.0, 12.0, 32.0)); // layers, octaves
+  let N = i32(clamp(u.p11.w, 8.0, 32.0)); // raySteps
   let caS = u.p3.w * 3.5; // ca
   let duv = (uv0 - lightUv) / f32(N);
   var acc = vec3f(0.0);
@@ -209,21 +209,22 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   return col * life;
 }
 
-@vertex
-fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
-  let pos = vec2f(f32((vi << 1u) & 2u), f32(vi & 2u));
-  return vec4f(pos * 2.0 - 1.0, 0.0, 1.0);
+// ROUND 31: THE PROCEDURAL FIELD IS A FUNCTION SO IT CAN BE SKIPPED. Every
+// shipped light runs `slitMix: 1`, where `col = mix(field, slit, 1)` throws the
+// field away — yet it was computed for every pixel: ~10 fbm evaluations (dust
+// layers × octaves, turbulence, haze), four beams with fiber combs, motes, ten
+// secondary lobes and the ghost chain. Pure ALU, which is exactly what an Intel
+// iGPU is short of. `main` now calls this only when the result can reach the
+// screen: a crossfade (`slitMix` < 1, variant switches) or no mask yet (the
+// cross-glyph fallback reads `crossGlyph`/`core` from here). Output is
+// unchanged by construction — the skipped branch was multiplied by zero.
+struct Field {
+  col: vec3f,
+  crossGlyph: vec3f,
+  core: f32,
 }
 
-@fragment
-fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
-  // @builtin(position) is already top-left origin
-  let fragPx = fragPos.xy;
-  let p = (fragPx - u.center) / max(u.scale, 1e-4);
-  let r = length(p) + 1e-4;
-  let th = atan2(p.y, p.x);
-  let q = (u.pointer - u.center) / max(u.scale, 1e-4);
-
+fn proceduralField(p: vec2f, q: vec2f, r: f32, th: f32) -> Field {
   let primaryK = u.p0.x;
   let primaryIntensity = u.p0.y;
   let falloffL = u.p0.z;
@@ -517,6 +518,65 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     }
   }
 
+  return Field(field, crossGlyph, core);
+}
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+  let pos = vec2f(f32((vi << 1u) & 2u), f32(vi & 2u));
+  return vec4f(pos * 2.0 - 1.0, 0.0, 1.0);
+}
+
+@fragment
+fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
+  // @builtin(position) is already top-left origin
+  let fragPx = fragPos.xy;
+  let p = (fragPx - u.center) / max(u.scale, 1e-4);
+  let r = length(p) + 1e-4;
+  let th = atan2(p.y, p.x);
+  let q = (u.pointer - u.center) / max(u.scale, 1e-4);
+
+  let primaryK = u.p0.x;
+  let primaryIntensity = u.p0.y;
+  let falloffL = u.p0.z;
+  let coreRadius = u.p0.w;
+  let coreIntensity = u.p1.x;
+  let crossSize = u.p1.y;
+  let crossIntensity = u.p1.z;
+  let secCount = u.p1.w;
+  let secK = u.p2.x;
+  let secIntensity = u.p2.y;
+  let rotSpeed = u.p2.z;
+  let dustAmount = u.p2.w;
+  let dustScale = u.p3.x;
+  let moteAmount = u.p3.y;
+  let grain = u.p3.z;
+  let ca = u.p3.w;
+  let hazeBase = u.p4.x;
+  let channelDark = u.p4.y;
+  let parallax = u.p4.z;
+  let breathe = u.p4.w;
+  let hm = i32(u.p5.x + 0.5);
+  let cm = i32(u.p5.y + 0.5);
+  let bgMix = u.p5.z;
+  let layers = u.p5.w;
+  let refraction = u.p6.y;
+  let shimmer = u.p6.z;
+  let sceneDim = u.p6.w;
+  let angleWarp = u.p7.y;
+  let ghosting = u.p7.z;
+  let shadow = u.p7.w;
+  let modeMix = u.p8.x;
+  let slitMix = u.p8.y;
+  let hasMask = u.p8.z;
+
+  // only when the field can reach the screen — see proceduralField()
+  var f = Field(vec3f(0.0), vec3f(0.0), 0.0);
+  if (slitMix < 0.999 || hasMask < 0.5) {
+    f = proceduralField(p, q, r, th);
+  }
+  let field = f.col;
+
   // ---- «Прорезь»: the logo as light, blended over the field ------------
   var col = field;
   if (slitMix > 0.001) {
@@ -530,7 +590,7 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     if (hasMask > 0.5) {
       slit = slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx));
     } else {
-      slit = crossGlyph + vec3f(core); // never blank if the mask failed to load
+      slit = f.crossGlyph + vec3f(f.core); // never blank if the mask failed to load
     }
     col = mix(field, slit, slitMix);
   }

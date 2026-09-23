@@ -5,6 +5,17 @@ import { PageBackground } from '../../page/pageBackground';
 import { FORM_BG } from './pageSections';
 import { getPerfTier } from '../../shared/performanceTier';
 import { MOTION, applyMotionCss } from './motionParams';
+import * as governor from '../../shared/frameGovernor';
+import { perfHud } from '../../shared/perfHud';
+
+/**
+ * `?bake` restores the pre-round-31 light: drawn once per station and cursor
+ * cell with the clock stopped, then only moved. Kept for A/B on slow machines;
+ * the default is live (see pageLight's header).
+ */
+const BAKE = new URLSearchParams(location.search).has('bake');
+/** the live light's cursor smoothing — `SmoothPointer`'s tau, the main screen's feel */
+const POINTER_TAU = 0.4;
 
 /**
  * Everything below the map on «О Крестах»: the section run, the contact form,
@@ -66,6 +77,9 @@ function renderScaleOverride(): number | null {
 const WARM_VH = 1.5;
 
 /**
+ * ROUND 31: EVERYTHING IN THIS BLOCK NOW APPLIES TO `?bake` ONLY — the live light
+ * eases the cursor instead (`smoothPointer`). Kept because the bake path is.
+ *
  * ROUND 25: the cursor moves the light again, in 5 × 4 = 20 quantised positions.
  *
  * THE POINT IS WHAT IS *NOT* HERE. Round 16.1's fix was that scrolling must cost
@@ -134,6 +148,12 @@ export class ConceptPage {
   private hoverSince = 0;
   /** previous scrollTop, so a bake can be suppressed while the page is moving */
   private lastScrollTop = -1;
+  /** live light (round 31): its clock, the previous frame's time, the smoothed cursor */
+  private clock0 = 0;
+  private lastFrameT = 0;
+  private smoothPtr: [number, number] | null = null;
+  /** was the light live last frame — a fresh start resets the frame governor */
+  private wasLive = false;
 
   constructor(screen: HTMLElement, scroller: HTMLElement) {
     // ROUND 23: push the layout dials into CSS before anything measures. The
@@ -200,6 +220,10 @@ export class ConceptPage {
   ) {
     if (!viewH) return;
     if (viewW !== this.viewW || viewH !== this.viewH) this.measure(viewW, viewH);
+    const now = performance.now();
+    const dtMs = this.lastFrameT ? now - this.lastFrameT : 0;
+    this.lastFrameT = now;
+    let live = false;
 
     // 1. the colour, applied. ROUND 24: the band is pushed in rather than read
     // out — `PageBackground` moved to `page/` and must not reach back into this
@@ -264,11 +288,27 @@ export class ConceptPage {
 
         const stationChanged = shown !== this.lastBakeIdx || t.px !== this.lastBakePx;
         const cursorMoved = !scrolling && settled && cell >= 0 && cell !== this.lastBakeCell;
-        if (stationChanged || cursorMoved) {
-          this.lastBakeIdx = shown;
-          this.lastBakePx = t.px;
-          this.lastBakeCell = cell;
-          light.bake(shown, t.x, local, t.px);
+        if (BAKE) {
+          if (stationChanged || cursorMoved) {
+            this.lastBakeIdx = shown;
+            this.lastBakePx = t.px;
+            this.lastBakeCell = cell;
+            light.bake(shown, t.x, local, t.px);
+          }
+        } else {
+          // ROUND 31: LIVE. Redrawn every visible frame with the running clock
+          // and a smoothed cursor; the canvas is still placed by the translate
+          // below, so the redraw never has to chase the scroll.
+          live = true;
+          if (!this.wasLive) {
+            governor.reset(); // the map's frames are not this light's cost
+            this.smoothPtr = null;
+          }
+          if (this.wasLive && dtMs && governor.frame(dtMs)) light.refreshQuality();
+          const sp = this.smoothPointer(pointer, dtMs);
+          if (!this.clock0) this.clock0 = now;
+          light.live(shown, t.x, [sp[0], sp[1] - (y - viewH)], t.px, (now - this.clock0) / 1000, y - viewH);
+          if (governor.PERF_HUD) this.hud();
         }
         light.position(y, t.opacity * dip);
       } else {
@@ -279,6 +319,7 @@ export class ConceptPage {
     }
 
     this.lastScrollTop = scrollTop;
+    this.wasLive = live;
 
     // 3. the handoff — AFTER the colour is applied, in the same task. See
     //    MainHandoff.update: reversed, a hard flick paints one frame of the
@@ -368,6 +409,35 @@ export class ConceptPage {
     }
     if (k >= 0.5) this.shownIdx = this.pendingIdx; // past the bottom: show the new one
     return 1 - MOTION.swapDip * Math.sin(Math.PI * k);
+  }
+
+  /** the cursor, eased exactly as `SmoothPointer` eases it for the main screen */
+  private smoothPointer(target: [number, number], dtMs: number): [number, number] {
+    if (!this.smoothPtr) this.smoothPtr = [target[0], target[1]];
+    const k = 1 - Math.exp(-Math.min(dtMs, 50) / 1000 / POINTER_TAU);
+    this.smoothPtr[0] += (target[0] - this.smoothPtr[0]) * k;
+    this.smoothPtr[1] += (target[1] - this.smoothPtr[1]) * k;
+    return this.smoothPtr;
+  }
+
+  /** `?perf`: what the icon light costs here */
+  private hud() {
+    const s = governor.stats;
+    const light = this.sections.light;
+    perfHud({
+      fps: s.medianMs ? (1000 / s.medianMs).toFixed(0) : '…',
+      median: `${s.medianMs.toFixed(1)} ms`,
+      p95: `${s.p95Ms.toFixed(1)} ms`,
+      slow: `${(s.slowShare * 100).toFixed(0)}% > 20 ms`,
+      backend: light.backend,
+      gpu: governor.gpuName || '?',
+      dpr: devicePixelRatio,
+      scale: light.scale,
+      canvas: light.canvasSize,
+      steps: governor.quality().raySteps,
+      rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
+      light: governor.LIGHT_OFF ? 'OFF' : BAKE ? 'baked' : 'live',
+    });
   }
 
   /** where a return from the main screen lands: past the dawn, disarmed */

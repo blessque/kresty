@@ -42,6 +42,7 @@ const PARAM_UNIFORMS = [
 
 export class WebGL2RayFieldRenderer implements RayFieldRenderer {
   readonly backend = 'webgl2' as const;
+  gpuName = '';
   private gl!: WebGL2RenderingContext;
   private program!: WebGLProgram;
   private uniforms = new Map<string, WebGLUniformLocation | null>();
@@ -58,6 +59,10 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     });
     if (!gl) throw new Error('WebGL2 unavailable');
     this.gl = gl;
+    // the unmasked name where the browser allows it (Chrome, Firefox); Safari
+    // answers "Apple GPU" either way
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    this.gpuName = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
 
     const compile = (type: number, src: string) => {
       const sh = gl.createShader(type)!;
@@ -105,6 +110,7 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
       'u_signMask',
       'u_layers',
       'u_octaves',
+      'u_raySteps',
       // ROUND 25: `u_signRot` was MISSING here since round 7 — uploaded every
       // frame at `render()` and silently discarded, so the cross's rotation was
       // dead on WebGL2 and correct on WebGPU, which is why it read as "disabled"
@@ -183,12 +189,21 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     gl.uniform1f(u('u_hasMask'), this.hasMask);
     gl.uniform1f(u('u_layers'), s.layers);
     gl.uniform1f(u('u_octaves'), s.octaves);
+    gl.uniform1f(u('u_raySteps'), s.raySteps);
     for (const k of PARAM_UNIFORMS) {
       gl.uniform1f(u(`u_${k}`), s.params[k]);
     }
     if (this.signTex) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.signTex);
+    }
+    if (s.scissorPx) {
+      // GL's scissor is bottom-left origin; the contract's is top-left
+      const [x, y, w, h] = s.scissorPx;
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(x, gl.drawingBufferHeight - y - h, w, h);
+    } else {
+      gl.disable(gl.SCISSOR_TEST);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

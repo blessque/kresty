@@ -1,6 +1,8 @@
 import { ContentScreen } from '../../page/ContentScreen';
 import { buildPageHead } from '../../page/pageHead';
 import { getPerfTier } from '../../shared/performanceTier';
+import * as governor from '../../shared/frameGovernor';
+import { perfHud } from '../../shared/perfHud';
 import { T } from '../../styles/tokens.gen';
 import type { ColorStop } from '../../page/pageBackground';
 import { MuseumRun } from './museumRun';
@@ -45,18 +47,14 @@ const CROSS_OPACITY = 0.3;
 const TOTAL_ROT = Math.PI;
 
 /**
- * The cursor's quantisation grid. 20 cells across the viewport, which is what
- * keeps «disturbed dust» from becoming a render storm: the light's dedupe key
- * only sees the cell centre, so crossing the page changes it 20 times and not
- * once per pointermove.
- *
- * «О Крестах» also needs a 90 ms settle timer on top of this; that is because a
- * bake there can pull a 70–90 ms mask rasterize with it. There is one mask here
- * and it never changes, so a re-render is just a draw and the timer would be
- * latency bought for nothing.
+ * ROUND 31: THE CURSOR IS EASED, NOT QUANTISED — the main screen's feel. The
+ * 20-cell grid it replaces was a leftover of the baked light: it bounded how
+ * often a dedupe key could change. The light has redrawn every frame since
+ * 28.1, so the grid bought nothing and made the light jump between 20 poses.
+ * `SmoothPointer`'s tau, so «disturbed dust» reads the same on both pages —
+ * inertia, never a hard follow.
  */
-const BUCKETS_X = 5;
-const BUCKETS_Y = 4;
+const POINTER_TAU = 0.4;
 
 /** how far ahead of the first section the GPU context is warmed, in viewports */
 const WARM_VH = 1.5;
@@ -102,11 +100,15 @@ export class MuseumScreen extends ContentScreen {
   private warmed = false;
   /** window coordinates, as the light wants them — the canvas is never moved */
   private pointer: [number, number] = [-9999, -9999];
+  /** the eased cursor the light actually sees; null until the first frame */
+  private smoothPtr: [number, number] | null = null;
   private lastRotDeg = '';
   private lastInk = '';
   private lastChrome = '';
   /** when the light's clock started — see the frame loop */
   private t0 = 0;
+  /** previous rAF timestamp — the frame governor's input */
+  private lastFrame = 0;
 
   constructor(el: HTMLElement) {
     super(el, 'museum-page');
@@ -171,6 +173,8 @@ export class MuseumScreen extends ContentScreen {
   start(restore?: number) {
     super.start(restore);
     this.remeasure();
+    governor.reset();
+    this.lastFrame = 0;
     if (!this.raf) this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -183,12 +187,37 @@ export class MuseumScreen extends ContentScreen {
     document.documentElement.style.removeProperty('--grain-k');
   }
 
+  /** `?perf`: what this light costs here, for a person to read off the screen */
+  private hud() {
+    const s = governor.stats;
+    perfHud({
+      fps: s.medianMs ? (1000 / s.medianMs).toFixed(0) : '…',
+      median: `${s.medianMs.toFixed(1)} ms`,
+      p95: `${s.p95Ms.toFixed(1)} ms`,
+      slow: `${(s.slowShare * 100).toFixed(0)}% > 20 ms`,
+      backend: this.light.backend,
+      gpu: governor.gpuName || '?',
+      dpr: devicePixelRatio,
+      scale: this.light.scale,
+      canvas: this.light.canvasSize,
+      steps: this.light.steps,
+      rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
+      light: governor.LIGHT_OFF ? 'OFF' : governor.FIELD_FORCED ? 'field forced' : 'on',
+    });
+  }
+
   private onPointer = (e: PointerEvent) => {
     this.pointer = [e.clientX, e.clientY];
   };
 
-  private frame = () => {
+  private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
+    // round 31: measured frame time picks the light's resolution and steps —
+    // only once the light is live, since the frames before it are not its cost
+    const dtMs = this.lastFrame ? now - this.lastFrame : 0;
+    this.lastFrame = now;
+    if (this.light.ready && dtMs && governor.frame(dtMs)) this.light.refreshQuality();
+    if (governor.PERF_HUD) this.hud();
     const sc = this.shell.scroller;
     const viewH = sc.clientHeight;
     const run = this.run;
@@ -225,7 +254,7 @@ export class MuseumScreen extends ContentScreen {
       // The clock starts when the light does, not at page load: a reader who
       // spends a minute on «О Крестах» first should not arrive mid-breath.
       if (!this.t0) this.t0 = performance.now();
-      this.light.render(rot, this.quantisedPointer(), (performance.now() - this.t0) / 1000);
+      this.light.render(rot, this.easedPointer(dtMs), (performance.now() - this.t0) / 1000);
     }
 
     this.cross.style.opacity = (white * CROSS_OPACITY * fade).toFixed(3);
@@ -302,15 +331,19 @@ export class MuseumScreen extends ContentScreen {
     return 0;
   }
 
-  /** the cursor, snapped to the centre of its cell — see BUCKETS_X */
-  private quantisedPointer(): [number, number] {
+  /** the cursor, eased toward the pointer — see POINTER_TAU. Centre until one arrives. */
+  private easedPointer(dtMs: number): [number, number] {
     const w = this.shell.scroller.clientWidth;
     const h = this.shell.scroller.clientHeight;
     const [x, y] = this.pointer;
-    if (x < 0 || y < 0) return [w / 2, h / 2];
-    const cx = Math.min(BUCKETS_X - 1, Math.max(0, Math.floor((x / w) * BUCKETS_X)));
-    const cy = Math.min(BUCKETS_Y - 1, Math.max(0, Math.floor((y / h) * BUCKETS_Y)));
-    return [((cx + 0.5) / BUCKETS_X) * w, ((cy + 0.5) / BUCKETS_Y) * h];
+    const target: [number, number] = x < 0 || y < 0 ? [w / 2, h / 2] : [x, y];
+    if (!this.smoothPtr) this.smoothPtr = target;
+    const k = 1 - Math.exp(-Math.min(dtMs, 50) / 1000 / POINTER_TAU);
+    this.smoothPtr = [
+      this.smoothPtr[0] + (target[0] - this.smoothPtr[0]) * k,
+      this.smoothPtr[1] + (target[1] - this.smoothPtr[1]) * k,
+    ];
+    return this.smoothPtr;
   }
 }
 

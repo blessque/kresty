@@ -5,6 +5,7 @@ const FLOATS = 76; // 19 × vec4f = 304 bytes
 
 export class WebGPURayFieldRenderer implements RayFieldRenderer {
   readonly backend = 'webgpu' as const;
+  gpuName = '';
   private device!: GPUDevice;
   private ctx!: GPUCanvasContext;
   private pipeline!: GPURenderPipeline;
@@ -20,6 +21,12 @@ export class WebGPURayFieldRenderer implements RayFieldRenderer {
     this.canvas = canvas;
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) throw new Error('No WebGPU adapter');
+    // `adapter.info` is recent (older engines have `requestAdapterInfo()` or
+    // nothing), hence the loose read
+    const info = (adapter as unknown as { info?: Record<string, string> }).info;
+    this.gpuName = info
+      ? [info.vendor, info.architecture, info.description].filter(Boolean).join(' ')
+      : '';
     this.device = await adapter.requestDevice();
     const ctx = canvas.getContext('webgpu');
     if (!ctx) throw new Error('No webgpu context');
@@ -159,7 +166,7 @@ export class WebGPURayFieldRenderer implements RayFieldRenderer {
     d[72] = s.hoverDir[0];
     d[73] = s.hoverDir[1];
     d[74] = s.hoverAmt;
-    // d[75] spare — p11.w
+    d[75] = s.raySteps; // p11.w
     this.device.queue.writeBuffer(this.ubuf, 0, d);
 
     const enc = this.device.createCommandEncoder();
@@ -175,6 +182,16 @@ export class WebGPURayFieldRenderer implements RayFieldRenderer {
     });
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bind);
+    if (s.scissorPx) {
+      // must lie inside the target, in whole pixels, or validation fails the pass
+      const cw = this.canvas.width;
+      const ch = this.canvas.height;
+      const x = Math.max(0, Math.min(cw, Math.floor(s.scissorPx[0])));
+      const y = Math.max(0, Math.min(ch, Math.floor(s.scissorPx[1])));
+      const w = Math.max(0, Math.min(cw - x, Math.ceil(s.scissorPx[2])));
+      const h = Math.max(0, Math.min(ch - y, Math.ceil(s.scissorPx[3])));
+      pass.setScissorRect(x, y, w, h);
+    }
     pass.draw(3);
     pass.end();
     this.device.queue.submit([enc.finish()]);

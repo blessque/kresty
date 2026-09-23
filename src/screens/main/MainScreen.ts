@@ -21,6 +21,8 @@ import { lerpParams } from '../../gpu/rayFieldTypes';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 import { SmoothPointer } from '../../shared/pointer';
 import { getPerfTier } from '../../shared/performanceTier';
+import * as governor from '../../shared/frameGovernor';
+import { perfHud } from '../../shared/perfHud';
 import { rasterizeMask } from '../../shared/rasterizeMask';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
@@ -69,6 +71,13 @@ export class MainScreen {
   /** seconds since the last slide throw — drives the light dip (round 8) */
   private slideT = 10;
   private tier = getPerfTier();
+  /**
+   * The light's live render scale (round 31): the frame governor's rung, capped
+   * by the perf tier (which already carries the DPR and the mobile cap). Set in
+   * `layout()`, read by `update()`, so the backing store and the coordinates
+   * handed to the shader can never disagree.
+   */
+  private rs = 1;
 
   private raf = 0;
   private running = false;
@@ -323,8 +332,9 @@ export class MainScreen {
   layout = () => {
     const s = stageScale();
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
-    const w = Math.round(innerWidth * this.tier.renderScale);
-    const h = Math.round(innerHeight * this.tier.renderScale);
+    this.rs = Math.min(governor.quality().renderScale, this.tier.renderScale);
+    const w = Math.round(innerWidth * this.rs);
+    const h = Math.round(innerHeight * this.rs);
     this.renderer?.resize(w, h);
     this.measureBeams();
   };
@@ -403,6 +413,7 @@ export class MainScreen {
       this.renderer = r;
     }
     console.info(`[kresty] ray field backend: ${this.renderer.backend}`);
+    governor.seed(this.renderer.gpuName, this.tier.low);
     // rasterize the emblem (sign.svg) into the slit mask; on failure the
     // «Прорезь» path falls back to the procedural cross glow (never blank)
     try {
@@ -422,12 +433,18 @@ export class MainScreen {
     addEventListener('resize', this.layout);
     addEventListener('keydown', this.onKeyDown);
     this.lastT = performance.now();
+    governor.reset();
     const loop = (now: number) => {
       if (!this.running) return;
-      const dt = Math.min(0.05, (now - this.lastT) / 1000);
+      const dtMs = now - this.lastT;
+      const dt = Math.min(0.05, dtMs / 1000);
       this.lastT = now;
       this.timeSec += dt;
+      // round 31: measured frame time picks the light's resolution and steps.
+      // Only once the light exists — the frames before it are not its cost.
+      if (this.renderer && governor.frame(dtMs)) this.layout();
       this.update(dt);
+      if (governor.PERF_HUD) this.hud();
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -578,7 +595,7 @@ export class MainScreen {
     // is not a stage child, so the 4.5% composition dim has never applied to it
     // — `scale` is the layout scale it has always been. See `stageCentre()`.
     const s = stageScale();
-    const rs = this.tier.renderScale;
+    const rs = this.rs;
     const centre = this.stageCentre();
     const state: RayFieldState = {
       timeSec: this.timeSec,
@@ -599,12 +616,32 @@ export class MainScreen {
       bgMix: Math.max(this.showreel.mix, this.photoSlider.mix),
       sceneDim: this.sceneDim,
       modeMix: this.modeMix,
-      slitMix: this.slitMix,
+      slitMix: governor.FIELD_FORCED ? Math.min(this.slitMix, 0.9985) : this.slitMix,
       layers: this.tier.layers,
       octaves: this.tier.octaves,
+      raySteps: Math.min(governor.quality().raySteps, this.tier.raySteps),
       params: p,
     };
-    this.renderer.render(state);
+    if (!governor.LIGHT_OFF) this.renderer.render(state);
+  }
+
+  /** `?perf`: what this light costs here, for a person to read off the screen */
+  private hud() {
+    const s = governor.stats;
+    perfHud({
+      fps: s.medianMs ? (1000 / s.medianMs).toFixed(0) : '…',
+      median: `${s.medianMs.toFixed(1)} ms`,
+      p95: `${s.p95Ms.toFixed(1)} ms`,
+      slow: `${(s.slowShare * 100).toFixed(0)}% > 20 ms`,
+      backend: this.renderer?.backend ?? 'none',
+      gpu: governor.gpuName || '?',
+      dpr: devicePixelRatio,
+      scale: this.rs,
+      canvas: `${this.canvas.width}×${this.canvas.height}`,
+      steps: Math.min(governor.quality().raySteps, this.tier.raySteps),
+      rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
+      light: governor.LIGHT_OFF ? 'OFF' : governor.FIELD_FORCED ? 'field forced' : 'on',
+    });
   }
 
   /** dims/scales the DOM composition during the fly-in transition */

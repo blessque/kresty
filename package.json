@@ -15,7 +15,9 @@
     "tokens:check": "node scripts/build-tokens.mjs --check",
     "spec:figma": "node scripts/figma-spec.mjs",
     "shots:figma": "node scripts/figma-shots.mjs",
-    "probe:heads": "node scripts/head-sweep.mjs"
+    "probe:heads": "node scripts/head-sweep.mjs",
+    "probe:sliders": "node scripts/slider-sweep.mjs",
+    "bench:light": "node scripts/light-bench.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

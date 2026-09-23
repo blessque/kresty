@@ -640,8 +640,8 @@ export class ContactsScreen {
       signSize,
     };
 
-    // march steps without a shader change: N = clamp(layers·8 + octaves·4, 12,
-    // 32), and at slitMix 1 layers/octaves affect nothing else on this page
+    // march steps — an explicit `raySteps` since round 31 (it used to ride on
+    // layers·8, and at slitMix 1 layers/octaves affect nothing else here)
     const steps = this.n('steps');
 
     const state: RayFieldState = {
@@ -666,6 +666,7 @@ export class ContactsScreen {
       slitMix: 1,
       layers: steps / 8,
       octaves: 0,
+      raySteps: steps,
       params: p,
     };
     this.renderer.render(state);
