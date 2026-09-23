@@ -128,9 +128,9 @@ export class NewsScreen extends ContentScreen {
           : '') +
         `</div>` +
         `<div class="col-main news-card__body">` +
-        `<h2 class="news-card__title">` +
+        `<h3 class="news-card__title">` +
         `<a class="news-card__link" href="#news/1">${escapeHtml(bindShortWords(n.title))}</a>` +
-        `</h2>` +
+        `</h3>` +
         `<p class="news-card__meta">` +
         `<span class="news-card__date">${escapeHtml(n.date)}</span>` +
         `<span class="news-filters__dot" aria-hidden="true"></span>` +

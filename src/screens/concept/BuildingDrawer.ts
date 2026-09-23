@@ -89,7 +89,7 @@ export class BuildingDrawer {
         ${hero(info)}
         <div class="bld-body">
           ${mark}
-          <h2 class="bld-name">${t(info.name)}</h2>
+          <h3 class="bld-name">${t(info.name)}</h3>
           <p class="bld-brief">${t(info.brief)}</p>
           <ul class="bld-list">${rows}</ul>
         </div>

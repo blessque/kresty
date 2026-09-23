@@ -78,6 +78,14 @@ export const ARTICLE: Article = {
       pic('temple-from-mice', 'Храм со стороны корпусов', 2400, 1611),
       pic('overview', 'Общий вид комплекса', 2400, 1611),
     ),
+    // ROUND 31.2: prose between the strip and the pull-quote. Two full-bleed
+    // blocks back to back — a 100vw slider straight into the ten-column quote —
+    // read as one undivided wall; the client asked for a paragraph to split them.
+    p(
+      'Фасады восстанавливали по архивным чертежам и обмерам: кладку расчищали вручную, ' +
+        'утраченный кирпич заменяли изготовленным по образцам XIX века, а карнизы ' +
+        'и наличники воссоздавали по сохранившимся фрагментам.',
+    ),
     {
       kind: 'quote',
       text: 'Восстановили исторические фасады с характерными элементами кирпичного стиля',

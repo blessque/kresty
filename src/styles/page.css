@@ -395,7 +395,7 @@
 
      Measured across the three longreads: nine picture sets, of which five are
      two photographs. At `--ms-h` tall a landscape is ~615 wide, so a pair is
-     ~1254 and FITS inside 1440 — its travel is 0 and it must simply sit there,
+     ~1254 and FITS inside 1440 — its travel was 0 and it sat there (until 30),
      centred, rather than hug the left edge with 450px of hole beside it. The
      five «О Крестах» sets measure travels of 0, 0, 445, 1198 and 0 at 1440;
      note the last is a three-photo set whose slides are portraits, so COUNT
@@ -404,7 +404,13 @@
      Plain `center` would centre the overflowing ones too, which puts half the
      excess off the LEFT edge behind `overflow: clip` — the first photo would be
      unreachable at travel 0. `safe` falls back to `flex-start` exactly when
-     overflow starts, which is exactly when the pan takes over. */
+     overflow starts, which is exactly when the pan takes over.
+
+     ROUND 30: a set that fits no longer sits still — "a slider that does not
+     slide is just weird" — `MediaSlider.fill()` repeats its slides until it
+     travels 60% of the frame. So with the pan running every strip overflows
+     and `safe center` only ever centres in the two no-pan fallbacks below,
+     where there are no echoes and a short set should still sit centred. */
   justify-content: safe center;
   will-change: transform;
 }

@@ -2,7 +2,7 @@
  * THE HEADING BANDS DO NOT OVERFLOW THEIR MEASURE — swept, at every width that
  * matters. `npm run probe:heads`. Exits non-zero on the first overflow.
  *
- * Round 29 turned three pages' section headings into a ten-column FACTOID band
+ * Round 29 turned two longreads' section openers into a ten-column FACTOID `.loud`
  * (72/110%) and turned `hyphens: auto` OFF with them. That second half is the
  * part that needs a guard. Hyphenation was load-bearing while H2 was a FLAT 40px
  * in a four-column column — the type stopped shrinking below 1440 while the
@@ -16,7 +16,7 @@
  *   article  −38.6  −36.4  −35.2  −34.3  −33.0  −31.7  −15.7   −3.7
  *
  * Negative is clearance. «О Крестах» runs on 3px of it, so a copy edit to any
- * `PAGE_SECTIONS.h2` can break this — which is why it is a script and not a
+ * `PAGE_SECTIONS.lead` can break this — which is why it is a script and not a
  * paragraph in the tuning log.
  *
  * TWO MEASUREMENT TRAPS, both of which gave a wrong answer to this exact
@@ -39,9 +39,12 @@ import { spawn } from 'node:child_process';
 const PORT = 5399;
 const WIDTHS = [1440, 1366, 1309, 1280, 1240, 1200, 1180, 1165];
 const ROUTES = [
-  ['#concept', '.sec-h2'],
+  ['#concept', '.sec-loud'],
   ['#museum', '.mus-era'],
-  ['#news/1', '.article-body > h2'],
+  // «Новость» is NOT swept. Round 29 briefly gave its subheadings the ten-column
+  // loud; round 29.2 put them back to a 40px H2 inside the body column, where
+  // the measure is the same one every paragraph already wraps to and there is
+  // nothing for this probe to catch.
 ];
 
 const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], {

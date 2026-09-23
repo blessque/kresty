@@ -151,7 +151,7 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     photo: '/resources/hotel.webp',
     logo: '/resources/cosmos-logo.svg',
     link: { url: COSMOS, label: 'Сайт отеля' },
-    brief: 'Пятизвездочный отель с номерами на месте бывших камер.',
+    brief: 'Пятизвездочный отель с видом на Неву и собственным спа-комплексом.',
     rooms: 126,
     // exactly the three rows in the client's drawer design, in their order
     residents: [
@@ -280,13 +280,15 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   },
 
   // 208 tris · 2.58×2.45 · Комсомола row
+  // ROUND 30: was «Кафе на Комсомола» — renamed in the client's docx. NOTE the
+  // name now repeats b09's; the client's text, applied as written.
   b08: {
-    name: 'Кафе на Комсомола',
-    kind: 'Общественное питание',
-    brief: 'Кафе с отдельным входом с улицы, работающее и на квартал, и на город.',
+    name: 'Торговая галерея',
+    kind: 'Арендные помещения',
+    brief: 'Торговая галерея: магазины у входа и сервисы для гостей и постояльцев квартала.',
     residents: [
-      { label: 'Кафе', floor: 0, type: 'cafe' },
-      { label: 'Летняя веранда', floor: 0, type: 'cafe' },
+      { label: 'Магазины', floor: 0, type: 'shop' },
+      { label: 'Сервисы для гостей', floor: 0, type: 'service' },
     ],
   },
 
@@ -313,14 +315,15 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   },
 
   // 130 tris · 2.58×1.40 · Комсомола row
+  // ROUND 30: was «Сервисный корпус» — renamed in the client's docx
   b11: {
-    name: 'Сервисный корпус',
-    kind: 'Сервисы квартала',
-    brief: 'Бытовые сервисы квартала: прачечная самообслуживания, ателье и мастерские.',
+    name: 'Гастрокластер',
+    kind: 'Общественное питание',
+    brief: 'Гастрономический кластер квартала: фуд-холл, рестораны и бар под одной крышей.',
     residents: [
-      { label: 'Прачечная самообслуживания', floor: 0, type: 'service' },
-      { label: 'Ателье', floor: 0, type: 'workshop' },
-      { label: 'Мастерские резидентов', floor: 1, type: 'workshop', count: 6 },
+      { label: 'Фуд-холл', floor: 0, type: 'restaurant' },
+      { label: 'Рестораны', floor: 0, type: 'restaurant' },
+      { label: 'Бар', floor: 1, type: 'bar' },
     ],
   },
 
@@ -333,13 +336,15 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   },
 
   // 110 tris · 2.50×1.47 · embankment row, near the main entrance
+  // ROUND 30: was «Кафе на набережной» — renamed in the client's docx
   b13: {
-    name: 'Кафе на набережной',
-    kind: 'Кафе',
-    brief: 'Кафе у главного входа с террасой, обращённой к Арсенальной набережной.',
+    name: 'Арендный корпус',
+    kind: 'Арендные помещения',
+    brief: 'Арендные помещения вдоль Арсенальной улицы: студии, шоурумы, кофейни и небольшие офисы.',
     residents: [
-      { label: 'Кафе', floor: 0, type: 'cafe' },
-      { label: 'Терраса на набережной', floor: 0, type: 'cafe' },
+      { label: 'Студии и шоурумы', floor: 0, type: 'shop' },
+      { label: 'Кофейни', floor: 0, type: 'cafe' },
+      { label: 'Небольшие офисы', floor: 1, type: 'office' },
     ],
   },
 
@@ -374,13 +379,13 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
   },
 
   // 48 tris · 2.67×1.87 · only 0.21 high — a canopy
+  // ROUND 30: was «Навес» — renamed in the client's docx. The GEOMETRY is still
+  // the 0.21-high canopy slab; the part's reading is theirs to make.
   b17: {
-    name: 'Навес',
-    kind: 'Навес общественного пространства',
-    brief: 'Крытый навес над общественным пространством. Сезонная сцена и ярмарки.',
-    // typed `service`, not `hall`: an open-air stage summarised as «зал» reads
-    // as an indoor room. It simply contributes no summary clause.
-    residents: [{ label: 'Летняя сцена', floor: 0, type: 'service' }],
+    name: 'Офисный корпус',
+    kind: 'Офисы',
+    brief: 'Офисное пространство с видом на Неву.',
+    residents: [{ label: 'Офисы', floor: 0, type: 'office' }],
   },
 
   // 46 tris · 6.95×1.64 · 0.09 high — the slab lying on the water

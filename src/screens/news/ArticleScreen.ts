@@ -172,7 +172,7 @@ export class ArticleScreen extends ContentScreen {
     sec.className = 'article-related page-grid';
     sec.innerHTML =
       `<div class="col-full">` +
-      `<h2 class="article-related__title">Читайте также</h2>` +
+      `<h3 class="article-related__title">Читайте также</h3>` +
       `<div class="article-related__grid">` +
       RELATED.map(
         (n) =>

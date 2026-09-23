@@ -55,6 +55,30 @@ export interface MediaItem {
  * place, the CSS, which is where it was always supposed to be.
  */
 
+/**
+ * ROUND 30: A SLIDER MUST SLIDE. The client's note: a strip of two or three
+ * photographs FITS inside the viewport, so `--ms-travel` came out 0 and it sat
+ * frozen mid-page — five of the nine longread sets at 1440, and every set at
+ * 2560. The strip now repeats its own slides until it has at least this much
+ * travel, as a fraction of the frame's width, so a pair pans like a five.
+ *
+ * 0.6 because it lands near what a real five-photo set does at 1440 (a four-set
+ * measured 1198, a three-set 445): enough to read as motion across the whole
+ * `cover` range, not so much that a pair whips past. The echoes are the same
+ * files — already fetched — and are hidden from assistive tech, so a screen
+ * reader still hears each photograph once.
+ */
+const MIN_TRAVEL = 0.6;
+
+/** the pan is off, so the strip is a hand-scrolled row where echoes would read
+ *  as duplicates — see the two fallbacks in page.css */
+function panRuns(): boolean {
+  return (
+    CSS.supports('animation-timeline: view()') &&
+    !matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 export interface MediaSliderHost {
   /**
    * Called when the strip's measured travel changes — once on layout, and again
@@ -74,6 +98,8 @@ export class MediaSlider {
   private frame: HTMLElement;
   private ro: ResizeObserver | null = null;
   private travel = -1;
+  private originals: HTMLImageElement[] = [];
+  private filledFor = -1;
 
   constructor(
     items: MediaItem[],
@@ -98,6 +124,7 @@ export class MediaSlider {
       .join('');
     this.frame.appendChild(this.strip);
     this.el.appendChild(this.frame);
+    this.originals = [...this.strip.querySelectorAll('img')];
 
     // MEASURE ON LAYOUT, NOT IN THE CONSTRUCTOR. The travel is the strip's
     // scroll width less the frame's, and at construction this element is not in
@@ -143,10 +170,36 @@ export class MediaSlider {
    * CSS in TypeScript where the two can drift.
    */
   private measure() {
+    this.fill();
     const travel = Math.max(0, this.strip.scrollWidth - this.frame.clientWidth);
     if (travel === this.travel) return;
     this.travel = travel;
     this.el.style.setProperty('--ms-travel', `${travel}px`);
     this.host.onResize?.();
+  }
+
+  /**
+   * Top the strip up with ECHOES of its own slides until it can travel
+   * `MIN_TRAVEL` of the frame. Rebuilt only when the frame's width changes
+   * (the viewport resized) — a lazy photo decoding does not change what the
+   * slides WILL measure, because each already has a definite height and its
+   * declared ratio. Every append is read back through `scrollWidth`, so the
+   * gaps are counted by the CSS rather than restated here.
+   */
+  private fill() {
+    const fw = this.frame.clientWidth;
+    if (this.originals.length < 2 || fw === 0 || fw === this.filledFor) return;
+    this.filledFor = fw;
+    for (const e of this.strip.querySelectorAll('.ms-echo')) e.remove();
+    if (!panRuns()) return;
+    const want = fw * (1 + MIN_TRAVEL);
+    // bounded: a strip of tiny slides must not loop forever on a 5K screen
+    for (let i = 0; this.strip.scrollWidth < want && i < this.originals.length * 6; i++) {
+      const echo = this.originals[i % this.originals.length].cloneNode() as HTMLImageElement;
+      echo.classList.add('ms-echo');
+      echo.alt = '';
+      echo.setAttribute('aria-hidden', 'true');
+      this.strip.appendChild(echo);
+    }
   }
 }

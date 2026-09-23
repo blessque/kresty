@@ -157,7 +157,7 @@ export class ContactForm {
       // `.page-h2` in `.col-aside`, and with no `.sec-col` nothing can stick.
       (c.wideHead
         ? `<div class="sec-head page-grid">` +
-          `<h2 class="sec-h2 head-wide">${escapeHtml(bindShortWords(c.heading))}</h2>` +
+          `<p class="sec-loud loud col-full">${escapeHtml(bindShortWords(c.heading))}</p>` +
           `</div>`
         : '') +
       `<div class="sec-grid page-grid">` +

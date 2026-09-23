@@ -48,12 +48,19 @@ export class MuseumRun {
     //
     // `.mus-col` is gone rather than emptied, and `MuseumScreen.fadeEras()` with
     // it: that crossfade existed only because two PINNED titles were on screen
-    // together at every boundary. A heading that scrolls away hands over by
+    // together at every boundary. An opener that scrolls away hands over by
     // itself.
+    //
+    // ROUND 29.2: A `<p class="loud">`, NOT AN `<h2>`. The era name reads as a
+    // title where «О Крестах»'s openers read as sentences, so this one was the
+    // close call — but the site cannot have an H2 that means 40px on one page
+    // and 72px on another, and the treatment is what these two pages share. H2
+    // is 40 everywhere; `.loud` is the opener. The years keep their own class
+    // and their own size.
     el.innerHTML =
       `<div class="mus-head page-grid">` +
-      `<div class="head-wide">` +
-      `<h2 class="mus-era">${escapeHtml(bindShortWords(s.era))}</h2>` +
+      `<div class="col-full">` +
+      `<p class="mus-era loud">${escapeHtml(bindShortWords(s.era))}</p>` +
       `<p class="mus-years">${escapeHtml(s.years)}</p>` +
       `</div>` +
       `</div>` +

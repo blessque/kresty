@@ -137,15 +137,18 @@ export const MUSEUM_SECTIONS: MuseumSection[] = [
         'Здесь раскрываются истории известных заключённых «Крестов»: деятелей культуры, ' +
           'литературы, истории, политики, науки, искусства и других публичных фигур.',
       ),
-      media(
-        pic('museum-tally-wall', 'Отметки дней на стене прогулочного дворика', 1352, 820),
-        pic('museum-duty-office', 'Дежурная часть: картотека, телефон, радиоприёмник', 1352, 820),
-      ),
+      // ROUND 30.1: TWO SINGLES, NOT A PAIR. As a slider this sat 1418px below
+      // the bunks strip and 1279px above «Забвение»'s — two strips in one frame
+      // on a 1440-tall screen, which the client's rule forbids (`npm run
+      // probe:sliders`). The duty office now sits under the sentence naming
+      // what it shows: the phone, the documents.
+      media(pic('museum-tally-wall', 'Отметки дней на стене прогулочного дворика', 1352, 820)),
       p(
         'Сохранился служебный телефон, внутренние документы, нары, зеркало, плитка ' +
           'из камеры, иконки заключённых, улавливатель для сброса ключей из «Крестов», ' +
           'фонари и лампочки над дверью камеры.',
       ),
+      media(pic('museum-duty-office', 'Дежурная часть: картотека, телефон, радиоприёмник', 1352, 820)),
       // FIXED: «...» → «…» (U+2026)
       h3('Музей откроется вместе с комплексом в 2029 году…'),
     ],

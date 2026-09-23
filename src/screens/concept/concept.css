@@ -689,8 +689,8 @@
      sectionRun.ts caught this at 869px against an 800px viewport.
 
      The bottom pad is one of the three terms of that invariant, so it flexes
-     with the viewport. The TYPE does not: the h2 is a Figma text style at a
-     fixed 44px, and shrinking a designer's scale to make a layout fit is the
+     with the viewport. The TYPE does not: the column's heading was then a
+     Figma text style at a fixed 44px, and shrinking a designer's scale to make a layout fit is the
      wrong lever. Flex what is ours — pad, pin, icon box — not what is theirs.
 
      ROUND 23: the HORIZONTAL inset is gone from here — `.page-grid` owns it now
@@ -747,8 +747,8 @@
   position: sticky;
   top: var(--sec-pin, 14vh);
   align-self: start;
-  /* ROUND 29: THIS COLUMN IS NOW THE ICON AND NOTHING ELSE. The h2 moved to
-     `.sec-head`, so the column's height stopped swinging 400px+ with the
+  /* ROUND 29: THIS COLUMN IS NOW THE ICON AND NOTHING ELSE. The heading moved
+     to `.sec-head` (and in 29.2 stopped being a heading: it is the `.loud`), so the column's height stopped swinging 400px+ with the
      heading's wrap. MEASURED 264 at 1440×900 — which is `iconSize` 228 plus
      `.sec-icon`'s own `margin-bottom`, not 228; the margin is a `clamp` on
      `vh`, so colH is 258 at 760 and 268 at 1080 and the word for it is "flat",
@@ -765,7 +765,7 @@
 }
 
 /* Empty and aria-hidden: it reserves the box the LIGHT draws into, and its
-   measured rect is the single source of the icon's x — so the light and the h2
+   measured rect is the single source of the icon's x — so the light and the icon
    come from one source (the grid) rather than two that can drift. */
 .sec-icon {
   /* Reserves the box the LIGHT draws into. Flexes with viewport height because
@@ -784,10 +784,10 @@
   margin-inline: var(--sec-icon-inline, auto);
 }
 
-/* ── THE SECTION HEADING BAND (round 29) ─────────────────────────────────────
-   The heading left the sticky column. `.head-wide` in styles/pages.css carries
-   the ten-column measure and the Factoid type (72/110%); this file carries only
-   what is specific to the longread — the band's own air.
+/* ── THE SECTION OPENER (round 29) ───────────────────────────────────────────
+   The opener left the sticky column. `.loud` in styles/pages.css carries the
+   Factoid type (72/110%) and `.col-full` the ten-column measure; this file
+   carries only what is specific to the longread — the band's own air.
 
    96 above and below, which is `--sp-page`, the vertical-rhythm step for
    page-level blocks. The designer's frame draws 92 and 116.5; those are the two
@@ -798,32 +798,31 @@
   padding: var(--sp-page) 0;
 }
 
-.sec-h2 {
-  /* Family, size, weight and line-height all come from `.head-wide`. Do not
-     restate them here: this file loads AFTER pages.css, so an equal-specificity
-     `font-size` on `.sec-h2` would silently win and put the band back at 40px. */
-  margin: 0;
+/* `.sec-loud` CARRIES NO DECLARATIONS AND THAT IS DELIBERATE — the type is
+   `.loud` in styles/pages.css and the measure is `.col-full`, both shared with
+   «Музей», and this file loads AFTER pages.css so anything restated here would
+   silently win. The class stays in the markup as a named hook (it is what
+   `scripts/head-sweep.mjs` selects) and as the place this note hangs off.
 
-  /* ROUND 29 TOOK HYPHENATION OFF, and `npm run probe:heads` is what makes that
-     safe to have done. It was load-bearing at H2 because the type was a FLAT
-     40px while the column kept shrinking below 1440 — «для размышлений» is one
-     unbreakable 407px NBSP run at 44px against a 442px column. The band changes
-     both terms: ten columns instead of four, and `--fs-factoid` is fluid again
-     at `clamp(60px, 5vw, 72px)`. `hyphens: auto` breaks words to balance the RAG
-     rather than only to avoid overflow, and at 72px a mid-word break is the most
-     visible thing on the page.
+   ROUND 29 TOOK HYPHENATION OFF, and `npm run probe:heads` is what makes that
+   safe to have done. It was load-bearing while the opener was a FLAT 40px H2 in
+   a shrinking four-column column — «для размышлений» is one unbreakable 407px
+   NBSP run at 44px against a 442px column. The loud changes both terms: ten
+   columns instead of four, and `--fs-factoid` is fluid again at
+   `clamp(60px, 5vw, 72px)`. `hyphens: auto` breaks words to balance the RAG
+   rather than only to avoid overflow, and at 72px a mid-word break is the most
+   visible thing on the page.
 
-     THE HEADROOM IS 3px. `scripts/head-sweep.mjs` sweeps eight widths and fails
-     non-zero; the worst clearance on this page is −2.8px at 1200. That is not
-     slack — a copy edit to any `PAGE_SECTIONS.h2` can spend it, so re-run the
-     probe after one. Its header carries the full table and the two ways this
-     measurement has been got wrong before. */
-}
-
+   THE HEADROOM IS 3px. The probe sweeps eight widths and fails non-zero; the
+   worst clearance on this page is −2.8px at 1200. That is not slack — a copy
+   edit to any `PAGE_SECTIONS.lead` can spend it, so re-run the probe after one.
+   Its header carries the full table and the two ways this measurement has been
+   got wrong before. */
 .sec-body {
-  /* ROUND 25: THE BODY STARTS BELOW THE HEADING, so the icon and h2 are on
-     screen and pinned before the first paragraph arrives — the client's "the
-     left column goes ~50% pre- the right".
+  /* ROUND 25: THE BODY STARTS BELOW THE OPENER, so the icon is on screen and
+     pinned before the first paragraph arrives — the client's "the left column
+     goes ~50% pre- the right". (It said "the icon and h2" until round 29 moved
+     the opener out of the column; the icon is all that is left in there.)
 
      It is padding rather than motion on purpose. The obvious implementation is
      a scroll-driven transform on `.sec-col`, and that is forbidden twice over:
@@ -921,11 +920,11 @@
 
 @media (max-width: 1160px), (max-height: 720px) {
   .sec-grid,
-  /* ROUND 29: the heading band collapses too. It is a `.page-grid` of its own
-     with one `grid-column: 2 / -2` child, and BOTH halves are needed — see the
-     placement-reset note below. Without the reset the band's h2 keeps an
-     explicit ten-column placement in a one-column grid, which creates implicit
-     tracks and the heading comes back narrower than the body under it. */
+  /* ROUND 29: the opener's band collapses too. It is a `.page-grid` of its own
+     with one `.col-full` child, and BOTH halves are needed — see the
+     placement-reset note below. Without the reset the opener keeps an explicit
+     ten-column placement in a one-column grid, which creates implicit tracks and
+     it comes back narrower than the body under it. */
   .sec-head,
   .contact-form form,
   /* ROUND 25: the intro collapses with everything else now. It never did before,
@@ -950,7 +949,7 @@
      media query simply is not matching, which is the wrong thing to go and
      debug. See styles/grid.css. */
   .sec-grid > :is(.col-aside, .col-main),
-  .sec-head > .head-wide,
+  .sec-head > .col-full,
   .contact-form form > :is(.col-aside, .col-main) {
     grid-column: auto;
   }

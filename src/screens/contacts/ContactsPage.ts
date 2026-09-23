@@ -14,17 +14,21 @@ import { T } from '../../styles/tokens.gen';
  * It is simply no longer what a client clicking «Контакты» is shown.
  */
 
-/** TODO(copy): PLACEHOLDER — see RentScreen; the same «Павильон» string. */
-const LEAD =
-  'Искусство и творчество — в Павильоне и на мастер-классах: исторические здания ' +
-  'и деревянные постройки на Острове не предназначены для самовыражения.';
+/** ROUND 30: the client's copy (2026-09-23), replacing the «Павильон» placeholder */
+const LEAD = '«Кресты» открываются для новых идей, проектов и деловых возможностей.';
 
 /** label → value. A value beginning `+7` or containing `@` becomes a link. */
+/**
+ * ROUND 30: the client's three contacts replace the visitor-desk rows
+ * («Справочная», «Групповое посещение», the placeholder `kresty@spb.ru`); the
+ * hours and the address were not in their note and stay. The rent phone is
+ * THEIR placeholder, shipped as sent — replace it when the real number arrives.
+ */
 const GENERAL: [string, string][] = [
   ['Вход для посетителей:', 'Ежедневно с 9:00 до 23:00'],
-  ['Справочная', '+7 812 654-40-11'],
-  ['Групповое посещение', '+7 812 654-40-11'],
-  ['Электронная почта', 'kresty@spb.ru'],
+  ['Аренда', '+7 (000) 000-00-00'],
+  ['Сотрудничество', 'hello@kresty-spb.ru'],
+  ['Для СМИ', 'K.Shcherbakova@kvsspb.ru'],
   ['Адрес', 'Санкт-Петербург, Арсенальная набережная, 7'],
 ];
 
@@ -143,7 +147,7 @@ export class ContactsPage extends ContentScreen {
       // 28, when «Аренда» needed the same thing three times over.)
       `<div class="col-main page-flow">` +
       `<p class="page-prose">${escapeHtml(bindShortWords(PRESS_LEAD))}</p>` +
-      `<dl class="contact-pairs">${pairs([['Электронная почта', 'kresty@spb.ru']])}</dl>` +
+      `<dl class="contact-pairs">${pairs([['Электронная почта', 'K.Shcherbakova@kvsspb.ru']])}</dl>` +
       `</div>`;
     this.shell.add(press);
 

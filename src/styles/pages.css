@@ -87,43 +87,43 @@
   margin: 0;
 }
 
-/* ── THE SECTION HEADING BAND (round 29) ─────────────────────────────────────
-   On the three LONGREADS — «О Крестах», «Музей», «Новость» — a section heading
-   is no longer a 40px H2 centred in a four-column sticky aside. It is a band of
-   its own at the ten-column measure, set in FACTOID: 72/110%, the designer's own
-   style, already on the site as «Аренда»'s «2500 м²» figures and the article's
-   pull-quote. Frame `1253:701` settles it arithmetically — the hotel heading is
-   drawn 237px tall, which is 3 × 72 × 1.1 and cannot be any other size.
+/* ── THE LOUD (round 29.2) ───────────────────────────────────────────────────
+   The big opening statement of a section on the two longreads, at the
+   ten-column measure and set in FACTOID — 72/110%, the designer's own style,
+   already on the site as «Аренда»'s «2500 м²» figures and the article's
+   pull-quote. Frame `1253:701` settles the size arithmetically: the hotel
+   opener is drawn 237px tall, which is 3 × 72 × 1.1 and can be nothing else.
 
-   The quote's MARK does not come with it. The two blocks share a measure and a
-   type style; only one of them is a quotation.
+   IT IS NOT A HEADING, AND THE FIRST PASS OF THIS ROUND GOT THAT WRONG. These
+   are propositions, not titles — «Остановиться в роскошном отеле в исторических
+   зданиях-крестах» is a sentence. They were emitted as `<h2 class="sec-h2">`
+   and that conflated a visual treatment with a semantic level: it made the
+   site's H2 mean two sizes depending on which page you were on. They are
+   `<p class="loud">` now, and **H2 is 40px everywhere, on every page, with no
+   exceptions** — see `.page-h2` and `.article-body h2`.
 
-   `.head-wide` is a grid POSITION and nothing else, so it works both as a direct
-   child of a `.page-grid` (the longread's `.sec-head`) and via a bleed on a
-   block that lives in `.col-main` (the article — see `.article-body > h2`).
+   NAMED `loud`, NOT `lead`. Three things on this site already answer to "lead"
+   and none of them is this: `--fs-lead` is 32px (H3's size primitive),
+   `.page-lead` is the masthead's 24px paragraph, and `ContactForm.lead` is a
+   sentence of body copy. A fourth meaning would be the same conflation one
+   level down.
 
-   The flat content pages do NOT get this. «Аренда» and «Контакты» keep
-   `.page-h2` at 40 in `.col-aside`; their sections are short and a 72px heading
-   over three lines of prose is a title looking for a page. */
-.head-wide {
-  grid-column: 2 / -2;
-}
-/* THE TYPE GOES ON THE HEADING, NEVER ON THE BAND. Three selectors because the
-   band is the heading on «О Крестах» (`h2.sec-h2.head-wide`) and wraps it on
-   «Музей», where the era name is followed by its years and only one of the two
-   is 72px.
+   POSITION IS `.col-full`, the role class that already means "the ten-column
+   measure" — there is no second class for it. Anything using `.loud` in a
+   `.page-grid` pairs the two; the pull-quote reaches the same measure from
+   inside `.col-main` with a bleed instead (see `.article-quote`), and does not
+   take `.loud` because it also carries a mark and a caption.
 
-   Setting `font-size` on the wrapper instead is a live trap and cost this round
-   a measurement: the UA sheet gives `h2` `font-size: 1.5em`, so a 72px band made
-   the era name 108px — larger than the H1 on the same site, and plausible enough
-   on screen to be read as a design choice rather than a bug. */
-h2.head-wide,
-.head-wide > h2,
-.article-body > h2 {
+   The flat content pages have no loud at all. «Аренда» and «Контакты» open
+   their sections with `.page-h2` at 40 in `.col-aside`: those sections are
+   short, and a 72px opener over three lines of prose is a title looking for a
+   page. */
+.loud {
   font-family: var(--font-family-display);
   font-weight: var(--type-factoid-weight);
   font-size: var(--type-factoid-size);
   line-height: var(--type-factoid-lh);
+  margin: 0;
 }
 
 /* ── «Новости» ───────────────────────────────────────────────────────────── */
@@ -204,7 +204,10 @@ h2.head-wide,
   position: relative;
   padding: 0 0 var(--news-card-gap);
   color: inherit;
-  align-items: center;
+  /* ROUND 31.2: TOP, not centre — the client's note. The headline and its date ·
+     tag row hang from the photo's top edge, so a short headline no longer floats
+     at mid-height with the meta row adrift below it. */
+  align-items: start;
 }
 /* THE WHOLE CARD IS THE TARGET, including the air between photo and headline.
    Round 27 put a link on the picture and another on the headline, which left a
@@ -258,12 +261,12 @@ h2.head-wide,
   aspect-ratio: 3 / 2;
   object-fit: cover;
 }
-/* no top nudge: `align-items: center` on the card owns the relationship now */
+/* no top nudge: `align-items: start` on the card owns the relationship */
 .news-card__body {
   padding-top: 0;
 }
 /* BLUE AT REST, and that is the interactivity rule rather than an exception to
-   it. This h2 is the card's link label — the whole `.news-card` is an <a> — and
+   it. This h3 is the card's link label — the whole `.news-card` is an <a> — and
    the designer's frame 1119:89 draws it blue while «12 августа» beside it stays
    ink and «СМИ о нас», a filter link, is blue. Colour tracks what is clickable,
    not what tag it is. An unlinked heading takes ink; see DESIGN_SYSTEM. */
@@ -386,18 +389,33 @@ h2.head-wide,
    source order, and silently replaces the step it was supposed to leave alone.
    `margin: 0` is not the safe version of this; saying nothing is. The paragraph,
    both headings, the images and the list all carried one before. */
-/* ROUND 29 DELETED `.article-body h2`, which set H3 tokens (32/120%). The
-   article's headings are the site's section headings now — Factoid at the
-   ten-column measure, set once by `.head-wide, .article-body > h2` near the top
-   of this file. Note the specificity was a real trap here: that rule and this
-   one are BOTH (0,1,1), so the winner is source order and this one is 250 lines
-   further down. Leaving it as "the old value, harmlessly" would have kept the
-   article at 32px while «О Крестах» and «Музей» went to 72. */
+/* ROUND 29.2: AN H2 IN HERE IS AN H2, at the H2 size. It briefly became a 72px
+   Factoid band at the ten-column measure, on the reading that «Новость» is a
+   longread like the other two. It is not the same thing: «Что происходило на
+   площадке» sits BETWEEN PARAGRAPHS, it is a subheading of flowing prose rather
+   than the statement that opens a section, and the loud is for openers.
+
+   It is 40px rather than round 27's `--type-h3-*` (32/120%), which was an h2
+   wearing H3's size — the same conflation this round is here to remove, one
+   level down. Every H2 on the site is 40 now.
+
+   Specificity note, because it bit once already: this rule and the `.article-body
+   > h2` bleed 250 lines below are both (0,1,1), so source order decides. Keep
+   size here and geometry there and they cannot fight. */
+.article-body h2 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h2-weight);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
+}
+/* H3 IS 32px, as `.mus-h3` is on «Музей» — the same role, a subheading between
+   paragraphs. It wore Caption Big (24) until round 29.3, which made H3 mean two
+   sizes on the two longreads: the H2 conflation one level down. */
 .article-body h3 {
   font-family: var(--font-family-display);
-  font-weight: var(--type-caption-big-weight);
-  font-size: var(--type-caption-big-size);
-  line-height: var(--type-caption-big-lh);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
 }
 /* ROUND 27 DELETED `.article-gallery` and `.article-img`. Pictures are the
    shared `MediaSlider` now — the same component the longread uses — so the
@@ -450,14 +468,12 @@ h2.head-wide,
    units, which is also precisely the distance from column 7's left edge back to
    column 2's — so the same number widens it and shifts it, and both come from
    `--grid-col` rather than the 583.333px it happens to be at 1440. */
-/* ROUND 29: THE SECTION HEADING BREAKS OUT THE SAME WAY, for the same reason.
-   «Новость» has no aside to put a heading band in — its body is one `.col-main`
-   flow — so an `h2` takes the quote's bleed rather than a grid position. The two
-   now share a measure and the Factoid type (`.head-wide` sets the type; see the
-   band's own note above). They do NOT share the quote mark: one of them is a
-   quotation and the other is a heading. */
-.article-quote,
-.article-body > h2 {
+/* Round 29 briefly gave `.article-body > h2` this same bleed, so the article's
+   subheadings ran the full ten columns like the other two longreads' openers.
+   Round 29.2 took it back: a subheading between two paragraphs belongs to the
+   column its paragraphs are in. The quote keeps the bleed because it is a
+   different thing — a block that interrupts the column deliberately. */
+.article-quote {
   --quote-bleed: calc(5 * (var(--grid-col) + var(--grid-gutter)));
   width: calc(100% + var(--quote-bleed));
   margin-left: calc(-1 * var(--quote-bleed));
@@ -808,8 +824,7 @@ h2.head-wide,
   /* ROUND 27: the quote stops breaking out — and round 29's headings with it.
      There is one column to break out OF down here, so the bleed would hang the
      block off the left of the page. */
-  .article-quote,
-  .article-body > h2 {
+  .article-quote {
     --quote-bleed: 0px;
   }
 }

@@ -13,9 +13,8 @@ import { T } from '../../styles/tokens.gen';
  * What survives is the file's SHAPE — one table, one exported array — so the
  * designer's pass is a text edit rather than a code change.
  *
- * The copy is the client's own (`references/texts.txt`): each `h2` is that
- * file's «Внутри —» line verbatim, and `paras` are the body paragraphs it
- * already carries. The main screen states the same five topics in one line each
+ * The copy is the client's own — `references/texts.txt` until round 30, the
+ * docx `references/О Крестах.docx` since; each `lead` and paragraph verbatim. The main screen states the same five topics in one line each
  * beginning «Свобода»; this is where they are unwrapped.
  *
  * THE PALETTE AND THE LIGHT ARE COUPLED — carried over from round 16 because
@@ -61,7 +60,17 @@ export interface PageSection {
   id: string;
   /** file in public/resources — a solid white silhouette on transparent */
   icon: string;
-  h2: string;
+  /**
+   * The section's opening statement, set as the 72px `.loud`.
+   *
+   * ROUND 29.2 RENAMED THIS FROM `h2`, and the rename is the point rather than
+   * tidying: every one of these is a PROPOSITION — «Остановиться в роскошном
+   * отеле…», «Позаботиться о душе и теле…» — a sentence beginning with a verb,
+   * not a title. Calling the field `h2` is what led to it being emitted as one,
+   * which made the site's H2 mean 72px here and 40px on «Аренда». It renders as
+   * a `<p>`; see `.loud` in styles/pages.css.
+   */
+  lead: string;
   /** prose and pictures in the order they are read */
   body: SectionBlock[];
   /** page background while this section owns the frame — a semantic token */
@@ -126,55 +135,61 @@ export function sectionBg(s: PageSection): string {
  * designer picks with both on screen.
  */
 export const PAGE_SECTIONS: PageSection[] = [
+  // ROUND 30: the copy is the client's `references/О Крестах.docx` (2026-09-23),
+  // verbatim. Its `------` rules mark where pictures go.
+  //
+  // THREE SLIDERS ON THIS PAGE, NO MORE, AND NEVER TWO IN ONE SCREEN (round
+  // 30.1, the client's rule). Rooms, restaurants, excursion routes — one in the
+  // first, third and fourth section, so a whole section of prose always sits
+  // between two strips. Every other picture is a single figure. Guarded by
+  // `npm run probe:sliders`.
   {
     id: 'hotel',
     icon: 'Bed-640.svg',
-    h2: 'Остановиться в роскошном отеле в исторических зданиях-крестах',
+    lead: 'Остановиться в роскошном отеле в исторических зданиях-крестах',
     bg: T.bgHotels, // ink-1000  #031721   7.1% lightness
     body: [
-      p('Для гостей и жителей города есть возможность заселиться в отели категории 4 и 5 звезд. В знаменитых зданиях можно провести время с семьей или заселиться в командировке.'),
-      // two pictures with no prose between them — so they are ONE block and
-      // render as a slider. That is the rule, expressed as data.
+      p('В исторических зданиях-крестах откроются отели категорий 4 и 5 звёзд. Уникальная возможность остановиться внутри одного из самых узнаваемых архитектурных ансамблей Петербурга — с современным уровнем комфорта и совершенно особой атмосферой.'),
+      p('Днём — город, встречи, гастрономия, культура. Вечером — отдых в пространстве, история которого насчитывает больше века.'),
+      // pictures with no prose between them are ONE block and render as a
+      // slider. That is the rule, expressed as data.
       media(
         pic('room-3', 'Номер в историческом здании', 2400, 1611),
-        pic('room-4', 'Номер с видом на Неву', 1715, 2000),
+        pic('room-4', 'Номер со сводчатым потолком', 1715, 2000),
+        pic('hotel', 'Вход в отель', 1600, 1280),
       ),
-      p('Из номеров открываются виды на Неву, окрестности и обновленную территорию открытого городского пространства.'),
-      media(pic('cross-wing', 'Крыло креста — галереи и лестницы атриума', 1920, 2400)),
-      p('Атриумы каждого здания — уютное пространство лобби с выходом к ресторану с авторской кухней и к музею.'),
-      media(pic('atrium-floor', 'Атриум отеля', 2400, 1600)),
+      p('Из номеров открываются виды на Неву, окрестности и обновленную территорию открытого культурного кластера.'),
+      media(pic('embankment-night', '«Кресты» со стороны Невы зимней ночью', 2400, 1019)),
+      p('В центре каждого исторического корпуса, под сводчатым куполом, появится лобби. Когда-то отсюда расходились коридоры закрытого мира. Теперь это новая точка притяжения — узнаваемая архитектура, открытая для всех постояльцев отелей.'),
+      media(pic('atrium-roof', 'Купол над лобби в центре креста', 2400, 1600)),
     ],
   },
   {
     id: 'spa',
     icon: 'SPA-640.svg',
-    h2: 'Позаботиться о душе и теле в СПА-комплексе с бассейном',
+    lead: 'Позаботиться о душе и теле в СПА-комплексе с бассейном',
     bg: T.bgWellness, // amethyst  #783c96  41.2% — above the light's ceiling
     body: [
-      p('В отреставрированных исторических залах будет работать комплекс для расслабления и восстановления.'),
-      media(
-        pic('spa-interior', 'СПА-комплекс', 2400, 1340),
-        pic('pool', 'Бассейн СПА-комплекса', 2400, 1600),
-      ),
-      p('Для тех, кто остался в отеле, — отдельные часы работы комплекса. Для гостей, кто заглянул на день и хочет замедлиться, комплекс работает в другие часы.'),
-      p('Тишина, вода, приглушенный свет — все, чтобы сделать заботу о себе частью привычного городского маршрута.'),
+      p('Рядом с пятизвёздочным отелем появится SPA-комплекс — место для отдыха, восстановления и тишины.'),
+      media(pic('spa-interior', 'СПА-комплекс с бассейном', 2400, 1340)),
+      p('Вода, приглушённый свет и спокойный ритм создадут атмосферу, в которой забота о себе естественно становится частью городского маршрута.'),
     ],
   },
   {
     id: 'restaurant',
     icon: 'Restaurant-640.svg',
-    h2: 'Пробовать авторскую кухню и новые прочтения знаковых блюд',
+    lead: 'Пробовать авторскую кухню и новые прочтения знаковых блюд',
     bg: T.bgFood, // garnet    #78141e  27.5% — marginal
     body: [
       p('Панорамный ресторан с видом на Неву — гастрономическое путешествие в мир вкусов в авторских блюдах шеф-повара.'),
       media(
         pic('restaurant-litera-o', 'Ресторан в литере О', 2400, 1611),
-        pic('restaurant-embankment', 'Ресторан с видом на Арсенальную набережную', 2400, 1600),
         pic('restaurant-level-1', 'Ресторан, первый уровень', 2400, 1611),
+        pic('restaurant-embankment', 'Ресторан с видом на Арсенальную набережную', 2400, 1600),
       ),
       p('Гастрономический кластер с камерными форматами кофеен, стрит-фуда нового поколения и уютными винными барами.'),
-      media(pic('table', 'Ресторан с видом на Неву', 2400, 1600)),
-      p('Разнообразие форматов удовлетворит каждого: от высокой кухни для особого случая до обедов по пути через город.'),
+      media(pic('main-entrance', 'Кафе у главного входа', 2400, 1600)),
+      p('Для особого вечера, деловой встречи или обеда по пути через город — каждый найдёт свой формат.'),
     ],
   },
   {
@@ -182,35 +197,31 @@ export const PAGE_SECTIONS: PageSection[] = [
     // the window grille is the project's own north-star motif, and round 16
     // already picked it for culture over `Culture-640.svg`
     icon: 'Window-640.svg',
-    h2: 'Открывать новые темы для размышлений в музейном пространстве и на экскурсионных маршрутах',
+    lead: 'Посмотреть иначе',
     bg: T.bgCulture, // navy      #081b5a  19.2%
     body: [
-      p('Музейное пространство в одном из крыльев зданий-крестов погружает в содержание понятия «свободы» — эволюцию представления о ней в России и мире.'),
+      p('Музей «Крестов» рассказывает историю через две центральные линии — человека и систему. Архитектура, правила, устройство тюрьмы и подлинные предметы прошлого здесь встречаются с историями людей, их повседневностью, отношениями и попытками сохранить себя.'),
+      // «подлинные предметы прошлого» — the museum's own exhibit photograph
+      media(pic('museum-cell-wall', 'Стена камеры с экспозиционными панелями', 1280, 826)),
+      p('Экскурсионные маршруты позволят увидеть «Кресты» с разных сторон — через события, людей и детали, которые обычно остаются за кадром.'),
       media(
         pic('temple', 'Храм на территории комплекса', 2400, 1611),
         pic('temple-from-mice', 'Вид на храм со стороны конгресс-центра', 2400, 1611),
         pic('temple-square', 'Площадь перед храмом', 2000, 1117),
         pic('temple-passage', 'Демонтированный переход между храмом и крестом', 2400, 1611),
       ),
-      p('На территории разработаны экскурсионные маршруты, которые расскажут о пространстве в истории — что здесь было, чем особенная архитектура, что прогрессивного для своего времени показало это место.'),
-      // a panorama: full block width at its own ratio, never cropped to 3:2
-      media(pic('embankment-elevation', 'Развертка со стороны Арсенальной набережной', 2400, 720)),
+      p('А ещё на территории кластера появится музей под открытым небом. Но о нём — позже.'),
     ],
   },
   {
     id: 'office',
     icon: 'Office-640.svg',
-    h2: 'Арендовать офисы и коворкинг для работы',
+    lead: 'Работать в истории',
     bg: T.bgOffices, // emerald   #004b3c  14.7%
     body: [
-      p('Новый городской офисный кластер на Выборгской стороне, с удобной инфраструктурой и приятной атмосферой.'),
-      media(
-        pic('mice-3', 'Конгресс-центр', 2400, 1351),
-        pic('mice-1', 'Переговорная', 1611, 2400),
-        pic('mice-2', 'Рабочее пространство', 1792, 2400),
-      ),
-      p('В исторических зданиях комплекса оборудованы пространства для офисов разного формата для аренды.'),
-      media(pic('forum', 'Офисное пространство', 2400, 1600)),
+      p('В исторических зданиях «Крестов» появятся офисы и коворкинг для команд разного формата.'),
+      media(pic('mice-3', 'Конгресс-центр', 2400, 1351)),
+      p('Городская инфраструктура, архитектура с характером, вид на Неву и всё необходимое для комфортной работы — в одном из самых необычных культурных кластеров России.'),
     ],
   },
 ];

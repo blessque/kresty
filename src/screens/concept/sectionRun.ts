@@ -9,7 +9,7 @@ import { MediaSlider } from '../../page/mediaSlider';
 
 /**
  * The five editorial sections below the map: a pinned left column carrying the
- * lit icon and the h2, and a right column of copy and images that scrolls
+ * lit icon, and a right column of copy and images that scrolls
  * normally.
  *
  * THE LEFT COLUMN IS `position: sticky`, NEVER A JS TRANSFORM.
@@ -124,12 +124,18 @@ export class SectionRun {
     // the class that positions and the class that is measured are separate and
     // neither can be renamed by accident.
     //
-    // ROUND 29: THE H2 LEFT THE STICKY COLUMN. It is now a band of its own above
+    // ROUND 29: THE OPENER LEFT THE STICKY COLUMN. It is a band of its own above
     // the grid, at the ten-column measure and the Factoid size — the designer's
     // frame `1253:701` draws it 1136 wide and 237 tall, which is three lines of
     // 72/110% and nothing else. The column keeps the icon, and keeps being
     // sticky, because the icon is the light's station: `measure()` below reads
     // `.sec-col`'s computed `top` to place the god-ray.
+    //
+    // ROUND 29.2: IT IS A `<p class="loud">`, NOT AN `<h2>`. These are
+    // propositions — «Остановиться в роскошном отеле…» is a sentence, not a
+    // title — and emitting them as h2 made the site's H2 mean 72px here and 40px
+    // on «Аренда». The visual treatment and the semantic level are separate; see
+    // `.loud` in styles/pages.css.
     //
     // A SEPARATE `.page-grid` rather than a third item inside `.sec-grid`. Both
     // lay out identically (`.page-grid` is `width: min(100% − 2×margin, 1376)`
@@ -139,7 +145,7 @@ export class SectionRun {
     // vertical rhythm without moving the icon with it.
     el.innerHTML =
       `<div class="sec-head page-grid">` +
-      `<h2 class="sec-h2 head-wide">${escapeHtml(bindShortWords(s.h2))}</h2>` +
+      `<p class="sec-loud loud col-full">${escapeHtml(bindShortWords(s.lead))}</p>` +
       `</div>` +
       `<div class="sec-grid page-grid">` +
       `<div class="sec-col col-aside">` +
@@ -252,8 +258,9 @@ export class SectionRun {
     // window ends at `T(i+1) − B − H + C`, icon i+1's begins at
     // `T(i+1) + P − viewH`, so non-overlap requires A + H + B ≤ viewH.
     //
-    // It is violated by a NARROW window, because the h2 is wrapped Russian type
-    // and gains lines. Silent otherwise: the symptom is a halo popping at a
+    // It was violated by a NARROW window while the column held the heading —
+    // wrapped Russian type gains lines. Since round 29 the column is the icon
+    // alone and colH is flat, but the check stays. Silent otherwise: the symptom is a halo popping at a
     // station swap, which nobody traces back to a line break.
     for (const [i, g] of this.geom.entries()) {
       if (!g.sticky) continue;
@@ -263,7 +270,7 @@ export class SectionRun {
           // `?? 'form'` — the sixth station has no PAGE_SECTIONS entry (round 24)
           `[kresty] section ${PAGE_SECTIONS[i]?.id ?? 'form'}: pin+col+pad = ${need.toFixed(0)}px ` +
             `exceeds the ${viewH}px viewport — the icon light will pop at a swap. ` +
-            `Clamp .sec-h2's font-size.`,
+            `Shrink --sec-icon-size, or raise the viewport.`,
         );
       }
     }

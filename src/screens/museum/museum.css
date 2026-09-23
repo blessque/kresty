@@ -143,11 +143,14 @@
 }
 
 .mus-era {
-  /* Type comes from `.head-wide` in styles/pages.css — Factoid, 72/110%. Do not
+  /* Type comes from `.loud` in styles/pages.css — Factoid, 72/110%. Do not
      restate the size here; pages.css and this file are both (0,1,0) and this one
-     loads second, so a `font-size` would silently win and put it back at 40. */
+     loads second, so a `font-size` would silently win. It is a `<p>` and not an
+     `<h2>` as of round 29.2: the era name reads as a title, but the site cannot
+     have an H2 that means 72px here and 40px on «Аренда», and the treatment is
+     what the two longreads share. */
   margin: 0;
-  /* Hyphenation is OFF, as on `.sec-h2` — see the note there. This page has by
+  /* Hyphenation is OFF, as on `.sec-loud` — see the note there. This page has by
      far the most room of the three: the era names are short, and «Экономическая
      свобода», the longest, clears the measure by 244px at 1440 and 175px at
      1165. `npm run probe:heads` holds that. */
@@ -262,12 +265,6 @@
      that to `.page-grid > *` in grid.css, where it holds at every width: the
      picture strip is `100vw` now and would do the same thing on a wide screen. */
   .museum-page .page-grid > :is(.col-aside, .col-main, .col-lead, .col-full) {
-    grid-column: auto;
-  }
-  /* the heading band collapses with everything else — BOTH the template above
-     and this placement reset, or the 10-column span survives into a one-column
-     grid and creates implicit tracks */
-  .mus-head > .head-wide {
     grid-column: auto;
   }
   .mus-body {
