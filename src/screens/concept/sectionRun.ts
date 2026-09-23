@@ -123,11 +123,27 @@ export class SectionRun {
     // `.sec-col` / `.sec-body` stay as the JS hooks `measure()` queries for, so
     // the class that positions and the class that is measured are separate and
     // neither can be renamed by accident.
+    //
+    // ROUND 29: THE H2 LEFT THE STICKY COLUMN. It is now a band of its own above
+    // the grid, at the ten-column measure and the Factoid size — the designer's
+    // frame `1253:701` draws it 1136 wide and 237 tall, which is three lines of
+    // 72/110% and nothing else. The column keeps the icon, and keeps being
+    // sticky, because the icon is the light's station: `measure()` below reads
+    // `.sec-col`'s computed `top` to place the god-ray.
+    //
+    // A SEPARATE `.page-grid` rather than a third item inside `.sec-grid`. Both
+    // lay out identically (`.page-grid` is `width: min(100% − 2×margin, 1376)`
+    // centred, so the columns line up to the pixel), but a full-width item in
+    // the section's own grid would make the sticky aside a row-2 item whose
+    // containing block is that row — and the band could then never carry its own
+    // vertical rhythm without moving the icon with it.
     el.innerHTML =
+      `<div class="sec-head page-grid">` +
+      `<h2 class="sec-h2 head-wide">${escapeHtml(bindShortWords(s.h2))}</h2>` +
+      `</div>` +
       `<div class="sec-grid page-grid">` +
       `<div class="sec-col col-aside">` +
       `<div class="sec-icon" aria-hidden="true"></div>` +
-      `<h2 class="sec-h2">${escapeHtml(bindShortWords(s.h2))}</h2>` +
       `</div>` +
       `<div class="sec-body col-main"></div>` +
       `</div>`;
@@ -164,11 +180,18 @@ export class SectionRun {
   measure(viewH: number) {
     // ROUND 25: CENTRING IS A PER-SECTION PIN, computed before any rect is read.
     //
-    // The pin that centres a block is `(viewH − colH)/2`, and `colH` swings by
-    // 400px+ across this run — the headings are wrapped Russian and the museum
-    // one takes nine lines where «Аренда» takes four — so a single `vh` would
-    // centre exactly one section. Each gets its own `--sec-pin` in px instead,
-    // which wins over the root value by proximity.
+    // The pin that centres a block is `(viewH − colH)/2`. Round 25 needed this
+    // per section because `colH` swung 400px+ across the run — wrapped Russian
+    // headings, nine lines for the museum against four for «Аренда» — so one
+    // `vh` would have centred exactly one section.
+    //
+    // ROUND 29 TOOK THE HEADING OUT OF THE COLUMN and that swing went with it:
+    // `colH` is now the icon plus its margin, measured 264 at 900 and flat
+    // across sections. The per-section pin is kept anyway, because it is still
+    // the right shape — `colH` tracks a `vh` clamp on the icon's margin, and
+    // the clamp below is the station invariant, which has to be applied
+    // somewhere regardless. It simply stopped being the load-bearing thing it
+    // was, and the numbers it produces are now all the same.
     //
     // THE CLAMP IS THE STATION INVARIANT, and centring fights it directly:
     // centring wants pin large, the invariant caps it at `viewH − colH −

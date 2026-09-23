@@ -103,22 +103,20 @@
 
 .mus {
   position: relative;
-  /* THE BODY LEADS THE ERA HERE, which is the opposite of «О Крестах» and comes
-     straight off the frames: the kicker sits ~9vh into the section and the era
-     name ~44vh, i.e. the copy starts first and the title arrives as it reaches
-     the middle. (The longread's `--sec-body-lead: 50vh` does the reverse, and
-     copying it put a screen of empty column beside every section.) So the
-     section's top padding is small and the era's position is the sticky centre,
-     not a measured offset. */
+  /* Round 28's note — "the body leads the era here, the copy starts first and
+     the title arrives at the middle of the frame" — described a PINNED title and
+     stopped being true in round 29. The era now opens its section like every
+     other heading on the site. The small top padding stays: it is the gap
+     between eras, and `--sec-body-lead`'s screen of empty column was already
+     rejected here for putting nothing beside the cross. */
   padding: 14vh 0 20vh;
   overflow: visible;
-  /* A FLOOR, because the era title is pinned to the vertical MIDDLE. Two
-     sections whose combined height is near one viewport put both of their
-     titles on screen at once — «Забвение» is three blocks long and did exactly
-     that, showing «Забвение» leaving at the top while «Свобода личности»
-     arrived at the bottom, which reads as a layout fault rather than a
-     transition. A section that owns at least a screen and a half hands over
-     cleanly no matter how little copy it carries. */
+  /* THE FLOOR OUTLIVED ITS FIRST REASON AND KEPT A SECOND. It was a screen and a
+     half because two PINNED era titles could share the frame at a boundary —
+     «Забвение» is three blocks long and showed exactly that. Nothing pins now,
+     so that cannot happen. But the light cross rotates 180° across the whole
+     page and its pacing is per-section; a section shorter than this turns it
+     faster than the eye reads, which is the same complaint from the other end. */
   min-height: 150vh;
 }
 .mus:first-of-type {
@@ -128,42 +126,31 @@
   overflow: visible;
 }
 
-/* GRID, not flex, and `align-self: start` — a sticky flex item under the
-   default `align-items: stretch` is full-height, has nowhere to travel, and
-   silently never sticks. Nothing ABOVE this may carry `will-change`, `filter`
-   or a transform either: any of them steals sticky's containing block. (A
-   transform on the sticky element ITSELF is fine, and is what centres it.)
+/* ── THE ERA BAND (round 29) ─────────────────────────────────────────────────
+   `.mus-col` is deleted. It was a sticky column pinned with `top: 50%` +
+   `translateY(-50%)` so the era title sat inside the light cross's convergence
+   point at every viewport height — the page's signature pairing, and the client
+   replaced it with the same full-width FACTOID band the longread now uses.
+   `MuseumScreen.fadeEras()` went with it: that crossfade existed only because
+   two PINNED titles were on screen together at every section boundary, and a
+   heading that scrolls away hands over by itself.
 
-   `top: 50%` + `translateY(-50%)` pins the era on the vertical middle of the
-   viewport, which is where the light's convergence point is — so the title sits
-   inside the cross at every viewport height, with nothing measured in script.
-   «О Крестах» needs a per-section measured `--sec-pin` for this because its
-   column heights swing 400px between sections; here there are four short
-   headings and the centring is exact by construction. */
-.mus-col {
-  position: sticky;
-  top: 50%;
-  align-self: start;
-  transform: translateY(-50%);
-  text-align: center;
-  /* written per frame by MuseumScreen — see `eraFade()` */
-  opacity: var(--mus-era-op, 1);
+   Air matches `.sec-head` in concept.css — `--sp-page` above and below — so the
+   two longreads open a section identically. `.mus`'s own `padding: 14vh 0 20vh`
+   still sets the gap between sections. */
+.mus-head {
+  padding: var(--sp-page) 0;
 }
 
 .mus-era {
-  font-family: var(--font-family-display);
-  font-weight: var(--type-h2-weight);
-  font-size: var(--type-h2-size);
-  line-height: var(--type-h2-lh);
+  /* Type comes from `.head-wide` in styles/pages.css — Factoid, 72/110%. Do not
+     restate the size here; pages.css and this file are both (0,1,0) and this one
+     loads second, so a `font-size` would silently win and put it back at 40. */
   margin: 0;
-  padding-inline: var(--grid-text-inset);
-  /* H2 is a FLAT 40px at every width while the column shrinks below 1440, so
-     hyphenation is load-bearing here for the same reason it is on `.sec-h2` —
-     see the sweep in concept.css. Needs `lang="ru"` on <html>, which is set;
-     without it this silently no-ops. 13 is the highest limit that never
-     overflows, and highest is what you want because it hyphenates least. */
-  hyphens: auto;
-  hyphenate-limit-chars: 13 6 4;
+  /* Hyphenation is OFF, as on `.sec-h2` — see the note there. This page has by
+     far the most room of the three: the era names are short, and «Экономическая
+     свобода», the longest, clears the measure by 244px at 1440 and 175px at
+     1165. `npm run probe:heads` holds that. */
 }
 
 .mus-years {
@@ -171,7 +158,6 @@
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
   margin: 12px 0 0;
-  padding-inline: var(--grid-text-inset);
   /* Secondary ink as an OPACITY rather than a second colour: `--mus-ink` runs
      from white to near-black across the page, and there is no single secondary
      token that is correct at both ends. */
@@ -194,17 +180,11 @@
      name catches up with it at the middle of the frame. */
   text-align: left;
 }
-.mus-body > p,
-.mus-body > ul {
-  padding-inline: var(--grid-text-inset);
-}
-
 .mus-h3 {
   font-family: var(--font-family-display);
   font-weight: var(--type-h3-weight);
   font-size: var(--type-h3-size);
   line-height: var(--type-h3-lh);
-  padding-inline: var(--grid-text-inset);
 }
 
 /* THE SAME STAR THE NEWS PAGE DRAWS. `src/assets/star-bullet.svg` is the
@@ -220,59 +200,50 @@
 }
 .mus-list li {
   position: relative;
-  padding-left: 40px;
+  padding-left: 28px;
 }
 .mus-list li + li {
   margin-top: var(--sp-tight);
 }
+/* ROUND 29: 12px, and the same 12px as `.article-list`. There is one star size
+   on this site now; the 24px amber mark this page shipped with was the only
+   second opinion and the client removed it.
+
+   THE COLOUR IS `--mus-chrome`, NOT A LITERAL WHITE, and that is the whole
+   subtlety of "white on the dark background". This page descends near-black →
+   navy → slate → WHITE, so a literal white bullet is invisible on the fourth
+   era. `--mus-chrome` (see below) is written per frame from the same `whiteness`
+   the ink uses and runs the other way: white while the field is dark, the link
+   blue by the time it is white. Its fallback is white, so the list is legible
+   before the first rAF. */
 .mus-list li::before {
   content: '';
   position: absolute;
   left: 0;
   /* centred on the first line box: half a line, minus half the mark */
-  top: calc(0.5 * var(--type-base-lh) * 1em - 12px);
-  width: 24px;
-  height: 24px;
-  /* Amber because the frame draws it amber. It is decorative and carries no
-     interactive meaning, which is what keeps it out of the sitewide "blue means
-     clickable" rule. */
-  background: var(--color-mark-star);
+  top: calc(0.5em * var(--type-base-lh) - 6px);
+  width: 12px;
+  height: 12px;
+  background: var(--mus-chrome, var(--color-text-ondark-main));
   mask: url(../../assets/star-bullet.svg) center / contain no-repeat;
 }
 
 /* ── the chrome: white on the dark fields, blue on the white one ─────────────
-   The wordmark and the chevrons are `--color-link` blue sitewide, which is the
-   "blue means interactive" rule and correct on the four white pages. On #081b5a
-   it is the one thing on screen with no contrast. `--mus-chrome` is written per
-   frame from the same `whiteness` the ink uses and runs the OTHER way — white
-   while the field is dark, the link blue by the time it is white.
+   The wordmark is `--color-link` blue sitewide, which is the "blue means
+   interactive" rule and correct on the four white pages. On #081b5a it is the
+   one thing on screen with no contrast. `--mus-chrome` is written per frame from
+   the same `whiteness` the ink uses and runs the OTHER way — white while the
+   field is dark, the link blue by the time it is white. Round 29's star bullets
+   take it too (see `.mus-list li::before`).
 
-   The fallback is white, so the page is legible before the first rAF. */
-#screen-museum .ms-btn {
-  color: var(--mus-chrome, var(--color-text-ondark-main));
-}
-#screen-museum .ms-btn[disabled] {
-  opacity: 0.4;
-}
+   The fallback is white, so the page is legible before the first rAF.
+
+   The slider chevrons used to be the other consumer. Round 29 deleted them: the
+   strip pans with the page scroll and there is nothing to press. */
 /* page.css sets this to `--color-link` unconditionally */
 #screen-museum .page-home svg path {
   fill: var(--mus-chrome, var(--color-text-ondark-main));
 }
-
-/* ── the picture block hugs its tallest slide ────────────────────────────────
-   `--ms-h` is a flat 410px everywhere else — the designer's own number for
-   «О Крестах», where the photographs are mixed portrait and landscape.
-   «Музей»'s are all wide: 1304×728 renders 559×312 in the body column, so the
-   constant left 49px of dead air ABOVE AND BELOW every slide and 189px between
-   a photo and the paragraph under it.
-
-   `MuseumRun.fitFrames()` writes a per-block `--ms-h` from the slides' own
-   intrinsic aspects instead. **`height: auto` is NOT the fix** and was tried:
-   the slides are `loading="lazy"` with `width/height` attributes and
-   `width: auto; height: auto` in CSS, so before decode those attributes supply
-   only an aspect-ratio — which needs a definite side — and every frame measured
-   0×0. That is round 27's desync bug exactly, and the fixed height is what was
-   hiding it. The height stays definite; only its value changes. */
 
 /* ── the narrow fallback ─────────────────────────────────────────────────────
    1160 is the measured breakpoint the rest of the site collapses at. Below it
@@ -285,23 +256,19 @@
   .museum-page .page-grid {
     grid-template-columns: 1fr;
   }
+  /* Round 28 needed a third declaration here — `min-width: 0`, because `1fr` is
+     `minmax(auto, 1fr)` and the track floored at `.ms-frame`'s min-content,
+     giving a body column 1501px wide inside an 1100px viewport. Round 29 moved
+     that to `.page-grid > *` in grid.css, where it holds at every width: the
+     picture strip is `100vw` now and would do the same thing on a wide screen. */
   .museum-page .page-grid > :is(.col-aside, .col-main, .col-lead, .col-full) {
     grid-column: auto;
-    /* THE THIRD DECLARATION, and it is not optional either. `1fr` is
-       `minmax(auto, 1fr)`, so the track floors at its content's MIN-CONTENT —
-       and `.ms-frame` is deliberately `100% + one column + one gutter` wide.
-       The track grew to fit it and the body column measured 1501px inside a
-       1100px viewport: photographs running off the right edge, the next slide
-       visible beside them, and the whole column wider than the window. Measured
-       at 1100 and 900, identical. `min-width: 0` is what lets a grid item be
-       narrower than its own overflowing child. */
-    min-width: 0;
   }
-  /* the column flows; there is nothing left to pin it against */
-  .mus-col {
-    position: static;
-    transform: none;
-    text-align: left;
+  /* the heading band collapses with everything else — BOTH the template above
+     and this placement reset, or the 10-column span survives into a one-column
+     grid and creates implicit tracks */
+  .mus-head > .head-wide {
+    grid-column: auto;
   }
   .mus-body {
     padding-top: 24px;

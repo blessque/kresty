@@ -103,9 +103,15 @@ right: there is no light to converge when main is not an endpoint.
 ## Layout
 
 Everything horizontal comes from `.page-grid` — **twelve columns since round 25** (see
-DESIGN_SYSTEM). `pages.css` sets no horizontal *position*; the one horizontal value it may use
-is the grid's own 16px text inset (`.gp-text` / `--grid-text-inset`), because text hangs inside
-its column while images sit flush to the column edge.
+DESIGN_SYSTEM). `pages.css` sets no horizontal *position* at all.
+
+**ROUND 29 DELETED THE 16px TEXT INSET SITEWIDE** — `--grid-text-inset`, the `.gp-text` utility,
+all twelve `padding-inline` declarations and every `gp-text` in markup. Text and images now both
+sit on the column edge: **one alignment per column, not two.** Measured with
+`npm run spec:figma` — 75 inset-bearing boxes → 0, and the count of text nodes landing exactly
+on a column edge rose on every page (news 0→28, contacts 4→25, rent 9→23, article 7→21, concept
+22→28). If you are porting a rule that used it, drop the padding; do not re-introduce the token
+under a new name.
 
 **The News card is the grid's own worked example, and it got simpler.** `.col-media` is five
 columns = 559.333 at the design frame, so the image **fills** its position at `width: 100%`.
@@ -115,23 +121,35 @@ explained. `.anchor-outer` / `.anchor-inner` are deleted.
 - **The article's body copy is `.col-main`, columns 7–11 (round 27).** Round 25 had it at
   `6 / span 6` off the frame's x=615→1291, which was a true reading of that frame — but the
   client's note was that this page should follow the longread, and the longread's body is
-  `.col-main`. The move also fixes the picture block by construction: `.ms-frame` is one column
-  + one gutter wider than its block so the next photo peeks in from the right, and that
-  overhang is only free because column 12 is skipped. At `6 / span 6` there was nowhere for it
-  to go.
-- **The quote breaks OUT to ten columns from inside the five-column body.** It is a child of
-  `.article-body` because it arrives in the block list in reading order; lifting it onto the
-  page grid would mean splitting the body into fragments around every quote. The bleed is
+  `.col-main`. (Round 27's reason — that `.ms-frame` overhangs by one column and the overhang is
+  only free because column 12 is skipped — is superseded: round 29's strip is a full `100vw`
+  and walks back to the viewport edge from column 7. The move is still right for the reason the
+  client gave.)
+- **The quote breaks OUT to ten columns from inside the five-column body, and round 29's
+  section headings break out the same way.** Both are children of `.article-body` because they
+  arrive in the block list in reading order; lifting them onto the page grid would mean
+  splitting the body into fragments around every one. The bleed is
   `5 × (--grid-col + --grid-gutter)` — which both widens `.col-main` to `.col-full` and is
   exactly the distance from column 7's left edge back to column 2's, so one number does both
-  and neither is a literal. It is zeroed below 1160.
+  and neither is a literal. It is zeroed below 1160. **They share a measure and the Factoid
+  type; they do NOT share the quote mark** — one of them is a quotation and the other is a
+  heading.
 - **«Читайте также» is three cards inside `.col-full`.** That is cols 2–11 = 1142.667, and the
   designer's own `(1142 − 2×24)/3 = 364.67` falls straight out of it.
 - **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
   which `.col-main` now names directly.
 
 Below 1160 the pages stack, and **that takes two declarations**: the template *and* the
-placement, listing every role class, or the surviving `grid-column` creates implicit columns.
+placement, listing every role class — round 29 adds `.mus-head > .head-wide` to that list — or
+the surviving `grid-column` creates implicit columns.
+
+**`min-width: 0` on `.page-grid > *` is LOAD-BEARING and global as of round 29.** `1fr` is
+`minmax(auto, 1fr)`, so a track floors at its content's min-content and a child with
+`width: 100vw` contributes 100vw: without it the `.col-main` track floors at the whole viewport,
+the twelve "equal" columns stop being equal, and the page grows a horizontal overflow that reads
+as a broken grid rather than as one overflowing child. «Музей» already carried this as a local
+`≤1160` fix; it is one rule now. The cost is that a long unbreakable word overflows its column
+instead of widening it, which `npm run probe:heads` and the 1160 breakpoint already watch.
 
 ### The body is a block list, not a schema (round 27)
 
@@ -144,26 +162,91 @@ so two pictures can only stack if something is written between them — `assertA
 in dev if two `media` blocks end up adjacent. `MediaItem` now lives in `page/mediaSlider.ts`
 (it was in `pageSections.ts`, which made shared furniture depend on one screen).
 
-### Sticky heading columns
+### The picture slider is scroll-panned and 100vw (round 29) — `page/mediaSlider.ts`
 
-**Only «Контакты» and «Аренда» use this.** Round 27 gave the article a sticky date rail too,
-on the grounds that the longread has one — but the longread's rail tracks *which section owns
-the frame*, a question that changes as you scroll. A single article never asks it, so the rail
-was borrowed motion; round 27.1 moved date · category into the masthead under the H1 (the
-`meta` slot on `buildPageHead`), which is where the reader just read them on the news card.
-**A pinned column has to be answering something.**
+No arrows, no active index. `buildControls()`, `go()`, `.ms-controls`, `.ms-btn` and every
+per-page chevron colour (including `#screen-museum .ms-btn`) are deleted, and so is the
+`opacity: .38` / `.is-active` dimming — there is no active slide to be the exception.
 
-`page/stickyHeads.ts` pins a heading to the vertical centre of the frame while its body
-scrolls — `(viewH − colH) / 2`, clamped to `viewH − colH − padBottom`, written per block as
-`--sec-pin`. Mark the block `data-sticky-head` and the column `.sticky-head`; `.sec-col` is
-matched too, so one mechanism serves the longread and the content pages.
+**The bleed is measured back from column 7, not from `50%`.** `.ms--slider` is `width: 100vw`
+with `margin-left: calc(-1 * var(--ms-bleed))`, where
 
-**It was half-present before and that was the bug.** `concept.css` is imported globally, so its
-`.sec-col` rule already made the contact form's heading sticky on «Контакты» — at the flat
-`14vh` fallback — while the two `.page-h2` columns beside it were not sticky at all. Three
-headings of one rank behaving three ways is what the client reported. Note the three ways
-`position: sticky` fails **silently**: a stretched grid item has nowhere to travel, an
-`overflow: hidden` ancestor clips it, and a transformed ancestor steals its containing block.
+```css
+--ms-bleed: calc((100vw - var(--grid-content)) / 2 + 6 * (var(--grid-col) + var(--grid-gutter)));
+```
+
+**TRAP: the full-bleed snippet everyone reaches for, `margin-left: calc(50% - 50vw)`, is wrong
+here and wrong in a way that looks like a bug in the grid.** It centres the 100vw box on its
+CONTAINER, which is the viewport's centre only if the container is itself centred. This block
+lives in `.col-main`, whose centre at 1440 is **1011.67 against the viewport's 720** — the strip
+came out 292px right of the page and ran 292px off the other edge. Below the grid's collapse
+there is no column 7 to walk back from, so the override drops the six units: at
+`max-width: 1160px` in page.css, and again at `max-height: 720px` in concept.css because
+«О Крестах» is the only page that also collapses on height.
+
+**The pan is `animation-timeline: view()`, and script publishes ONE number.** A rAF scroll
+handler here is bit-for-bit round 16.1's reported defect — main thread racing the compositor,
+10 fps and 20px jumps. `MediaSlider` writes `--ms-travel`; the `ms-pan` keyframe translates by
+it along the frame's own view progress. Verified: at cover 0/25/50/75/100 % the transform is
+0 / −300 / −599 / −899 / −1198, and the last slide lands flush on the viewport's right edge.
+
+**`.ms-strip` is `justify-content: safe center`, and the reason is measured.** Of the nine
+picture sets across the three longreads, **five are two-photo sets** that measure ~1254px at
+410px tall and fit inside 1440 — their travel is 0 and they must simply sit centred. Plain
+`center` would centre the overflowing ones too, pushing half the excess off the LEFT edge behind
+`overflow: clip`, so the first photograph would be unreachable at rest. `safe` falls back to
+`flex-start` exactly at the overflow boundary, which is the decision made from the content
+rather than from a flag. Measured travels: 0, 0, 445, 1198, 0.
+
+**Slides are `height: var(--ms-h); width: auto`** — definite height, width derived from the
+intrinsic ratio. That is a *stronger* guard against round 27's 0×0 lazy-image desync than the
+fixed box it replaces, not a weaker one. `.ms-frame` keeps `overflow: clip` (it bounds the
+scrollable overflow, where `overflow-x: hidden` leaves `scrollLeft` movable) and drops the
+one-column peek.
+
+**The fallbacks are CORRECTNESS, not polish.** Both `@supports not (animation-timeline: view())`
+and `@media (prefers-reduced-motion: reduce)` turn `.ms-frame` into a real `overflow-x: auto`
+snap container. Without them the three overflowing sets hide every slide past the first behind
+`overflow: clip` with no way to reach them. The two rule lists are identical and adjacent on
+purpose: change both or neither.
+
+### ROUND 29: NOTHING PINS, AND SECTION HEADINGS ARE A BAND
+
+**`page/stickyHeads.ts` is DELETED**, with `.sticky-head` / `[data-sticky-head]` in page.css,
+all its wiring in `ContactsPage.ts`, and `PageShell.onMeasure` — which had no subscriber left
+once the last one went, and an API nothing calls is a claim that one exists. Round 28's whole
+apparatus (pin a heading at `(viewH − colH)/2`, clamp to `viewH − colH − padBottom`, write
+`--sec-pin` per block) is gone with it. Keep round 27's finding about *why* a rail must answer
+something — the article's borrowed date rail was deleted on exactly that reasoning — and note
+that the same argument now retires the rest: a heading that scrolls away hands over by itself.
+
+**On the three LONGREADS — «О Крестах», «Музей», «Новость» — a section heading is a
+full-width FACTOID band.** `.head-wide` in `pages.css` is `grid-column: 2 / -2`, the ten-column
+measure (148.656 → 1291.33, i.e. 1142.672 wide at 1440), with the `--type-factoid-*` triple:
+72/110%, weight 150. Frame `1253:701` settles the size arithmetically — the hotel heading is
+drawn 237px tall, which is `3 × 72 × 1.1` and cannot be any other number.
+
+**THE TYPE SELECTOR IS `h2.head-wide, .head-wide > h2, .article-body > h2` — on the HEADING,
+never on the wrapper.** Three selectors because the band *is* the heading on «О Крестах» and
+*wraps* it on «Музей», where the era name is followed by its years and only one of the two is
+72px. Putting `font-size` on the wrapper is a live trap and cost this round a measurement: the
+UA sheet gives `h2` `font-size: 1.5em`, so a 72px band rendered «Музей»'s era name at **108px** —
+bigger than the site's H1, and plausible enough on screen to read as a design choice.
+
+**The flat pages do NOT get the band.** «Аренда» and «Контакты» keep `.page-h2` at 40px in
+`.col-aside`, now **left-aligned at the top of its section** rather than pinned to the frame's
+centre. Their sections are short, and a 72px heading over three lines of prose is a title
+looking for a page.
+
+**`ContactForm` therefore takes a `wideHead?: boolean`** — `true` on «О Крестах» (the default),
+`false` on «Аренда» and «Контакты». It is deliberately NOT derived from the existing `icon`
+flag even though the two agree on all three call sites today: one says "this form is a longread
+section", the other says "this form has a mark beside it", and collapsing them is how the next
+page that wants one without the other becomes a puzzle.
+
+**`.article-body h2` at H3 tokens (32px) is deleted, and the specificity was the trap.** That
+rule and the band's are BOTH (0,1,1), so source order decides — leaving the old one "harmlessly
+in place" would have silently kept the article at 32px while the other two longreads went to 72.
 
 ---
 

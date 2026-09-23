@@ -42,6 +42,22 @@ export interface ContactFormCopy {
   note: string;
   /** an icon box for the page light. Pages without a light omit it. */
   icon?: boolean;
+  /**
+   * ROUND 29: render the heading as a full-width FACTOID band above the grid,
+   * the way the longread's sections do, rather than as a 40px `.page-h2` in the
+   * four-column aside.
+   *
+   * True on «О Крестах», where this form is the sixth section of a longread and
+   * has to look like the five above it. False on «Аренда» and «Контакты», whose
+   * sections are short — a 72px heading over three lines of prose is a title
+   * looking for a page.
+   *
+   * Deliberately NOT derived from `icon`, even though the two currently agree on
+   * all three call sites. They mean different things — one is "this page has the
+   * light", the other is "this page is a longread" — and collapsing them is how
+   * the next page that has one but not the other gets the wrong layout silently.
+   */
+  wideHead?: boolean;
 }
 
 export const DEFAULT_CONTACT_COPY: ContactFormCopy = {
@@ -51,6 +67,7 @@ export const DEFAULT_CONTACT_COPY: ContactFormCopy = {
   phone: '+7 812 654-40-11',
   note: 'Либо заполните форму ниже, указав ваши контакты и интересующие форматы сотрудничества',
   icon: true,
+  wideHead: true,
 };
 
 interface Field {
@@ -132,11 +149,25 @@ export class ContactForm {
       // was never lit — true, but the fix was to light it, not to delete it.
       // The design has an icon here; `SectionRun` now carries the form as a
       // sixth STATION so the box gets the same god-ray the five sections do.
+      //
+      // ROUND 29: two shapes, because this form is a longread section on one
+      // page and a short block on two others. On the longread the heading is a
+      // band above the grid and the aside holds only the lit icon; elsewhere
+      // there is no aside column of its own at all — the heading is a plain
+      // `.page-h2` in `.col-aside`, and with no `.sec-col` nothing can stick.
+      (c.wideHead
+        ? `<div class="sec-head page-grid">` +
+          `<h2 class="sec-h2 head-wide">${escapeHtml(bindShortWords(c.heading))}</h2>` +
+          `</div>`
+        : '') +
       `<div class="sec-grid page-grid">` +
-      `<div class="sec-col col-aside">` +
-      (c.icon ? `<div class="sec-icon" aria-hidden="true"></div>` : '') +
-      `<h2 class="sec-h2">${escapeHtml(bindShortWords(c.heading))}</h2>` +
-      `</div>` +
+      (c.wideHead
+        ? `<div class="sec-col col-aside">` +
+          (c.icon ? `<div class="sec-icon" aria-hidden="true"></div>` : '') +
+          `</div>`
+        : `<div class="col-aside">` +
+          `<h2 class="page-h2">${escapeHtml(bindShortWords(c.heading))}</h2>` +
+          `</div>`) +
       `<div class="sec-body col-main">` +
       `<p class="cf-lead">${escapeHtml(bindShortWords(c.lead))}</p>` +
       `<p class="cf-dept">${escapeHtml(c.dept)}<br>` +

@@ -38,8 +38,10 @@ export class PageShell {
   onScrollToMain: (from: number) => void = () => {};
   /** true while a route transition is playing; the handoff must not fire then */
   transitionBusy: () => boolean = () => false;
-  /** the page re-derives anything it measures from the viewport (round 27) */
-  onMeasure: (viewH: number) => void = () => {};
+  /* ROUND 27 ADDED `onMeasure`, ROUND 29 REMOVED IT. Its one subscriber was
+     «Контакты», writing per-block sticky pins through page/stickyHeads.ts, and
+     both are gone — no page derives anything from the viewport height any more.
+     An extension point with no consumer is a claim that one exists. */
 
   private stops: ColorStop[] = [];
   private running = false;
@@ -88,7 +90,6 @@ export class PageShell {
     // MainHandoff.stops. A light page goes straight to main's blue.
     const last = this.stops.length ? this.stops[this.stops.length - 1].color : LEAD_COLOR;
     this.bg.setStops([...this.stops, ...this.handoff.stops(viewH, last)]);
-    this.onMeasure(viewH);
     this.update();
   }
 

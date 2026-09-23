@@ -15,6 +15,7 @@ import { BuildingPicker } from './buildingPicker';
 import { MapCamera } from './mapCamera';
 import { BuildingDrawer } from './BuildingDrawer';
 import { MapScroll, STAGE_VH } from './mapScroll';
+import { buildHero } from './conceptHero';
 import { buildIntro } from './conceptIntro';
 import { ConceptPage } from './conceptPage';
 
@@ -230,7 +231,7 @@ export class ConceptScreen {
     // pinned. See mapScroll.ts.
     this.scroll = new MapScroll(this.el, this.stageVh);
     this.scroll.stage.appendChild(this.renderer.domElement);
-    this.scroll.setIntro(buildIntro());
+    this.scroll.setIntro(buildHero(), buildIntro());
 
     // everything below the map: sections, form, handoff, colour, icon light
     this.page = new ConceptPage(this.el, this.scroll.scroller);
@@ -558,6 +559,11 @@ export class ConceptScreen {
       // scroller's absolutely-positioned children scroll away with the content),
       // so it has to be told when the intro has gone.
       this.el.classList.toggle('past-intro', this.scroll.pastIntro);
+      // ROUND 29: and when it is over the HERO, where it has to be white rather
+      // than the link blue. Two states rather than one because they turn over at
+      // different lines: `past-intro` is 60 % of everything above the map, by
+      // which point the wordmark is on the white masthead.
+      this.el.classList.toggle('over-hero', this.scroll.overHero);
       if (mapVisible) {
         this.mapCam.update(dt);
         this.ground?.setFocus(this.mapCam.focus);

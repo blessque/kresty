@@ -90,12 +90,17 @@ export interface MotionParams {
    * 1 = the icon + heading hold VERTICALLY CENTRED in the viewport (round 25,
    * the client's request); 0 = use `pin` as a flat vh offset.
    *
-   * IT CANNOT BE A FIXED vh, which is why this is a mode rather than a number.
-   * The pin that centres a block is `(viewH − colH) / 2`, and `colH` varies by
-   * more than 400px across the run — these headings are wrapped Russian and the
-   * museum one takes nine lines where «Аренда» takes four. One vh value would
-   * centre exactly one section. So the pin is computed PER SECTION in
-   * `sectionRun.measure()` and written to that section's own `--sec-pin`.
+   * A fixed vh was impossible when this was written: the pin that centres a
+   * block is `(viewH − colH) / 2`, and `colH` varied by more than 400px across
+   * the run — wrapped Russian headings, nine lines for the museum against four
+   * for «Аренда» — so one vh value would have centred exactly one section.
+   *
+   * ROUND 29 REMOVED THAT SPREAD. The heading is its own band now and the
+   * column holds only the icon, so `colH` is flat (264 at 900). The pin is
+   * still computed PER SECTION in `sectionRun.measure()` and written to that
+   * section's own `--sec-pin`, because `colH` still tracks a `vh` clamp and the
+   * station invariant still has to be applied — but a fixed vh would no longer
+   * be the disaster this paragraph describes.
    *
    * It is also clamped by the station invariant (`pin + colH + padBottom ≤
    * viewH`), which centring fights directly: centring wants `pin` big, and the
@@ -190,7 +195,27 @@ export const MOTION_DEFAULTS: MotionParams = {
 
   pin: 0,
   centre: 1,
-  bodyLead: 50,
+  // ROUND 29: 50 → 34. The heading band now sits ABOVE the grid, so a section
+  // opens with 430px of band before the lead even starts; at 50 that was 880px
+  // of heading-and-empty-column before the first sentence, which is ceremony
+  // this round was supposed to remove rather than add.
+  //
+  // MEASURED before moving it, because the stated purpose is "the icon is on
+  // screen and pinned before the first paragraph arrives" and that is the thing
+  // that must survive. At 1440×900, the scroll position where the icon reaches
+  // its pin, against where the body's first line is at that moment:
+  //
+  //   lead        50vh   42vh   34vh   26vh
+  //   prose at     751    679    607    535      (viewport 900)
+  //   light        1.00   1.00   1.00   1.00
+  //
+  // The light is at full strength in every case, and by a wide margin — it
+  // reaches 1.00 with the icon's top still at 1881, long before the pin. So the
+  // property holds well below 50 and the dial is composition, not correctness.
+  // 34 keeps the icon alone in the frame for a beat and gives back ~230px of
+  // dead column per section; the band still costs more than that, so a section
+  // opens no faster than it did before this round.
+  bodyLead: 34,
   padTop: 70,
   firstPadTop: 0,
   padBottom: 112,
@@ -251,10 +276,10 @@ export function applyMotionCss(p: MotionParams = MOTION) {
   s.setProperty('--sec-pad-bottom', `${p.padBottom}px`);
   s.setProperty('--sec-icon-size', `${p.iconSize}px`);
   s.setProperty('--gap-vh', String(p.gapVh));
-  // `.sec-col`'s text-align and the icon's own margin have to agree, or the
-  // heading centres and the light stays flush left — they are one decision
-  // expressed in two properties, so they are written together and never apart.
-  const centred = p.iconAlign >= 0.5;
-  s.setProperty('--sec-col-align', centred ? 'center' : 'start');
-  s.setProperty('--sec-icon-inline', centred ? 'auto' : '0');
+  // ROUND 29: ONE PROPERTY, NOT TWO. `--sec-col-align` existed because the
+  // column held a heading as well as the icon and the two had to be aligned by
+  // the same decision — a text-align on the column plus a margin on the icon.
+  // The heading is now its own band, so the column holds only the icon and the
+  // margin alone says everything. `--sec-col-align` is deleted; nothing reads it.
+  s.setProperty('--sec-icon-inline', p.iconAlign >= 0.5 ? 'auto' : '0');
 }

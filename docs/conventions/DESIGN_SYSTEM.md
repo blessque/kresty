@@ -9,6 +9,12 @@ stays quiet on the pre-token debt recorded in `scripts/token-baseline.json` — 
 `lint:tokens:update` only when the count **drops**. `npm run tokens:check` (also in `build`)
 catches hand edits to the generated files. `/designcheck` is the full on-demand audit.
 
+Two type-layout probes fail closed and are part of a pass, not optional: **`npm run probe:heads`**
+(`scripts/head-sweep.mjs`) sweeps the section heading bands across eight widths on the three
+longreads and exits non-zero on the first overflow — hyphenation is off, and this is what pays
+for that; **`npm run spec:figma`** reports every box's grid alignment, which is how round 29's
+inset removal was verified rather than eyeballed.
+
 ---
 
 ## The three layers, and the layer is the prefix
@@ -74,6 +80,17 @@ a heading.
   cannot drift. Seam max Δ **1/255**. Note the *painted* pixel is not the field colour: the
   ray canvas composites with `mix-blend-mode: screen` and `#grain` sits at 7 % overlay, so
   sampling a screenshot is the wrong test. Read the computed `background-color`.
+- **The UA sheet gives `h2` `font-size: 1.5em`, so a type style set on a WRAPPER multiplies.**
+  Round 29 put 72px on `.head-wide` and «Музей»'s era name came out at **108px** — larger than
+  the site's H1, and plausible enough on screen to read as a design choice rather than a bug.
+  The selector is `h2.head-wide, .head-wide > h2, .article-body > h2`: **the type goes on the
+  heading element, never on the band that positions it.**
+- **Two rules at the same specificity are decided by SOURCE ORDER, and the sheet order here is
+  not obvious.** `pages.css` loads before `concept.css` and `museum.css`, so a `font-size` on
+  `.sec-h2` or `.mus-era` silently beats `.head-wide` and puts a 72px band back at 40 — which is
+  why neither restates its type. The same trap the other way round: `.article-body h2` (H3
+  tokens, 32px) and `.article-body > h2` (Factoid) are both (0,1,1), so leaving the old rule in
+  place "harmlessly" would have kept one of the three longreads at 32px.
 - **The lint's EXEMPT list is where raw values hide** — `tokens.css`, `tokens.gen.css`,
   `fonts.css`, `waterPanel.css`. A raw brand blue sat in `waterPanel.css` unflagged until
   round 22.1.
@@ -92,14 +109,15 @@ a heading.
 
 ```
 --page-margin:      32px        --grid-gutter: 24px
---page-max:         1376px      --grid-text-inset: 16px
+--page-max:         1376px
 .page-grid  → repeat(12, 1fr), column-gap 24, width min(100% − 64, 1376), centred
+.page-grid > *  → min-width: 0
 
-.col-aside  2 / span 4    442.667   longread h2
+.col-aside  2 / span 4    442.667   the icon column; «Аренда»/«Контакты» h2
 .col-media  2 / span 5    559.333   the square photo
 .col-main   7 / span 5    559.333   body copy, both kinds of page
 .col-full   2 / -2       1142.667   the full MEASURE — ten columns, not twelve
-.gp-text    padding-inline: 16px
+.head-wide  2 / -2       1142.672   the longread section heading, in Factoid
 ```
 
 At 1440: `12 × 92.667 + 11 × 24 = 1376`. Column *n* starts at `32 + (n−1) × 116.667`.
@@ -115,19 +133,38 @@ At 1440: `12 × 92.667 + 11 × 24 = 1376`. Column *n* starts at `32 + (n−1) ×
   x=615→1291 is columns 6–11 (615.333→1291.333). The old `--article-outdent: 104px` was the
   tell — the old right column began at 720, and 720 − 615.333 = 104.667. The hack was measuring
   the gap between a two-column boundary and a twelve-column one.
-- **Text is inset 16px; images are not.** Put the inset on the text-bearing element, never on
-  the grid item, or an adjacent figure takes it and stops aligning with the column edge.
+- **ROUND 29 DELETED THE 16px TEXT INSET.** Round 25's rule was *"text is inset 16px, images are
+  not"*, put on the text-bearing element rather than the grid item so an adjacent figure would
+  not take it. The client's answer is simpler and it is the one that ships: **a column has one
+  left edge and everything in it uses that edge.** `--grid-text-inset`, `.gp-text`, all twelve
+  `padding-inline` declarations and every `gp-text` in markup are gone. Measured with
+  `npm run spec:figma`: 75 inset-bearing boxes → 0, and text nodes landing exactly on a column
+  edge rose on every page (news 0→28, contacts 4→25, rent 9→23, article 7→21, concept 22→28).
+- **`min-width: 0` on `.page-grid > *` is load-bearing (round 29), not hygiene.** `1fr` is
+  `minmax(auto, 1fr)`, so a track floors at its content's min-content and a child with
+  `width: 100vw` — the picture strip — contributes 100vw. Without it the twelve "equal" columns
+  stop being equal and the page grows a horizontal overflow that reads as a broken grid rather
+  than as one overflowing child. It was «Музей»'s local ≤1160 fix; it is one global rule now.
 - **Collapsing to one column takes TWO declarations**, and the reset must now name all four
   role classes *and* `.article-body`. An explicit `grid-column` surviving into a one-column
   grid **creates implicit columns** (measured `348px 539px` at 1024). Miss one class and that
   element alone conjures them — which reads as a partially-applied media query.
-- **The narrower aside makes Russian min-content the binding constraint, and hyphenation is
-  what pays for it.** The design frame itself is fine; **1366 and below is where it breaks**
-  (+21px, rising to +83 at 1180). `hyphens: auto` needs `lang="ru"` (set) or it silently
-  no-ops, and it needs `hyphenate-limit-chars: 13 6 4` — **13 is the highest limit that never
-  overflows, swept, and the highest is what you want because it hyphenates least.** Round 23's
-  `max-width: min(15em, 80%)` clearance hack is deleted; the grid gives 140.667px of clearance
-  structurally (a gutter plus the skipped column 6).
+- **ROUND 29: THERE IS NO `hyphens: auto` LEFT ON THE SITE, and that is a consequence of the
+  heading band, not a reversal.** Hyphenation was load-bearing while the longread h2 was a FLAT
+  40px in a four-column aside: the type stopped shrinking below 1440 while the column kept
+  going, so **1366 and below is where it broke** (+21px, rising to +83 at 1180), and it needed
+  `lang="ru"` (set, or it silently no-ops) plus `hyphenate-limit-chars: 13 6 4` — 13 being the
+  highest limit that never overflows, swept, and the highest is what you want because it
+  hyphenates least. The band changes **both** terms: ten columns instead of four, and
+  `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. At 72px a mid-word break is the
+  most visible thing on the page, and `hyphens: auto` breaks to balance the rag rather than only
+  to avoid overflow — so it goes, and **`npm run probe:heads` is what makes that safe**: it
+  sweeps eight widths over the three longreads and exits non-zero on the first overflow. Worst
+  measured clearance (negative is clearance): concept **−2.8 at 1200**, museum −175 at 1165,
+  article −3.7 at 1165. **«О Крестах» runs on under 3px**, so a copy edit to any
+  `PAGE_SECTIONS.h2` must re-run the probe. Round 23's `max-width: min(15em, 80%)` clearance
+  hack is deleted; the grid gives 140.667px of clearance structurally (a gutter plus the skipped
+  column 6).
 
 **Two measurement traps in that sweep, both of which returned a clean bill of health on
 genuinely broken layout:**
@@ -143,7 +180,13 @@ genuinely broken layout:**
 - **`hyphenate-limit-chars` counts the RUN too**, NBSP included. «в исторических» is 14
   characters, so it breaks at limit 13 even though «исторических» alone is 12 and fits. **To
   spare a particular word, remove the NBSP from that string — the binding is the cause, not the
-  limit.** Raising the limit instead re-opens the overflow.
+  limit.** Raising the limit instead re-opens the overflow. (Kept for the day hyphenation comes
+  back; nothing sets it today.)
+- **Do NOT estimate an overflow from the clamp** (round 29). Scaling the 1440 line width by the
+  ratio of the two clamp values predicts a 28px overflow just above the breakpoint, and there
+  isn't one: each heading re-wraps as the measure narrows, so *which* heading is worst changes
+  with the width — «О Крестах» switches from «Остановиться…» to «Позаботиться…» at 1180. Only
+  rendering knows, which is why `probe:heads` is a script and not a paragraph in the log.
 
 The header, the wordmarks and the main-screen slider keep their own 32px corner rule and are
 outside this grid.
@@ -174,7 +217,22 @@ plus one in each of `build-tokens.mjs`'s two maps; the generator then emits
 `#screen-main` without being told to. If a style seems to be missing, that is the procedure —
 not a one-off `font-size` at the call site.
 
+**Round 29 made Factoid a HEADING style, not only a figure and a pull-quote.** Every section
+heading on the three longreads — «О Крестах», «Музей», «Новость» — is now a ten-column band at
+72/110% (`.head-wide`; frame `1253:701` draws the hotel heading 237px tall, which is
+`3 × 72 × 1.1` and can be nothing else). Only «Аренда» and «Контакты» keep `.page-h2` at 40.
+So the site's H2 token is now the *flat-page* heading and Factoid is the longread one, which is
+the opposite of what "the second-largest style" suggests — check which page you are on before
+reaching for either.
+
 **A style carries its WEIGHT too**, so moving between two styles is never just a size change.
+
+**One star bullet size sitewide: 12px** (`src/assets/star-bullet.svg` as a `::before` mask,
+never a marker and never a `clip-path` — the outline is four quadratic curves and straight edges
+between their points read as a notched diamond). «Музей»'s 24px amber mark was the only second
+opinion and round 29 removed it, deleting `--color-mark-star` with it. Note the museum's colour
+is `var(--mus-chrome, …)` and not a literal white: that page descends to a `#ffffff` field, so
+a hard-coded white bullet disappears on the last era.
 
 ### The Chromius weight axis is the project's most-repeated bug
 

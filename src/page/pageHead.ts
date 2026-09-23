@@ -69,7 +69,7 @@ export function buildPageHead({
   const grid = document.createElement('div');
   grid.className = 'page-grid';
   grid.innerHTML =
-    `<div class="col-lead gp-text">` +
+    `<div class="col-lead">` +
     (eyebrow ?? '') +
     `<h1 class="page-title">${escapeHtml(bindShortWords(title))}</h1>` +
     leads.map((l) => `<p class="page-lead">${escapeHtml(bindShortWords(l))}</p>`).join('') +

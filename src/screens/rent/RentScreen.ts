@@ -61,8 +61,8 @@ export class RentScreen extends ContentScreen {
     const info = document.createElement('section');
     info.className = 'page-block page-grid';
     info.innerHTML =
-      `<div class="col-aside gp-text"><h2 class="page-h2">Общая информация</h2></div>` +
-      `<div class="col-main gp-text">` +
+      `<div class="col-aside"><h2 class="page-h2">Общая информация</h2></div>` +
+      `<div class="col-main">` +
       `<dl class="rent-stats">` +
       STATS.map(
         ([k, v]) =>
@@ -82,7 +82,7 @@ export class RentScreen extends ContentScreen {
     const spaces = document.createElement('section');
     spaces.className = 'page-block page-grid';
     spaces.innerHTML =
-      `<ul class="col-aside rent-spaces gp-text">` +
+      `<ul class="col-aside rent-spaces">` +
       SPACES.map((s) => `<li>${escapeHtml(bindShortWords(s))}</li>`).join('') +
       `</ul>` +
       `<div class="col-main">` +
@@ -98,13 +98,14 @@ export class RentScreen extends ContentScreen {
     // PUSH content rather than to PLACE it. `.col-main` names the position, so
     // the placeholder has nothing left to do.
     body.innerHTML =
-      `<div class="col-main page-prose gp-text"><p>${escapeHtml(bindShortWords(BODY))}</p></div>`;
+      `<div class="col-main page-prose"><p>${escapeHtml(bindShortWords(BODY))}</p></div>`;
     this.shell.add(body);
 
     // the shared form, with «Аренда»'s own heading
     const form = new ContactForm(this.shell.scroller, {
       heading: 'Контакты',
       icon: false, // no page light on this page — an empty box would just be a hole
+      wideHead: false, // a short block, not a longread section — see ContactFormCopy
     });
     this.shell.add(form.el);
   }

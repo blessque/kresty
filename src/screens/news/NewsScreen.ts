@@ -71,10 +71,11 @@ export class NewsScreen extends ContentScreen {
     row.setAttribute('aria-label', 'Фильтр новостей');
 
     const inner = document.createElement('div');
-    // ROUND 26: `.gp-text` — the tabs are text and hang inside the column like
-    // every other text block. Without it they started 16px left of the H1
-    // directly above them, which is what the client reported.
-    inner.className = 'col-full news-filters__row gp-text';
+    // Round 26 gave this `.gp-text` so the tabs lined up with the H1 above them,
+    // which was 16px inside its column. Round 29 removed the inset everywhere, so
+    // the two agree again with no class at all — the alignment is the point, not
+    // the utility.
+    inner.className = 'col-full news-filters__row';
     // «Все» plus the three categories, separated by the frame's small stars
     const all: (Category | null)[] = [null, ...CATEGORIES];
     all.forEach((c, i) => {
@@ -126,7 +127,7 @@ export class NewsScreen extends ContentScreen {
             ` loading="lazy" decoding="async" width="${n.w}" height="${n.h}">`
           : '') +
         `</div>` +
-        `<div class="col-main news-card__body gp-text">` +
+        `<div class="col-main news-card__body">` +
         `<h2 class="news-card__title">` +
         `<a class="news-card__link" href="#news/1">${escapeHtml(bindShortWords(n.title))}</a>` +
         `</h2>` +

@@ -1,4 +1,4 @@
-import { MediaSlider, STRIP_H } from '../../page/mediaSlider';
+import { MediaSlider } from '../../page/mediaSlider';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { bindShortWords } from '../../shared/ruTypography';
 import { MUSEUM_SECTIONS, type MuseumSection } from './museumSections';
@@ -6,18 +6,17 @@ import { MUSEUM_SECTIONS, type MuseumSection } from './museumSections';
 /**
  * The four era sections, built from the table.
  *
- * Structurally «О Крестах»'s `sectionRun.ts` — a sticky left column beside a
- * scrolling body column, both placed by the shared grid's role classes — with
- * three differences, each of which follows from the light not travelling:
+ * Structurally «О Крестах»'s `sectionRun.ts` — a full-width FACTOID heading band
+ * above a body column, both placed by the shared grid's role classes — with two
+ * differences, each of which follows from the light not travelling:
  *
  *  1. **No geometry table.** `SectionGeom`, the station invariant, `iconY`'s
  *     three-phase clamp and the per-section `--sec-pin` all exist to keep a
  *     light aligned to a box that moves. Nothing here is aligned to a box.
- *  2. **No `.sec-icon`.** The aside carries the era and the years, and the light
- *     behind it is the same cross in every section.
- *  3. **The sticky column is centred by CSS**, not by a measured pin — the cross
- *     is at 50 % of the viewport, so `top: calc(50% - …)` puts the era inside it
- *     without JavaScript ever reading a height.
+ *  2. **No aside at all.** «О Крестах» keeps a sticky four-column aside because
+ *     it holds that section's lit icon; here the light is one cross bisected by
+ *     the left edge, drawn on the shader canvas, and the body simply runs beside
+ *     it. So `.mus-grid` has a single child.
  *
  * The one measurement that remains is each section's `offsetTop`, which the
  * colour track needs; a picture block changing slides can move it, so the
@@ -40,12 +39,25 @@ export class MuseumRun {
     const el = document.createElement('section');
     el.className = 'mus';
     el.dataset.section = s.id;
+    // ROUND 29: THE ERA NAME LEFT THE CROSS. It used to sit in `.mus-col`, a
+    // sticky column pinned to `top: 50%` so the title rode inside the light
+    // cross's convergence point. The client asked for the same full-width
+    // FACTOID band the longread's sections now use, so era and years are a
+    // heading block at the top of the section and the cross — which is the
+    // shader canvas, never a child of that column — rotates on alone.
+    //
+    // `.mus-col` is gone rather than emptied, and `MuseumScreen.fadeEras()` with
+    // it: that crossfade existed only because two PINNED titles were on screen
+    // together at every boundary. A heading that scrolls away hands over by
+    // itself.
     el.innerHTML =
-      `<div class="mus-grid page-grid">` +
-      `<div class="mus-col col-aside">` +
+      `<div class="mus-head page-grid">` +
+      `<div class="head-wide">` +
       `<h2 class="mus-era">${escapeHtml(bindShortWords(s.era))}</h2>` +
       `<p class="mus-years">${escapeHtml(s.years)}</p>` +
       `</div>` +
+      `</div>` +
+      `<div class="mus-grid page-grid">` +
       `<div class="mus-body col-main"></div>` +
       `</div>`;
 
@@ -73,10 +85,12 @@ export class MuseumRun {
       if (b.kind === 'list') {
         const ul = document.createElement('ul');
         ul.className = 'mus-list';
-        // The star is a `::before` clip-path, not an <img> and not a list
-        // marker: `.news-filters__dot` already draws the frame's four-pointed
-        // star that way, so this is the same polygon at the same size rather
-        // than a tenth asset that has to stay in sync with it.
+        // The star is a `::before` MASK of `src/assets/star-bullet.svg` — not an
+        // <img>, not a list marker, and (since round 27) not a clip-path either:
+        // the real outline is four quadratic curves and straight edges between
+        // their points read as a notched diamond at this size. Masking keys off
+        // alpha, which is what lets one file take three colours. `.mus-list` is
+        // 12px like every other star on the site as of round 29.
         ul.innerHTML = b.items
           .map((t) => `<li>${escapeHtml(bindShortWords(t))}</li>`)
           .join('');
@@ -92,37 +106,20 @@ export class MuseumRun {
     return el;
   }
 
-  /**
-   * Size every slider frame to its own tallest slide.
+  /* ROUND 29 DELETED `fitFrames()`.
    *
-   * The shared `--ms-h: 410px` is «О Крестах»'s number, where the photographs
-   * are mixed portrait and landscape. All of «Музей»'s are wide, so a constant
-   * 410 padded 49px of dead air above and below each one.
+   * It wrote a per-block `--ms-h` from the slides' intrinsic aspects, because
+   * the shared 410 was «О Крестах»'s number — mixed portrait and landscape —
+   * and all of «Музей»'s photographs are wide. At 559 in the body column a
+   * 1304×728 render was 312 tall inside a 410 frame, leaving 49px of dead air
+   * above and below every slide and 189px between a photo and the paragraph
+   * under it.
    *
-   * The height comes from the `width`/`height` ATTRIBUTES, which the data model
-   * requires on every `MediaItem` — never from a measured box. A slide is
-   * `loading="lazy"`, so its measured height is 0 until it decodes, and reading
-   * that is round 27's desync bug (the page grew 18859 → 20056 mid-scroll and
-   * dragged the light 585px off its station). Intrinsic numbers are known
-   * before the first byte arrives.
-   *
-   * Capped at the shared 410 so a portrait still behaves as it does elsewhere.
+   * Both halves of that are gone. The strip is `100vw` now, and each slide is
+   * `height: var(--ms-h); width: auto` — so a slide FILLS the height exactly and
+   * takes the width its aspect gives it. There is no dead air to remove.
    */
-  fitFrames() {
-    for (const sec of this.sections) {
-      for (const ms of sec.querySelectorAll<HTMLElement>('.ms--slider')) {
-        const w = ms.clientWidth;
-        if (!w) continue;
-        let tallest = 0;
-        for (const img of ms.querySelectorAll('img')) {
-          const iw = Number(img.getAttribute('width'));
-          const ih = Number(img.getAttribute('height'));
-          if (iw > 0 && ih > 0) tallest = Math.max(tallest, (ih / iw) * w);
-        }
-        if (tallest > 0) ms.style.setProperty('--ms-h', `${Math.round(Math.min(tallest, STRIP_H))}px`);
-      }
-    }
-  }
+
 
   /** each section's top within the scroller — what the colour stops are built on */
   tops(): number[] {

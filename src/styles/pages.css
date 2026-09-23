@@ -6,11 +6,9 @@
    rule below contains a left/right offset it is either a fixed-size composition
    or a bug.
 
-   ROUND 25 ADDS ONE EXCEPTION, and it is a grid rule rather than a violation of
-   one: text is inset 16px inside its column while images sit flush to the column
-   edge, which is how both of the designer's grid frames are drawn. That inset is
-   `.gp-text` / `--grid-text-inset`, it is applied to the text-bearing element,
-   and it is the only horizontal value a rule here may rely on.
+   Round 25's one exception — text inset 16px inside its column while images sat
+   flush to it — is GONE as of round 29. There is no `.gp-text` and no
+   `--grid-text-inset`; a column has one left edge and everything in it uses it.
    ──────────────────────────────────────────────────────────────────────────── */
 
 .news-page,
@@ -87,6 +85,45 @@
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
   margin: 0;
+}
+
+/* ── THE SECTION HEADING BAND (round 29) ─────────────────────────────────────
+   On the three LONGREADS — «О Крестах», «Музей», «Новость» — a section heading
+   is no longer a 40px H2 centred in a four-column sticky aside. It is a band of
+   its own at the ten-column measure, set in FACTOID: 72/110%, the designer's own
+   style, already on the site as «Аренда»'s «2500 м²» figures and the article's
+   pull-quote. Frame `1253:701` settles it arithmetically — the hotel heading is
+   drawn 237px tall, which is 3 × 72 × 1.1 and cannot be any other size.
+
+   The quote's MARK does not come with it. The two blocks share a measure and a
+   type style; only one of them is a quotation.
+
+   `.head-wide` is a grid POSITION and nothing else, so it works both as a direct
+   child of a `.page-grid` (the longread's `.sec-head`) and via a bleed on a
+   block that lives in `.col-main` (the article — see `.article-body > h2`).
+
+   The flat content pages do NOT get this. «Аренда» and «Контакты» keep
+   `.page-h2` at 40 in `.col-aside`; their sections are short and a 72px heading
+   over three lines of prose is a title looking for a page. */
+.head-wide {
+  grid-column: 2 / -2;
+}
+/* THE TYPE GOES ON THE HEADING, NEVER ON THE BAND. Three selectors because the
+   band is the heading on «О Крестах» (`h2.sec-h2.head-wide`) and wraps it on
+   «Музей», where the era name is followed by its years and only one of the two
+   is 72px.
+
+   Setting `font-size` on the wrapper instead is a live trap and cost this round
+   a measurement: the UA sheet gives `h2` `font-size: 1.5em`, so a 72px band made
+   the era name 108px — larger than the H1 on the same site, and plausible enough
+   on screen to be read as a design choice rather than a bug. */
+h2.head-wide,
+.head-wide > h2,
+.article-body > h2 {
+  font-family: var(--font-family-display);
+  font-weight: var(--type-factoid-weight);
+  font-size: var(--type-factoid-size);
+  line-height: var(--type-factoid-lh);
 }
 
 /* ── «Новости» ───────────────────────────────────────────────────────────── */
@@ -343,25 +380,19 @@
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
 }
-/* ROUND 26: THE INSET GOES ON THE TEXT CHILDREN, never on `.article-body`.
-   The block holds prose AND figures, so an inset on the wrapper is inherited by
-   the images — round 25 did exactly that and left them 32px narrower than their
-   column, aligned to nothing. `.sec-body` has always done it this way. */
-.article-body > :is(p, h2, h3, ul, ol, blockquote) {
-  padding-inline: var(--grid-text-inset);
-}
 /* ROUND 27: NONE OF THESE RULES MAY MENTION MARGIN. The flow in page.css
    (`.article-body > * + *` and friends) owns every vertical gap in this column,
    and this file loads AFTER it — so a margin here ties on specificity, wins on
    source order, and silently replaces the step it was supposed to leave alone.
    `margin: 0` is not the safe version of this; saying nothing is. The paragraph,
    both headings, the images and the list all carried one before. */
-.article-body h2 {
-  font-family: var(--font-family-display);
-  font-weight: var(--type-h3-weight);
-  font-size: var(--type-h3-size);
-  line-height: var(--type-h3-lh);
-}
+/* ROUND 29 DELETED `.article-body h2`, which set H3 tokens (32/120%). The
+   article's headings are the site's section headings now — Factoid at the
+   ten-column measure, set once by `.head-wide, .article-body > h2` near the top
+   of this file. Note the specificity was a real trap here: that rule and this
+   one are BOTH (0,1,1), so the winner is source order and this one is 250 lines
+   further down. Leaving it as "the old value, harmlessly" would have kept the
+   article at 32px while «О Крестах» and «Музей» went to 72. */
 .article-body h3 {
   font-family: var(--font-family-display);
   font-weight: var(--type-caption-big-weight);
@@ -375,14 +406,6 @@
    them all through one landscape box cut the buildings out of the portraits.
    The slider shows each at its native aspect, `contain`, capped at 410. */
 
-/* A list and its lead sentence are ONE block, so they arrive wrapped — which
-   means the inset rule above, which only reaches direct children of
-   `.article-body`, does not see them. They take it here instead, and the gap
-   between lead and list is the flow's own text step stated locally because the
-   flow rules are scoped to the body column. */
-.article-list-block > :is(p, ul) {
-  padding-inline: var(--grid-text-inset);
-}
 .article-list-block > * + * {
   margin-top: var(--sp-text);
 }
@@ -427,11 +450,17 @@
    units, which is also precisely the distance from column 7's left edge back to
    column 2's — so the same number widens it and shifts it, and both come from
    `--grid-col` rather than the 583.333px it happens to be at 1440. */
-.article-quote {
+/* ROUND 29: THE SECTION HEADING BREAKS OUT THE SAME WAY, for the same reason.
+   «Новость» has no aside to put a heading band in — its body is one `.col-main`
+   flow — so an `h2` takes the quote's bleed rather than a grid position. The two
+   now share a measure and the Factoid type (`.head-wide` sets the type; see the
+   band's own note above). They do NOT share the quote mark: one of them is a
+   quotation and the other is a heading. */
+.article-quote,
+.article-body > h2 {
   --quote-bleed: calc(5 * (var(--grid-col) + var(--grid-gutter)));
   width: calc(100% + var(--quote-bleed));
   margin-left: calc(-1 * var(--quote-bleed));
-  padding-inline: var(--grid-text-inset);
 }
 .article-quote__mark {
   display: block;
@@ -583,7 +612,7 @@
 
 /* THE «ПРЕСС-СЛУЖБА» GAP WAS MISSING STRUCTURALLY, not by an oversight in one
    rule. `.page-prose` and `.contact-pairs` both declare `margin: 0`, and their
-   wrapper is a plain `.col-main.gp-text` that the shared flow in page.css never
+   wrapper is a plain `.col-main` that the shared flow in page.css never
    reaches — it names `.sec-body` and `.article-body` only. So the prose sat
    welded to the list with nothing between them.
 
@@ -655,9 +684,11 @@
   .news-card__body {
     padding-top: 24px;
   }
-  /* ROUND 27: the quote stops breaking out. There is one column to break out
-     OF down here, so the bleed would hang the block off the left of the page. */
-  .article-quote {
+  /* ROUND 27: the quote stops breaking out — and round 29's headings with it.
+     There is one column to break out OF down here, so the bleed would hang the
+     block off the left of the page. */
+  .article-quote,
+  .article-body > h2 {
     --quote-bleed: 0px;
   }
 }

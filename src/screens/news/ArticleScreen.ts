@@ -171,7 +171,7 @@ export class ArticleScreen extends ContentScreen {
     const sec = document.createElement('section');
     sec.className = 'article-related page-grid';
     sec.innerHTML =
-      `<div class="col-full gp-text">` +
+      `<div class="col-full">` +
       `<h2 class="article-related__title">Читайте также</h2>` +
       `<div class="article-related__grid">` +
       RELATED.map(

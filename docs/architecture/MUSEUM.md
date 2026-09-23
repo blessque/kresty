@@ -191,28 +191,57 @@ one ray almost exactly where another was. Measure on a circle; do not look.
 
 ## Layout
 
-Grid role classes only — `.col-aside` for the era, `.col-main` for the body. The `.mus-*`
-vocabulary deliberately does **not** reuse «О Крестах»'s `.sec-*`: that sheet's sizing hangs off
-`--sec-pin`/`--sec-pad-top`/`--sec-body-lead`, which `applyMotionCss()` writes onto
-`document.documentElement` from a module-level singleton that survives its screen being hidden.
-Sharing the vocabulary would mean the concept page's tuning panel silently driving this page.
+Grid role classes only — `.head-wide` for the era band (round 29; it was `.col-aside`),
+`.col-main` for the body. The `.mus-*` vocabulary deliberately does **not** reuse
+«О Крестах»'s `.sec-*`: that sheet's sizing hangs off `--sec-pin`/`--sec-pad-top`/
+`--sec-body-lead`, which `applyMotionCss()` writes onto `document.documentElement` from a
+module-level singleton that survives its screen being hidden. Sharing the vocabulary would mean
+the concept page's tuning panel silently driving this page. `.head-wide` is the exception and is
+safe precisely because it is the opposite kind of thing — a grid POSITION plus a type style in
+`styles/pages.css`, with no JS writing to it.
 
-**The body leads the era**, which is the reverse of the longread. The frames put the kicker
-~9vh into a section and the era name ~44vh, so the copy starts first and the title arrives as it
-reaches the middle. Copying `--sec-body-lead: 50vh` put a screen of empty column beside every
-section.
+### ROUND 29: THE ERA NAME LEFT THE CROSS
 
-`.mus-col` is `position: sticky; top: 50%; transform: translateY(-50%)` — the era centres on the
-viewport middle, which is where the cross's convergence point is, with nothing measured in
-script. (A transform on the sticky element *itself* is fine; one on an **ancestor** steals
-sticky's containing block.)
+Round 28's signature pairing was a sticky `.mus-col` —
+`position: sticky; top: 50%; transform: translateY(-50%)` — so the era title rode inside the
+light cross's convergence point at every viewport height, with nothing measured in script. The
+client replaced it with the **same full-width FACTOID band the longread now uses**:
 
-**`min-height: 150vh` on `.mus` is load-bearing.** A sticky column is on screen from the moment
-its section's top edge is, so at a boundary the outgoing era sits at the top of the frame while
-the incoming one arrives at the bottom. «Забвение» is three blocks long and did exactly that.
-The floor plus `fadeEras()` — an opacity envelope on distance from the frame's middle — is what
-keeps one era in the light at a time. «О Крестах» never shows this because its light's envelope
-fades each station and the eye follows the light; there is one cross here and it never moves.
+```
+<div class="mus-head page-grid"><div class="head-wide">
+  <h2 class="mus-era">…</h2><p class="mus-years">…</p>
+</div></div>
+```
+
+`padding: var(--sp-page) 0`, matching `.sec-head` in concept.css so the two longreads open a
+section identically. **`.mus-col` is DELETED rather than emptied**, and three things go with it:
+
+- **`MuseumScreen.fadeEras()`, `ERA_HOLD` and `--mus-era-op`.** That crossfade existed only
+  because two PINNED titles could share the frame at every boundary — a sticky column is on
+  screen from the moment its section's top edge is, and «Забвение» is three blocks long. A
+  heading that scrolls away hands over by itself. This is the shape of the whole round: the
+  mechanism was correct *for pinning*, so deleting the pin deletes the mechanism, not just its
+  parameters.
+- Round 28's note that **"the body leads the era"** — the kicker ~9vh in, the era name ~44vh —
+  described a PINNED title and stopped being true. The era opens its section like every other
+  heading on the site. `--sec-body-lead`'s screen of empty column was already rejected here for
+  putting nothing beside the cross, and still is; `.mus-body` has no lead-in.
+- **The type goes on the heading, never on the band.** `.mus-era` takes `.head-wide`'s Factoid
+  from pages.css and restates nothing — museum.css loads second at the same (0,1,0), so a
+  `font-size` here would silently win and put it back at 40. The *wrapper* is the other half of
+  the same trap: the UA sheet gives `h2` `font-size: 1.5em`, so setting 72 on `.head-wide`
+  rendered the era name at **108px** — larger than the site's H1, and plausible enough on screen
+  to read as a design choice.
+
+**Hyphenation is off on `.mus-era`**, as on `.sec-h2`. This page has by far the most room of the
+three routes: «Экономическая свобода», the longest, clears its measure by 244px at 1440 and
+175px at 1165. `npm run probe:heads` holds that.
+
+**`min-height: 150vh` on `.mus` outlived its first reason and kept a second.** It was a screen
+and a half because two pinned titles could share the frame; nothing pins now, so that cannot
+happen. But the cross rotates 180° across the whole page and its pacing is per section — a
+section shorter than this turns it faster than the eye reads, which is the same complaint from
+the other end.
 
 ### Blocks
 
@@ -222,44 +251,66 @@ stack if a `p` lies between them, and the DEV adjacency assertion is ported too.
 
 List marks are `src/assets/star-bullet.svg` driven as a **mask** — the designer's file
 byte-for-byte, which round 27 already masks for both the news tag separator and the news list
-bullet. One file, three uses, and the mask is what lets each take its own colour:
-`--color-mark-star` (amber) here, decorative and therefore not blue. A `clip-path: polygon()`
-shipped first and was visibly wrong — the real outline is four QUADRATIC curves pinching to
-sharp points, and straight edges between those points read as a notched diamond. Approximating
-a shape the project already owns is the mistake to avoid.
+bullet. One file, three uses, and the mask is what lets each take its own colour. A
+`clip-path: polygon()` shipped first and was visibly wrong — the real outline is four QUADRATIC
+curves pinching to sharp points, and straight edges between those points read as a notched
+diamond. Approximating a shape the project already owns is the mistake to avoid.
 
-**The picture block hugs its tallest slide.** `--ms-h` is a flat 410px elsewhere — the
-designer's number for «О Крестах», where the photographs are mixed portrait and landscape.
-All of «Музей»'s are wide (1304×728 renders 559×312 in the body column), so the constant left
-49px of dead air above and below every slide and 189px between a photo and the paragraph under
-it. `MuseumRun.fitFrames()` writes a per-block `--ms-h` from the slides' **intrinsic** aspects,
-capped at 410.
+**ROUND 29: 12px, and the same 12px as `.article-list`.** There is one star size on this site
+now; the 24px amber mark this page shipped with was the only second opinion and the client
+removed it. `--color-mark-star` is deleted from `tokens.css` with it. **The colour is
+`var(--mus-chrome, var(--color-text-ondark-main))`, NOT a literal white** — that is the whole
+subtlety of "white bullets on the dark background": this page descends to a `#ffffff` field, and
+a literal white mark is invisible on the fourth era. The fallback is white so the list is
+legible before the first rAF.
 
-`height: auto` is NOT the fix and was tried: slides are `loading="lazy"` with `width`/`height`
-attributes and `width: auto; height: auto` in CSS, so before decode those attributes supply only
-an aspect-ratio — which needs a definite side — and every frame measured 0×0. That is round 27's
-desync bug exactly, and the fixed height was what had been hiding it. The height stays definite;
-only its value changes, and it comes from numbers known before the first byte arrives.
+**The chrome runs the other way to the ink.** The wordmark is `--color-link` blue sitewide,
+which is correct on the four white pages and is the one thing with no contrast on `#081b5a`.
+`--mus-chrome` is written per frame from the same `whiteness` and runs white → link blue, so it
+is legible on the dark fields and interactive-blue by the time the field is white. The star
+bullets take it too. The slider chevrons were the other consumer until round 29 deleted them —
+the strip pans with the page scroll and there is nothing to press. The masthead CTA is
+`.btn--secondary` on dark — transparent plate, white stroke — labelled «Связаться», which is the
+frame's own word on this page.
 
-**The chrome runs the other way to the ink.** The wordmark and the slider chevrons are
-`--color-link` blue sitewide, which is correct on the four white pages and is the one thing with
-no contrast on `#081b5a`. `--mus-chrome` is written per frame from the same `whiteness` and runs
-white → link blue, so they are legible on the dark fields and interactive-blue by the time the
-field is white. The masthead CTA is `.btn--secondary` on dark — transparent plate, white stroke —
-labelled «Связаться», which is the frame's own word on this page.
+### The picture strip (round 29) — and why `fitFrames()` is gone
+
+`MuseumRun.fitFrames()` is **DELETED**, and `STRIP_H` is no longer imported here. It wrote a
+per-block `--ms-h` from the slides' intrinsic aspects because the shared 410 is «О Крестах»'s
+number — mixed portrait and landscape — where all of «Музей»'s photographs are wide: at 559 in
+the body column a 1304×728 render was 312 tall inside a 410 frame, leaving 49px of dead air
+above and below every slide and 189px between a photo and the paragraph under it.
+
+Both halves of that are gone. The strip is `width: 100vw` now and each slide is
+`height: var(--ms-h); width: auto` — **a slide fills the height exactly and takes the width its
+aspect gives it**, so there is no dead air to remove. See CONTENT_PAGES for the full mechanism
+(`--ms-bleed`, `animation-timeline: view()`, `safe center`, the `@supports` / reduced-motion
+scroll fallback).
+
+Keep the reason the height stays DEFINITE. `height: auto` is not the fix and was tried: slides
+are `loading="lazy"` with `width`/`height` attributes, so before decode those attributes supply
+only an aspect-ratio — which needs a definite side — and every frame measured 0×0. That is round
+27's desync bug exactly. `height: var(--ms-h); width: auto` is a *stronger* guard than the fixed
+box it replaces, not a weaker one: the definite side is stated in CSS and the other is derived
+from the intrinsic ratio the attributes already carry.
 
 ### Narrow
 
-Below 1160 the grid collapses to one column — **template, placement AND `min-width: 0`**.
-The third one is not optional and is a new finding: `1fr` is `minmax(auto, 1fr)`, so the track
-floors at its content's min-content, and `.ms-frame` is deliberately `100% + one column + one
-gutter` wide. The track grew to fit it and **the body column measured 1501px inside a 1100px
-viewport** — photographs running off the right edge with the next slide visible beside them.
-Measured identically at 1100 and 900. `min-width: 0` is what lets a grid item be narrower than
-its own overflowing child.
+Below 1160 the grid collapses to one column — **template AND placement**, and the placement
+reset must name `.mus-head > .head-wide` too or the band's ten-column span survives into a
+one-column grid and creates implicit tracks, leaving the heading narrower than the body under
+it.
 
-`.mus-col` stops sticking, and the light drops to 45 % (`NARROW_LIGHT`), because at that width
-the body copy moves under the convergence point and there is no left edge to spare.
+The third declaration, **`min-width: 0`, moved to `.page-grid > *` in grid.css in round 29** and
+is global now. Round 28 found it here: `1fr` is `minmax(auto, 1fr)`, so the track floors at its
+content's min-content, `.ms-frame` was deliberately `100% + one column + one gutter` wide, and
+**the body column measured 1501px inside a 1100px viewport** (identically at 1100 and 900). That
+is the same bug the `100vw` strip would now cause on a WIDE screen, so it is one rule rather
+than two that can disagree.
+
+The light drops to 45 % (`NARROW_LIGHT`), because at that width the body copy moves under the
+convergence point and there is no left edge to spare. (Nothing sticks down here any more — there
+is nothing left to un-stick.)
 
 ---
 

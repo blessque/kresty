@@ -72,35 +72,19 @@
   pointer-events: none;
 }
 
-/* ── the sticky heading column (round 27) ────────────────────────────────── */
+/* ── ROUND 29 DELETED THE STICKY HEADING COLUMN ──────────────────────────────
+   Round 27 generalised «О Крестах»'s pinned `.sec-col` into a `.sticky-head`
+   any block could opt into with `data-sticky-head`, driven by page/stickyHeads.ts.
+   The client took it out: a heading now sits at the top of its section and
+   scrolls away with it. The module, the two classes and the attribute are all
+   gone; only «О Крестах»'s own `.sec-col` still sticks, and it does so because
+   it holds the light's icon rather than a heading (see concept.css).
 
-/* A heading holds the centre of the frame while its body scrolls past. This is
-   «О Крестах»'s `.sec-col` behaviour, generalised: the pin is written per block
-   as `--sec-pin` by page/stickyHeads.ts, and the same variable drives both
-   spellings so one mechanism serves the longread and the content pages.
-
-   `align-self: start` IS THE RULE, not a tidy-up. A sticky grid item under the
-   default `align-items: stretch` is as tall as its row — it has nowhere to
-   travel, so it never sticks, and nothing reports an error. The ancestors must
-   also stay `overflow: visible` (an `overflow: hidden` scrollport ancestor
-   clips it) and free of `transform` / `filter` / `will-change` (any of them
-   steals sticky's containing block). All three fail silently. */
-.sticky-head {
-  position: sticky;
-  top: var(--sec-pin, 14vh);
-  align-self: start;
-  /* CENTRED, the same declaration `.sec-col` carries — including the same
-     `--sec-col-align` escape hatch, so the two cannot drift. Round 27 left this
-     off and «Контакты» ended up with two left-aligned H2s either side of the
-     form's centred one: three headings of one rank, two alignments, on one
-     page. Matching `.sec-col` exactly is the fix, not a new rule beside it. */
-  text-align: var(--sec-col-align, center);
-}
-
-/* the blocks that own a sticky head must not clip it */
-[data-sticky-head] {
-  overflow: visible;
-}
+   If anything here ever pins again, three things fail SILENTLY and all three
+   bit this rule: a sticky grid item under the default `align-items: stretch` is
+   as tall as its row and has nowhere to travel; an `overflow: hidden` ancestor
+   clips it; and a `transform` / `filter` / `will-change` on any ancestor steals
+   its containing block. */
 
 /* ── the contact form ────────────────────────────────────────────────────── */
 
@@ -136,11 +120,13 @@
   }
 }
 
-/* ROUND 26: THE FORM IS A TEXT BLOCK and hangs inside its column like one.
-   It was flush while the copy directly above it was inset, because the rule
-   lived on `.sec-body p` — a TAG selector, which a <form> is not. The fields
-   started 16px left of the paragraph above them, which the client read (right)
-   as the form not being on the grid.
+/* ROUND 29: THE FORM IS FLUSH TO ITS COLUMN, like everything else now — the
+   16px text inset it used to share with the copy above it is gone sitewide.
+   (Round 26's note is worth keeping in outline: the form was flush while that
+   copy was inset, because the inset lived on `.sec-body p`, a TAG selector a
+   <form> does not match. The client read the 16px difference as the form not
+   being on the grid. The same reading applies in reverse, so if the inset ever
+   comes back it comes back here too.)
 
    `max-width: 34em` is deleted rather than converted: `em` here resolved
    against the 21px document root (the form declares no font-size of its own),
@@ -157,7 +143,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 32px var(--grid-gutter);
   margin-top: 40px;
-  padding-inline: var(--grid-text-inset);
 }
 /* ── THE FLOATING LABEL (round 26, ported round 27) ──────────────────────────
    The label starts at reading size INSIDE the field and flies to caption size
@@ -328,54 +313,76 @@
 }
 
 /* ── THE PICTURE BLOCK (round 26, ported round 27) ───────────────────────────
-   Figma `1132:173`. One photograph, or several as a slider. Lives in the body
-   column, so it is IMAGE-class: flush to the column edge, no text inset.
+   Figma `1132:173`. ONE photograph is a figure in the body column. SEVERAL are a
+   strip that bleeds to both viewport edges and pans as the page scrolls (round
+   29) — two different things sharing a class, and `.ms--slider` is which.
 
-   THE STRIP IS A FILMSTRIP AT A FIXED HEIGHT. Every slide shares `--ms-h` and
-   keeps its own aspect, so widths differ — which is what lets a 4.8:1 panorama
-   and a 0.67 portrait sit in one set without cropping either. The frame does
-   not clip, so the next photo peeks past the block's right edge; `.col-main` is
-   columns 7–11 and column 12 is always skipped, so that bleed runs into the
-   grid's own margin rather than into any content.
+   THE STRIP IS A FILMSTRIP AT A FIXED HEIGHT. Every slide is exactly `--ms-h`
+   tall and takes whatever width its own aspect gives it, which is what lets a
+   4.8:1 panorama and a 0.67 portrait sit on one line without cropping either.
 
-   THE HEIGHT IS THE CAP, which is the client's "set a height limit for too-tall
-   photos". A landscape reaches the block width before it reaches the cap; a
-   portrait hits the cap first and comes out NARROWER than the block. That is
-   why the strip is centred on the active slide — one rule that is a no-op for
-   landscapes and the whole point for portraits.
-
-   410 IS A RAW NUMBER AND MUST STAY ONE: `mediaSlider.ts` carries the same cap
-   as `STRIP_H = 410` to compute `--ms-x`. When this said `410 * var(--k)` the
-   two disagreed at every width below 1440 — the CSS capped a slide shorter than
-   the TS thought it had, so the centring was off by half the difference. */
+   410 IS A RAW NUMBER AND MUST STAY ONE, and since round 29 this is its only
+   home — `mediaSlider.ts`'s `STRIP_H` copy is deleted along with the one thing
+   that read it. When this said `410 * var(--k)` the TS and the CSS disagreed at
+   every width below 1440; the scale factor is not in this build and must not
+   come back through here. */
 .ms {
   --ms-h: 410px;
   /* no margin of its own: the flow rules below own every gap, so a picture
      cannot arrive with spacing the block around it did not agree to */
   margin: 0;
 }
+
+/* ── THE SCROLL-PANNED STRIP (round 29) ──────────────────────────────────────
+   A slider is EDGE TO EDGE and pans sideways as the page scrolls down. It has
+   no controls; the two 60×60 chevrons and everything that coloured them per page
+   are deleted. The pan is not something the reader operates.
+
+   `margin-left: calc(50% - 50vw)` — THE FULL-BLEED SNIPPET EVERYONE REACHES FOR
+   — IS WRONG HERE, and wrong in a way that looks like a bug in the grid. It
+   centres the 100vw box on its CONTAINER's centre, which is only the viewport's
+   centre if the container is itself centred. This block lives in `.col-main`,
+   columns 7–11, whose centre at 1440 is 1011.67 against the viewport's 720: the
+   strip would start 292px right of the page and run 292px off the other edge.
+
+   So the offset is measured back to the viewport's left edge from column 7's,
+   out of the same three grid constants `.page-grid` uses. The grid's own left
+   edge is `(100vw − --grid-content) / 2` — content is `min(100vw − 2×margin,
+   1376)` and centred, so above the design frame this is the growing margin and
+   below it the shrinking one, with no branch. Column 7 is six column-plus-gutter
+   units further in.
+
+   `100vw` is honest for the reason grid.css already argues for `--grid-content`:
+   this document never scrolls (html/body are `overflow: hidden`) and
+   `.page-scroll` hides its scrollbar, so there is no gutter to subtract. */
+.ms--slider {
+  --ms-bleed: calc(
+    (100vw - var(--grid-content)) / 2 + 6 * (var(--grid-col) + var(--grid-gutter))
+  );
+  width: 100vw;
+  margin-left: calc(-1 * var(--ms-bleed));
+}
+/* BELOW THE COLLAPSE THERE IS NO COLUMN 7 to walk back from — the grid is one
+   column starting at the grid's own left edge, so the six column-plus-gutter
+   units above would drag the strip 535px off the left of the page (measured at
+   1100 before this rule). The breakpoint has to match the one that collapses the
+   grid, and «О Крестах» collapses on HEIGHT as well; that half lives in
+   concept.css beside the rule it belongs to. */
+@media (max-width: 1160px) {
+  .ms--slider {
+    --ms-bleed: calc((100vw - var(--grid-content)) / 2);
+  }
+}
 .ms-frame {
   position: relative;
   height: var(--ms-h);
-  /* THE FRAME REACHES ONE COLUMN FURTHER RIGHT THAN THE BLOCK, and then clips.
-     The peek is only free on one side: `.col-main` is columns 7-11 and column
-     12 is skipped, so a slide overhanging RIGHT lands in the grid's own margin —
-     overhanging LEFT lands on the sticky heading and the outgoing photo covers
-     the h2.
-
-     One column plus one gutter, taken from the grid rather than written out as
-     the 116.667px it happens to be at 1440: below the design frame the margin
-     and gutter shrink and the columns shrink with them, so a literal would
-     overhang. See `--grid-col` in grid.css. The frame's right edge therefore
-     falls on the content area's right edge (1291.333 + 24 + 92.667 = 1408 =
-     32 + 1376) at every width, and the bleed is contained by construction.
-
-     `overflow: clip` rather than `hidden`, and rather than a `clip-path`: clip
+  width: 100%;
+  /* `overflow: clip` rather than `hidden`, and rather than a `clip-path`: clip
      bounds the SCROLLABLE OVERFLOW as well as the painting. A clip-path hides
-     the overhang but leaves it in the layout, and `overflow-x: hidden` on the
-     scroller only stops the USER scrolling — `scrollLeft` still moves, measured
-     at 107px. `clip` creates no scroll container at all. */
-  width: calc(100% + var(--grid-col) + var(--grid-gutter));
+     the overhang but leaves it in the layout, and `overflow-x: hidden` only
+     stops the USER scrolling — `scrollLeft` still moves, measured at 107px in
+     round 26. `clip` creates no scroll container at all, which is what we want:
+     the strip is moved by an animation, never by a scroll position. */
   overflow: clip;
 }
 .ms-strip {
@@ -383,81 +390,136 @@
   align-items: center;
   gap: var(--grid-gutter);
   height: 100%;
-  /* `--ms-x` is measured in mediaSlider.apply() — the distance that puts the
-     active slide's centre on the frame's centre. Computing it here instead
-     would mean restating `min(blockWidth, cap x ratio)` in CSS AND in TS. */
-  transform: translateX(var(--ms-x, 0px));
-  /* the strip is the only thing that moves, and it moves on the compositor.
-     `--ease-move` is the project's curve for things that TRAVEL (tokens.css);
-     `--ease-out` is for things that respond in place, which this is not. */
-  transition: transform 520ms var(--ease-move);
+  /* `safe center` DOES THE WHOLE JOB OF DECIDING WHETHER THIS SET PANS, and it
+     does it from the content rather than from a flag.
+
+     Measured across the three longreads: nine picture sets, of which five are
+     two photographs. At `--ms-h` tall a landscape is ~615 wide, so a pair is
+     ~1254 and FITS inside 1440 — its travel is 0 and it must simply sit there,
+     centred, rather than hug the left edge with 450px of hole beside it. The
+     five «О Крестах» sets measure travels of 0, 0, 445, 1198 and 0 at 1440;
+     note the last is a three-photo set whose slides are portraits, so COUNT
+     DOES NOT PREDICT TRAVEL and only the rendered widths do.
+
+     Plain `center` would centre the overflowing ones too, which puts half the
+     excess off the LEFT edge behind `overflow: clip` — the first photo would be
+     unreachable at travel 0. `safe` falls back to `flex-start` exactly when
+     overflow starts, which is exactly when the pan takes over. */
+  justify-content: safe center;
   will-change: transform;
 }
-/* WIDTH FIRST, HEIGHT CAPPED. A slide takes the full block width; only if that
-   would overrun the cap does the cap bind and the slide come out narrower than
-   the block — which is the client's "too-tall photos get a height limit and are
-   centred". Landscapes therefore fill the block and portraits sit centred in it. */
-.ms-strip > .ms-shot {
+
+/* THE PAN ITSELF, AND WHY IT IS NOT A SCROLL HANDLER.
+   `animation-timeline: view()` ties the keyframes to this element's own progress
+   through the scrollport and runs them OFF THE MAIN THREAD. The obvious
+   alternative — a rAF scroll listener writing `translateX` — is forbidden here by
+   measurement rather than by taste: on «О Крестах» a main-thread transform
+   racing the compositor that scrolls the column beside it is round 16.1's
+   reported defect exactly, 10 fps and 20px jumps. Script publishes `--ms-travel`
+   once per layout (mediaSlider.ts) and then does nothing at all.
+
+   THE RANGE IS THE DEFAULT `cover`: offset 0 as the block's top edge reaches the
+   bottom of the frame, full travel as its bottom edge leaves the top. At a 410px
+   block in a 900px viewport that is 1310px of scroll for a full pass, and the
+   midpoint lands with the block centred. `contain` (490px) is the shorter,
+   sharper alternative and the dial to reach for if this reads as too slow —
+   change the range, never the travel. */
+@keyframes ms-pan {
+  to {
+    transform: translateX(calc(-1 * var(--ms-travel, 0px)));
+  }
+}
+.ms--slider .ms-strip {
+  animation: ms-pan linear both;
+  animation-timeline: view();
+}
+
+/* EVERY SLIDE IS THE STRIP'S HEIGHT and takes whatever width its own aspect
+   gives it — a filmstrip of mixed aspects rather than a sequence of boxes. There
+   is no active slide and so no dimming: round 26's `opacity: .38` marked which
+   photo the arrows would act on, and there are no arrows.
+
+   A DEFINITE HEIGHT IS ALSO THE DESYNC GUARD, and it is stronger than what it
+   replaces. Slides are `loading="lazy"`; with BOTH dimensions `auto` the
+   intrinsic `width`/`height` attributes supply only an `aspect-ratio`, which
+   needs a definite side to act on — so an undecoded slide measured 0×0. That is
+   round 27's bug, where three pictures grew the page 18859 → 20056 mid-scroll
+   and dragged the light 585px off its icon. Height definite, width derived. */
+.ms--slider .ms-shot {
   display: block;
   flex: none;
-  /* THE CAP IS THE BLOCK, NOT THE FRAME. `100%` would resolve against the
-     frame, which is deliberately one column wider so the peek has somewhere to
-     go — a slide would then be allowed to grow into the bleed. `--ms-block-w`
-     is the block's own width, measured in mediaSlider.apply(). */
-  max-width: var(--ms-block-w, 100%);
-  max-height: var(--ms-h);
+  height: var(--ms-h);
   width: auto;
-  height: auto;
-  /* NOT `cover`: these are architectural renders and a crop loses the building.
-     The intrinsic w/h on the tag gives the box before decode. */
   object-fit: contain;
-  opacity: 0.38;
-  transition: opacity 520ms var(--ease-move);
 }
-.ms-strip > .ms-shot.is-active {
-  opacity: 1;
+
+/* WHEN THE STRIP CANNOT PAN, THE READER GETS A SCROLLER INSTEAD — and this is a
+   correctness rule, not a polish one. A strip that does not pan sits at travel 0
+   behind `overflow: clip`, so on the sets that overflow (three of the nine;
+   `#3` is four photographs and travels 1198px at 1440) every slide past the
+   first is simply UNREACHABLE. That is content loss, and it is silent.
+
+   Two cases need it, and they are a `@supports` and a `@media` so they cannot be
+   one rule list. Kept adjacent and identical on purpose; change both or neither.
+
+   Note this deliberately re-creates the scroll container the `overflow: clip`
+   note above says we do not want. That is the correct trade here: it is scoped
+   to the cases that have no animation to contain, and `overscroll-behavior-x`
+   stops it stealing the page's vertical scroll on a trackpad. */
+@supports not (animation-timeline: view()) {
+  .ms--slider .ms-frame {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .ms--slider .ms-frame::-webkit-scrollbar {
+    display: none;
+  }
+  .ms--slider .ms-shot {
+    scroll-snap-align: center;
+  }
 }
-/* A LONE PICTURE IS NOT A FILMSTRIP, so it must not keep the widened frame.
-   The frame is one column wider than the block ONLY so a slider's next photo has
-   somewhere to peek; a single photo has no next photo, and inheriting that width
-   let it run into column 12 and out to the page edge — which is exactly the
-   "why do some photos take the 12th column" the client reported. It fills its
-   five columns and stops, and it never dims. */
+@media (prefers-reduced-motion: reduce) {
+  .ms--slider .ms-strip {
+    animation: none;
+  }
+  .ms--slider .ms-frame {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .ms--slider .ms-frame::-webkit-scrollbar {
+    display: none;
+  }
+  .ms--slider .ms-shot {
+    scroll-snap-align: center;
+  }
+}
+
+/* A LONE PICTURE IS NOT A FILMSTRIP. It stays in the body column at its five
+   columns, does not bleed, and does not move — it has nowhere to pan to.
+
+   `width: 100%` IS LOAD-BEARING AND IT IS NOT A COSMETIC CHOICE — it is what
+   commits this picture's height BEFORE DECODE, the same guarantee the strip gets
+   from its definite height above, and the one the deleted
+   `.sec-figure { aspect-ratio: 3/2 }` used to carry. Measured when it was
+   missing: three of the five solo pictures were 0-high on load and only took
+   their real box when scrolled to; the page grew 18859 → 20056 mid-scroll and
+   the light drifted up to 585px from the icon it was sitting on.
+
+   With a definite width the ratio resolves immediately: 559×373 landscape,
+   559×168 panorama, 559×656 for the 0.8 portrait. All five are correct before a
+   single byte of image arrives. */
 .ms:not(.ms--slider) .ms-frame {
-  width: 100%;
   height: auto;
   overflow: visible;
 }
-.ms:not(.ms--slider) .ms-strip {
-  transform: none;
-  transition: none;
-}
-/* `width: 100%` IS LOAD-BEARING AND IT IS NOT A COSMETIC CHOICE — it is what
-   commits this picture's height BEFORE DECODE, which is the guarantee the old
-   `.sec-figure { aspect-ratio: 3/2 }` carried and which this block has to keep.
-
-   Every slide is `loading="lazy"` and most of them start far below the fold. The
-   tag carries intrinsic `width`/`height`, but with BOTH dimensions `auto` those
-   attributes only supply an `aspect-ratio` — and a ratio needs a definite side
-   to act on. An unloaded lazy image has no intrinsic size, so `auto × auto`
-   resolved to 0×0 and the block reserved NO SPACE AT ALL.
-
-   Measured: three of the five solo pictures were 0-high on load and only took
-   their real box when scrolled to. The page then grew 18859 → 20056 mid-scroll,
-   every section below the offender moved, and the light — whose stations are
-   derived from geometry measured once at resize — drifted up to 585px from the
-   icon it was supposed to be sitting on. That is the desync, and it is the
-   failure `.sec-figure`'s comment warned about in this exact wording.
-
-   With a definite width the ratio resolves immediately: 559×373 landscape,
-   559×168 panorama, 559×656 for the 0.8 portrait (the cap binds and
-   `object-fit: contain` centres it inside the box). All five are correct before
-   a single byte of image arrives. */
 .ms:not(.ms--slider) .ms-shot {
+  display: block;
   width: 100%;
   height: auto;
-  max-width: 100%;
-  opacity: 1;
   /* A LONE PICTURE GETS A TALLER CAP than a slide does. The strip's 410 exists
      so several photos of different aspects can share one line; a single one has
      no neighbour to match, so it may run to its own height — capped only so a
@@ -465,64 +527,6 @@
   max-height: calc(var(--ms-h) * 1.6);
   object-fit: contain;
   margin-inline: auto;
-}
-
-/* 60x60 chevrons, starting at the text inset and 16px apart — the frame's own
-   numbers.
-
-   TIGHT TO THE PHOTOS, LOOSE FROM THE NEXT BLOCK. The arrows control the strip
-   above them, so they have to read as part of it — at the old 24px above and a
-   zero-margin paragraph below, they sat nearer the copy they have nothing to do
-   with. The gap below is the flow's `--sp-block`, four times this one. */
-.ms-controls {
-  display: flex;
-  gap: var(--grid-text-inset);
-  margin: var(--sp-tight) 0 0;
-  padding-inline: var(--grid-text-inset);
-}
-/* WHITE ON A COLOURED FIELD. These sliders live on the section run, whose
-   backgrounds are the deep jewel tones — and blue on navy or amethyst reads as
-   a stain rather than a control. The enabled arrow takes the field's own main
-   ink, which is white there and the link blue on the light content pages
-   (below), so the rule is "the strongest ink this background has" rather than a
-   colour. That also means the hover has to SOFTEN rather than brighten: rest is
-   already the strongest ink and there is nothing brighter to go to. */
-.ms-btn {
-  width: 60px;
-  height: 60px;
-  display: grid;
-  place-items: center;
-  color: var(--color-text-ondark-main);
-  transition: color 240ms var(--ease-out);
-}
-.ms-btn svg {
-  width: 55%;
-  height: 55%;
-}
-.ms-btn[disabled] {
-  /* the end of the strip, not a broken control — it reads as spent rather than
-     forbidden, so no `not-allowed` cursor */
-  color: var(--color-text-ondark-tertiary);
-  cursor: default;
-}
-@media (hover: hover) and (pointer: fine) {
-  .ms-btn:not([disabled]):hover {
-    opacity: 0.7;
-  }
-}
-/* on the light content pages there is no white to use, so the control is the
-   link blue and its spent state is the page's faintest ink */
-:is(.news-page, .article-page, .rent-page, .contacts-page) .ms-btn {
-  color: var(--color-link);
-}
-:is(.news-page, .article-page, .rent-page, .contacts-page) .ms-btn[disabled] {
-  color: var(--color-text-onlight-tertiary);
-}
-@media (prefers-reduced-motion: reduce) {
-  .ms-strip,
-  .ms-strip > .ms-shot {
-    transition: none;
-  }
 }
 
 /* ── THE FLOW (round 27) ─────────────────────────────────────────────────────

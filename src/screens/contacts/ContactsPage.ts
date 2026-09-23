@@ -1,7 +1,6 @@
 import { ContentScreen } from '../../page/ContentScreen';
 import { ContactForm } from '../../page/contactForm';
 import { buildPageHead } from '../../page/pageHead';
-import { StickyHeads } from '../../page/stickyHeads';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { bindShortWords } from '../../shared/ruTypography';
 import { T } from '../../styles/tokens.gen';
@@ -82,11 +81,8 @@ function pairs(rows: [string, string][]): string {
 }
 
 export class ContactsPage extends ContentScreen {
-  private heads = new StickyHeads(this.shell.scroller);
-
   constructor(el: HTMLElement) {
     super(el, 'contacts-page');
-    this.shell.onMeasure = (viewH) => this.heads.measure(viewH);
   }
 
   protected stops() {
@@ -103,17 +99,16 @@ export class ContactsPage extends ContentScreen {
       }),
     );
 
-    // `data-sticky-head` + `.sticky-head` are the pair StickyHeads measures and
-    // page.css styles: the heading holds the centre of the frame while the
-    // column beside it scrolls. All three blocks on this page carry it, which is
-    // the whole point — «Аренда помещений» already stuck (the form's `.sec-col`
-    // picks up concept.css's rule globally) and these two did not.
+    // ROUND 29: NOTHING ON THIS PAGE PINS. Round 28's `data-sticky-head` /
+    // `.sticky-head` pair held each heading at the centre of the frame while its
+    // column scrolled past; the client asked for headings that simply sit at the
+    // top of their section. `StickyHeads` is deleted, not disabled — it had one
+    // consumer and this was it.
     const general = document.createElement('section');
     general.className = 'page-block page-grid';
-    general.dataset.stickyHead = '';
     general.innerHTML =
-      `<div class="col-aside sticky-head gp-text"><h2 class="page-h2">Общая информация</h2></div>` +
-      `<dl class="col-main contact-pairs gp-text">${pairs(GENERAL)}</dl>`;
+      `<div class="col-aside"><h2 class="page-h2">Общая информация</h2></div>` +
+      `<dl class="col-main contact-pairs">${pairs(GENERAL)}</dl>`;
     this.shell.add(general);
 
     // full width, inside the margins — `.col-full` is columns 2–11, and that IS
@@ -133,27 +128,29 @@ export class ContactsPage extends ContentScreen {
     const form = new ContactForm(this.shell.scroller, {
       heading: 'Аренда помещений',
       icon: false,
+      wideHead: false,
     });
-    form.el.dataset.stickyHead = '';
     this.shell.add(form.el);
 
     const press = document.createElement('section');
     press.className = 'page-block page-grid';
-    press.dataset.stickyHead = '';
     press.innerHTML =
-      `<div class="col-aside sticky-head gp-text"><h2 class="page-h2">Пресс-служба</h2></div>` +
+      `<div class="col-aside"><h2 class="page-h2">Пресс-служба</h2></div>` +
       // `.contacts-body` makes this a FLOW column like `.sec-body` and
       // `.article-body`. Without it the prose and the list both declare
       // `margin: 0` and no rule in page.css reaches them, so they rendered
       // welded together with no gap at all.
-      `<div class="col-main contacts-body gp-text">` +
+      `<div class="col-main contacts-body">` +
       `<p class="page-prose">${escapeHtml(bindShortWords(PRESS_LEAD))}</p>` +
       `<dl class="contact-pairs">${pairs([['Электронная почта', 'kresty@spb.ru']])}</dl>` +
       `</div>`;
     this.shell.add(press);
 
-    // Chromius is a webfont, and a column measured against the fallback gives a
-    // pin that is wrong by whatever the two faces disagree about.
-    void document.fonts.ready.then(() => this.shell.measure());
+    // Round 28 re-measured on `document.fonts.ready` here, because a heading
+    // column measured against the fallback face gave a sticky pin wrong by
+    // whatever Chromius and the fallback disagree about. There is no pin now,
+    // and `PageShell.measure()` derives its colour stops from the viewport
+    // height alone — nothing it computes depends on the font. Dropped with the
+    // pin rather than left as a call that looks load-bearing and is not.
   }
 }

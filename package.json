@@ -11,7 +11,10 @@
     "probe:headline": "node scripts/headline-probe.mjs",
     "lint:tokens:update": "node scripts/lint-tokens.mjs --update",
     "tokens": "node scripts/build-tokens.mjs",
-    "tokens:check": "node scripts/build-tokens.mjs --check"
+    "tokens:check": "node scripts/build-tokens.mjs --check",
+    "spec:figma": "node scripts/figma-spec.mjs",
+    "shots:figma": "node scripts/figma-shots.mjs",
+    "probe:heads": "node scripts/head-sweep.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

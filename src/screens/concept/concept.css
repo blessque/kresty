@@ -71,6 +71,143 @@
   cursor: pointer;
 }
 
+/* ── THE HERO (round 29) ─────────────────────────────────────────────────────
+   Figma `1253:693`. A full-bleed dusk render, a centred tagline and four
+   in-page links, sitting ABOVE the masthead as the first thing on the page.
+
+   EVERY NUMBER IS A SHARE OF 1440, stated the way grid.css states its own
+   constants (`min(Npx, Nvw)`), so the composition holds below the design frame
+   instead of the type shrinking while the frame does not. The heights are the
+   exception and are a `clamp`: this block is full-bleed, so unlike the twelve
+   columns it has no reason to stop growing at 1440 — but it does need a ceiling,
+   or a 2560 window turns a 2.8:1 band into a 5:1 letterbox slit and crops the
+   building out of the photograph. 620 is 35.486vw at 1747.
+
+   It is deliberately NOT a `.page-grid`. Both the tagline (502 + 436/2) and the
+   link row (369 + 702/2) centre on 720, the page centre — and the twelve columns
+   have no centre line to land on, since column 6 ends where column 7 begins. */
+.concept-hero {
+  position: relative;
+  height: clamp(320px, 35.486vw, 620px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* BOTTOM-ANCHORED, which is what the veil is for: the frame darkens only the
+     foot of the image and sets both text blocks in that darkened band. Measured
+     off the frame, the nav's baseline sits 28px above the bottom edge and the
+     tagline 33px above the nav; those round to the page margin and the text step
+     and are on the scale rather than beside it. */
+  justify-content: flex-end;
+  padding-bottom: 32px;
+  gap: var(--sp-text);
+  /* the ink here is fixed: this block owns a photograph, so it is on-dark
+     whatever the page around it is doing */
+  color: var(--color-text-ondark-main);
+  text-align: center;
+}
+
+/* The image box in the frame is 1440×589 inside a 511-tall window — 78px cropped
+   off the TOP and nothing off the bottom, which is what keeps the waterline and
+   the ferry in shot. `object-position: 50% 100%` reproduces that at any height
+   the clamp lands on. */
+.concept-hero__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 100%;
+}
+
+/* The frame's own gradient: transparent to 73.5%, then `--color-text-onlight-main`
+   at 40%. That token is #031721, the site's darkest ink — the veil is the page's
+   own black over the photograph rather than a neutral one, which is why it is a
+   `color-mix` of the token and not an `rgba()` literal. */
+.concept-hero__veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 73.5%,
+    color-mix(in srgb, var(--color-text-onlight-main) 40%, transparent) 100%
+  );
+}
+
+.concept-hero__tag,
+.concept-hero__nav {
+  position: relative;
+  margin: 0;
+}
+
+.concept-hero__tag {
+  /* Base Text, not the lead: the frame sets this at 24/145%, the same size as
+     body copy, and its authority comes from the photograph rather than the size. */
+  font-weight: var(--type-base-weight);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+  /* 436 of 1440. The explicit <br> after «свободы» is the frame's own break; the
+     measure then wraps the second line in two. */
+  width: min(436px, 30.28vw);
+}
+
+.concept-hero__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  /* 87 of 1440 — the frame's gap, and the four labels plus three of these make
+     its 702px row exactly. */
+  gap: min(87px, 6.04vw);
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
+}
+
+/* WHITE, NOT THE LINK BLUE, and for the reason «Музей» already argues at length:
+   blue on this photograph's dusk-blue water is the one thing on screen with no
+   contrast. The sitewide "blue means interactive" rule gives way to legibility
+   here exactly as it does on that page's dark fields; the underline on hover is
+   what carries the affordance instead. */
+.concept-hero__nav a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .concept-hero__nav a:hover {
+    border-bottom-color: currentColor;
+  }
+}
+
+/* THE WORDMARK GOES TO THE DARK INK OVER THE HERO — not to white, which is the
+   answer this page's other dark backgrounds would give and the wrong one here.
+
+   MEASURED off the render rather than chosen. Mean relative luminance of each
+   band of the hero, against the three inks the site owns:
+
+     band        bg L    white     ink #031721   link blue
+     wordmark    0.496   1.92:1    9.51:1        1.17:1
+     tagline     0.218   3.92:1    4.67:1        1.74:1
+     nav row     0.109   6.58:1    2.78:1        2.92:1
+
+   The photograph is a DUSK SKY at the top and dark water at the foot, so it
+   inverts across its own height: the wordmark sits at the 32px corner against
+   pale pink and the links sit in the veil against near-black. Hence ink up here
+   and white down there — one photograph, two answers, and the sitewide blue is
+   the worst available in both places.
+
+   `.over-hero` is written by ConceptScreen from the scroll position. It cannot
+   be `:not(.past-intro)`: that state turns over at 60 % of EVERYTHING above the
+   map, by which point the wordmark is over the white masthead. */
+#screen-concept.over-hero .concept-home svg path {
+  fill: var(--color-text-onlight-main);
+}
+/* the fill has to move with the same clock the opacity does, or it snaps at the
+   hero's bottom edge while the rest of the mark fades */
+.concept-home svg path {
+  transition: fill 0.35s ease;
+}
+
 /* ------------------------------------------------- the intro block (r18)
 
    Figma 616:188 / 616:260. Sits ABOVE the map inside the scroller, so it
@@ -610,14 +747,21 @@
   position: sticky;
   top: var(--sec-pin, 14vh);
   align-self: start;
-  /* ROUND 23: centred, per the design. The ICON has to come with it — it is a
-     block with an explicit width, so centring only the text would leave the
-     light flush left and split the heading from the beam that belongs to it.
-     Consequence worth knowing: `sectionRun.measure()` reads the icon's rect for
-     `iconX`, which becomes the god-ray's centre, so the beam moves to the
-     column centre too. That is the point, not a side effect — but it is why
-     `iconAlign` is a dial on the motion panel rather than a hard-coded choice. */
-  text-align: var(--sec-col-align, center);
+  /* ROUND 29: THIS COLUMN IS NOW THE ICON AND NOTHING ELSE. The h2 moved to
+     `.sec-head`, so the column's height stopped swinging 400px+ with the
+     heading's wrap. MEASURED 264 at 1440×900 — which is `iconSize` 228 plus
+     `.sec-icon`'s own `margin-bottom`, not 228; the margin is a `clamp` on
+     `vh`, so colH is 258 at 760 and 268 at 1080 and the word for it is "flat",
+     not "constant". That is enough: `--sec-pin` went ~230 → 318 and the station
+     invariant `pin + colH + padBottom <= viewH` now has +206px of slack at
+     every section instead of clamping.
+
+     It KEEPS `position: sticky`: `sectionRun.measure()` reads this element's
+     computed `top` to place the god-ray's stations, so making it static moves
+     the light, not just the icon.
+
+     Round 23's `text-align: var(--sec-col-align, center)` is gone with the text
+     it was centring. The icon centres itself via `--sec-icon-inline: auto`. */
 }
 
 /* Empty and aria-hidden: it reserves the box the LIGHT draws into, and its
@@ -633,95 +777,47 @@
   width: var(--sec-icon-size, clamp(140px, 16vh, 220px));
   height: var(--sec-icon-size, clamp(140px, 16vh, 220px));
   margin-bottom: clamp(20px, 4vh, 40px);
-  /* follows `.sec-col`'s text-align — `auto` centres, `0` sits at the start */
+  /* ROUND 29: this alone decides where the icon sits. It used to have to agree
+     with `.sec-col`'s `text-align`, because the column also held the heading;
+     the column holds only this now, so there is one property and nothing to
+     keep in step. `auto` centres, `0` sits at the start. */
   margin-inline: var(--sec-icon-inline, auto);
 }
 
+/* ── THE SECTION HEADING BAND (round 29) ─────────────────────────────────────
+   The heading left the sticky column. `.head-wide` in styles/pages.css carries
+   the ten-column measure and the Factoid type (72/110%); this file carries only
+   what is specific to the longread — the band's own air.
+
+   96 above and below, which is `--sp-page`, the vertical-rhythm step for
+   page-level blocks. The designer's frame draws 92 and 116.5; those are the two
+   nearest neighbours of one scale value and taking the scale value is the point
+   of having one. For every section but the first, `--sec-pad-top` (40vh) sits
+   above this again — that is the inter-section gap and it is meant to be large. */
+.sec-head {
+  padding: var(--sp-page) 0;
+}
+
 .sec-h2 {
-  font-family: var(--font-family-display);
-  font-weight: var(--type-h2-weight);
-  /* Figma text style H2. It was a one-off `clamp(28px, 2.6vw, 40px)` — locally
-     reasonable, globally entropy, and exactly the drift tokens.css exists to
-     stop. The narrow-window concern the clamp was covering is handled where it
-     belongs: `sectionRun.measure()` asserts pin + column + pad <= viewH and
-     names the offending section, rather than quietly shrinking the type. */
-  font-size: var(--type-h2-size);
-  line-height: var(--type-h2-lh);
+  /* Family, size, weight and line-height all come from `.head-wide`. Do not
+     restate them here: this file loads AFTER pages.css, so an equal-specificity
+     `font-size` on `.sec-h2` would silently win and put the band back at 40px. */
+  margin: 0;
 
-  /* ROUND 25 DELETED round 23's `max-width: min(15em, 80%)`. That 80 % bought
-     the heading clearance from the prose, because the old two-column grid had
-     them touching at the centre line — measured, the «hotel» heading's longest
-     line ended 3px from the body copy. The 12-column grid gives that clearance
-     STRUCTURALLY: the aside ends at 591.333, the body starts at 732, and the
-     140.667px between them is a gutter plus the skipped column 6. A percentage
-     cap on top of that would just be a second, weaker copy of the same rule.
+  /* ROUND 29 TOOK HYPHENATION OFF, and `npm run probe:heads` is what makes that
+     safe to have done. It was load-bearing at H2 because the type was a FLAT
+     40px while the column kept shrinking below 1440 — «для размышлений» is one
+     unbreakable 407px NBSP run at 44px against a 442px column. The band changes
+     both terms: ten columns instead of four, and `--fs-factoid` is fluid again
+     at `clamp(60px, 5vw, 72px)`. `hyphens: auto` breaks words to balance the RAG
+     rather than only to avoid overflow, and at 72px a mid-word break is the most
+     visible thing on the page.
 
-     The inset is the grid's own 16px, so the heading hangs inside its column
-     exactly as the designer's frame draws it.
-
-     HYPHENATION IS LOAD-BEARING AGAIN (round 27), and this comment said the
-     opposite for one round. Round 26 made H2 fluid, which let the limit go to 16
-     — the run scaled with the column, so nothing overflowed with hyphens off and
-     the browser stopped breaking words that fit. The client has since asked for
-     H2 as a RAW 40px at every width, and a fixed size re-creates exactly the
-     regime the fluid scale retired: the column still shrinks below 1440, the
-     type no longer shrinks with it, and the headroom evaporates.
-
-     Re-measured at the new fixed 40px, worst overflow across all six headings:
-
-       limit 16 (round 26)   1440 ok   1366 ok   1309 ok   1280 +5    1180 +33
-       limit 13 (shipped)    1440 ok   1366 ok   1309 ok   1280 ok    1180 ok
-
-     So the limit goes back to 13. Smaller type bought three widths of headroom
-     over the old fixed 44 — which overflowed from 1366 down — but not the last
-     two, and breaking the word is again the only thing holding those together.
-
-     It needs `lang="ru"` on <html> to do anything at all (it is set); without it
-     this silently no-ops, which is this project's house failure shape. */
-  padding-inline: var(--grid-text-inset);
-  hyphens: auto;
-  /* `hyphens: auto` ALONE IS TOO EAGER and it shows immediately: unconstrained,
-     the hotel heading came back as «оте-ле» and «историче-ских» — three hyphens
-     in four lines, two on words that fit. The browser hyphenates to balance the
-     rag, not only to avoid overflow. So the limit is the HIGHEST value that
-     still never overflows, which is the fewest hyphens that stay safe.
-
-     Swept on the widest RENDERED LINE BOX per heading (see below), worst
-     overflow across all six. The table is the ORIGINAL sweep at the fixed 44px;
-     the fixed 40px above sits between its `limit 16` and `limit 15` rows, and
-     lands on the same answer:
-
-       hyphens: none   1440 ok   1366 +21   1280 +50   1180 +83
-       limit 16        1440 ok   1366 +21   1280 +50   1180 +83   (nothing is 16+)
-       limit 15        1440 ok   1366 ok    1280 +4    1180 +37
-       limit 14        1440 ok   1366 ok    1280 ok    1180 +22
-       limit 13        1440 ok   1366 ok    1280 ok    1180 ok    ← shipped
-       limit 12        1440 ok   1366 ok    1280 ok    1180 ok    (more hyphens, no gain)
-
-     The 6/4 stops a break leaving a stub: «экскурси-онных» is 8+5.
-
-     THREE MEASUREMENT TRAPS, each of which gave a WRONG answer first:
-
-     - `scrollWidth − clientWidth` DOES NOT SEE THIS OVERFLOW. The heading is
-       centred, so the excess hangs out both sides and scrollWidth under-reports
-       it — the first sweep came back clean at every width on a layout that was
-       overflowing by 83px. Measure the widest line box
-       (`Range.getClientRects()`) against the content box instead.
-
-     - THE UNBREAKABLE UNIT IS AN NBSP RUN, NOT A WORD. `bindShortWords` binds
-       short Russian words with U+00A0, so the real constraint is «для размышлений»
-       at 407px, not «размышлений» at 317. (That 407 is the figure round 23
-       recorded against «экскурсионных», which is 346 on its own — the number was
-       right, the label was not.) Splitting on whitespace hides this; split on the
-       plain space only.
-
-     - `hyphenate-limit-chars` COUNTS THE RUN, NOT THE WORD, and the NBSP counts
-       as a character. «в исторических» is 14, so it still breaks at 13 even
-       though «исторических» alone is 12 and fits. That is why one hyphen remains
-       in the hotel heading and cannot be tuned away from here: raising the limit
-       to 15 to spare it re-opens a 37px overflow. To spare a specific word, take
-       the NBSP out of that string — the binding is the cause, not the limit. */
-  hyphenate-limit-chars: 13 6 4;
+     THE HEADROOM IS 3px. `scripts/head-sweep.mjs` sweeps eight widths and fails
+     non-zero; the worst clearance on this page is −2.8px at 1200. That is not
+     slack — a copy edit to any `PAGE_SECTIONS.h2` can spend it, so re-run the
+     probe after one. Its header carries the full table and the two ways this
+     measurement has been got wrong before. */
 }
 
 .sec-body {
@@ -738,8 +834,15 @@
 
      Note this lengthens the section, so `iconY`'s `pushed` phase starts later —
      the boundary opacities must be re-measured after changing it, never
-     assumed. `measure()` reads live rects, so the geometry follows by itself. */
-  padding-top: var(--sec-body-lead, 50vh);
+     assumed. `measure()` reads live rects, so the geometry follows by itself.
+
+     ROUND 29: 50vh → 34vh, and the fallback here has to track the default in
+     motionParams.ts — the stylesheet is supposed to stand alone if the JS never
+     writes the property. The reasoning and the measurement table are with the
+     default; the short version is that the heading band added 430px above the
+     grid and this gives a third of it back, with the light's peak and its
+     boundary dips re-swept at 0.00/1.00 across 50, 34, 30, 24 and 18. */
+  padding-top: var(--sec-body-lead, 34vh);
   /* prose stays left-aligned; only the sticky column centres */
   text-align: left;
   /* ROUND 20: said `ALS Hauss`, which is NOT LOADED — see main.css's
@@ -753,19 +856,14 @@
   max-width: 34em;
 }
 
-/* ROUND 25: text is inset 16px inside its column, images are not — so the inset
-   goes on the paragraphs, never on `.sec-body` itself, or the picture below would
-   take it too and stop aligning with the column edge. That split IS the rule.
-
-   ROUND 27: THIS RULE MUST NOT MENTION MARGIN AT ALL. Every gap in this column
-   is a flow rule in page.css (`.sec-body > * + *`). It used to carry
-   `margin: 0 0 1.2em`, and replacing that with `margin: 0` to "let the flow take
-   over" is the trap, not the fix — this file loads AFTER page.css and
-   `.sec-body p` is (0,1,1) against the flow's (0,1,0), so it wins twice over and
-   every paragraph-to-paragraph gap collapses to zero. Say nothing about margin. */
-.sec-body p {
-  padding-inline: var(--grid-text-inset);
-}
+/* ROUND 29 EMPTIED `.sec-body p` AND SO IT IS GONE. It held the 16px text inset and
+   nothing else. If you are about to write `.sec-body p` again: THAT RULE MUST
+   NOT MENTION MARGIN AT ALL. Every gap in this column is a flow rule in page.css
+   (`.sec-body > * + *`). It once carried `margin: 0 0 1.2em`, and replacing that
+   with `margin: 0` to "let the flow take over" is the trap, not the fix — this
+   file loads AFTER page.css and `.sec-body p` is (0,1,1) against the flow's
+   (0,1,0), so it wins twice over and every paragraph-to-paragraph gap collapses
+   to zero. */
 
 /* ROUND 27 DELETED `.sec-figure`. The single trailing 3:2 photograph it styled
    is gone — a section's body is a block list now and pictures are `.ms` blocks
@@ -811,8 +909,24 @@
    So two columns hold to ~1180 and fail below it. 900 was safe only because the
    old 48px gutter absorbed the overrun. Do not lower this without re-running
    that sweep — the failure is invisible in English and appears in Russian. */
+/* The picture strip's full-bleed offset walks back from column 7, so it has to
+   follow the grid's collapse — and this page collapses on HEIGHT too. page.css
+   carries the width half for all three longreads; only the short-viewport case
+   is «О Крестах»-specific, because nothing else collapses on height. */
+@media (max-height: 720px) {
+  #screen-concept .ms--slider {
+    --ms-bleed: calc((100vw - var(--grid-content)) / 2);
+  }
+}
+
 @media (max-width: 1160px), (max-height: 720px) {
   .sec-grid,
+  /* ROUND 29: the heading band collapses too. It is a `.page-grid` of its own
+     with one `grid-column: 2 / -2` child, and BOTH halves are needed — see the
+     placement-reset note below. Without the reset the band's h2 keeps an
+     explicit ten-column placement in a one-column grid, which creates implicit
+     tracks and the heading comes back narrower than the body under it. */
+  .sec-head,
   .contact-form form,
   /* ROUND 25: the intro collapses with everything else now. It never did before,
      which was survivable while the right column was half the page — on twelve
@@ -836,6 +950,7 @@
      media query simply is not matching, which is the wrong thing to go and
      debug. See styles/grid.css. */
   .sec-grid > :is(.col-aside, .col-main),
+  .sec-head > .head-wide,
   .contact-form form > :is(.col-aside, .col-main) {
     grid-column: auto;
   }

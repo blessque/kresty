@@ -46,12 +46,13 @@
    2560-wide window has 592px margins and columns still 92.667. The 1440 frame is
    the standard; wider screens get more air, not a longer line.
 
-   ── text is inset 16px, images are not ──────────────────────────────────────
-   In both frames a text wrapper spans its columns and the text sits 16px inside
-   it (442.667 → 410.667, 559.333 → 527.333), while an image spans the same
-   columns at x=0 with no inset. So the column edge is where PICTURES align and
-   text hangs just inside it. `.gp-text` carries that, and it is the one
-   horizontal value a page stylesheet may rely on.
+   ── text and pictures both align on the column edge (round 29) ──────────────
+   Until this round a text wrapper spanned its columns and the text sat 16px
+   inside it (442.667 → 410.667) while an image spanned the same columns flush.
+   The client dropped that inset: there is now ONE vertical alignment per column
+   and nothing hangs inside it. The `.gp-text` utility and its
+   `--grid-text-inset` token are gone — if you are porting a rule that used
+   them, delete the declaration rather than replacing the value.
    ──────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -80,10 +81,6 @@
      quantity: 32/1440 × 100 = 2.2222, and so on. ── */
   --page-margin: min(32px, 2.2222vw);
   --grid-gutter: min(24px, 1.6667vw);
-
-  /* The text inset, single-sourced because six stylesheets reach for it and a
-     literal 16 in each is how a "grid rule" quietly becomes six numbers. */
-  --grid-text-inset: min(16px, 1.1111vw);
 
   /* 1440 − 2×32. Above the design frame the margins grow, not the columns. */
   --page-max: 1376px;
@@ -133,6 +130,26 @@
   --sp-text: 32px; /* text block → text block */
   --sp-block: 64px; /* text ↔ picture, and after the controls */
   --sp-page: 96px; /* between page-level blocks */
+}
+
+/* `min-width: 0` ON EVERY GRID ITEM, AND IT IS LOAD-BEARING (round 29).
+   `1fr` is `minmax(auto, 1fr)`, so a track FLOORS at its content's min-content —
+   and a child with a specified width contributes that width. Round 29's picture
+   strip is `width: 100vw`, so without this the `.col-main` track floors at the
+   whole viewport, the twelve "equal" columns stop being equal, and the page
+   grows a horizontal overflow that reads as a broken grid rather than as one
+   overflowing child.
+
+   «Музей» already carried this as a local fix below 1160, where `.ms-frame` was
+   `100% + one column + one gutter` and the body column measured 1501px inside an
+   1100px viewport. That was the same bug at a smaller scale, and it is one rule
+   here now rather than two that can disagree.
+
+   The cost is that a long unbreakable word overflows its column instead of
+   widening it — which is the correct trade for a fixed twelve-column layout, and
+   is the failure `npm run probe:heads` and the 1160 breakpoint already watch. */
+.page-grid > * {
+  min-width: 0;
 }
 
 .page-grid {
@@ -206,28 +223,20 @@
   grid-column: 2 / span 6;
 }
 
-/* ── the 16px text inset ─────────────────────────────────────────────────────
-   The designer's text wrappers inset their text 16px on both sides while images
-   sit flush to the column edge. Applied to the text-bearing child, never to the
-   grid item itself, so an image and a paragraph can share a column position and
-   still align the way the frames draw them. */
-.gp-text {
-  padding-inline: var(--grid-text-inset);
-}
+/* ── ROUND 29 REMOVED `.gp-text` AND `--grid-text-inset` ─────────────────────
+   For rounds 25–28 a text wrapper inset its text 16px while images sat flush to
+   the column edge, so a column had two left edges. The client took the inset
+   out: everything in a column now aligns on the column.
 
-/* THE RULE HAS TWO HALVES, and the second one decides where `.gp-text` may go:
-   text hangs inside the column, images sit flush to it.
+   Left here because the removal has a history worth not repeating. The inset's
+   own rule had two halves — text hangs inside, pictures sit flush — and the
+   second half is what made it fragile: a wrapper holding BOTH could not carry
+   it. Round 25 put `.gp-text` on `.article-body`, the figures inherited it, and
+   they rendered 32px narrow against nothing. The obvious repair, a
+   negative-margin escape class on the image, is worse and was tried: `pages.css`
+   loads after this file, so `.article-img { margin: 40px 0 }` beats an
+   equal-specificity utility by source order — and the `margin` SHORTHAND resets
+   `margin-inline` even though it reads as block-axis only.
 
-   SO A WRAPPER THAT CONTAINS BOTH MUST NOT CARRY `.gp-text` — put the inset on
-   the text children instead. Round 25 put it on `.article-body`, which holds
-   paragraphs AND figures, and the figures inherited it: they rendered 32px
-   narrower than their column and aligned with nothing.
-
-   The obvious repair — a negative-margin escape class on the image — was tried
-   and is worse. `pages.css` loads after this file, so its `.article-img {
-   margin: 40px 0; width: 100% }` beats an equal-specificity utility on BOTH
-   properties by source order, and the escape silently does nothing. The margin
-   SHORTHAND is the quiet half of that: it resets `margin-inline` even though it
-   looks like it only sets the block axis.
-
-   `.sec-body` had it right all along by insetting `p` alone. */
+   If a frame ever appears to ask for the inset back, it is asking for two
+   alignments in one column. Check the picture first. */

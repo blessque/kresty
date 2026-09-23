@@ -1,14 +1,50 @@
 # «О Крестах» page and the seam (round 19)
 
-**The page is: map → gap → 5 sections → contact form → handoff → the REAL main screen.**
-There is NO footer and no copy of the main block. `conceptPage.ts` orchestrates;
-`sectionRun.ts` / `pageBackground.ts` / `pageLight.ts` / `contactForm.ts` / `mainHandoff.ts`
-do the work. It all lives inside the map's scroller — see
+**The page is: hero → masthead → map → gap → 5 sections → contact form → handoff → the REAL
+main screen.** There is NO footer and no copy of the main block. `conceptPage.ts` orchestrates;
+`conceptHero.ts` / `sectionRun.ts` / `pageBackground.ts` / `pageLight.ts` / `contactForm.ts` /
+`mainHandoff.ts` do the work. It all lives inside the map's scroller — see
 [CONCEPT_MAP.md](CONCEPT_MAP.md#scrolling) — which runs ~13 viewports, far past the stage.
 
 Round 16's `residentSections.ts` / `residentGroups.ts` / `iconLight.ts` are DELETED.
 `pageLight.ts` is `iconLight` recovered ~verbatim from `ef324b3^`, and every measurement in
 its comments still holds.
+
+---
+
+## The hero (round 29) — `conceptHero.ts`
+
+Figma `1253:693`, 1440×511, **above the masthead**: a full-bleed dusk render of the complex from
+the Neva (`public/resources/embankment-hero.webp`, 2400×960, encoded from
+`references/Renders/01_Voda.jpg` with the round-8 recipe), a veil, a centred tagline at Base
+Text on a 436px measure, and four in-page links at Caption Small 87px apart. Height is
+`clamp(320px, 35.486vw, 620px)` — full-bleed, so it has no reason to stop at 1440, but it needs
+a ceiling or 2560 turns a 2.8:1 band into a letterbox slit.
+
+**It is deliberately NOT a `.page-grid`.** Tagline and link row both centre on 720
+(502 + 436/2, 369 + 702/2) — the PAGE centre, which the twelve columns have no line for:
+column 6 ends where column 7 begins.
+
+**`MapScroll.setIntro` is variadic now, and `measureIntro()` reads `stage.offsetTop`** rather
+than summing block heights. The sum was correct for one block and is a maintenance trap for
+two; the offset stays right however many blocks sit above the stage and whatever margins they
+collapse.
+
+**The wordmark needs a second ink, and that is measured, not a taste call.** New state class
+`over-hero` on `#screen-concept` (written from the scroll position, `scrollTop < heroH − 72` —
+the mark is 40px tall at the 32px corner, so what matters is the hero's bottom edge, not whether
+the hero is on screen). Mean relative luminance per band against the three inks the site owns:
+
+```
+  band        bg L    white     ink #031721   link blue
+  wordmark    0.496   1.92:1    9.51:1        1.17:1
+  nav row     0.109   6.58:1    2.78:1        2.92:1
+```
+
+The photograph is a dusk sky at the top and dark water at the foot, so **it inverts across its
+own height** — ink up there, white down here, one photograph and two answers, and the sitewide
+blue is the worst available in both places. It cannot be `:not(.past-intro)`: that state turns
+over at 60 % of everything above the map, by which point the mark is over the white masthead.
 
 ---
 
@@ -80,30 +116,76 @@ same defaults**, so the page is correct with no JS.
   faster than they complete. Round 16.1's property is intact: **60 scrolling frames still make 0
   GPU submissions.**
 
-## The two sticky columns
+## The heading band, and the column that still sticks (round 29)
 
-**The left column is `position: sticky`, NEVER a rAF transform.** A transform runs on the main
-thread while the right column scrolls on the compositor, which is round 16.1's "10 fps, jumps
-20px" exactly.
+**ROUND 29: THE H2 LEFT THE COLUMN.** Each `.sec` now opens with
+`<div class="sec-head page-grid"><h2 class="sec-h2 head-wide">` above `.sec-grid` — the
+ten-column FACTOID band the three longreads share (see CONTENT_PAGES and DESIGN_SYSTEM), with
+`padding: var(--sp-page) 0`. The frame draws 92 and 116.5 above and below; those are the two
+nearest neighbours of one scale value, and taking the scale value is the point of having one.
 
-**The icon + h2 hold VERTICALLY CENTRED (round 25), and the pin is per section.** The pin that
-centres is `(viewH − colH)/2`, and `colH` swings 400px+ across the run — these are wrapped
-Russian headings, nine lines for the museum against four for «Аренда» — so one `vh` would centre
-exactly one section. `sectionRun.measure()` writes each section's own `--sec-pin` in px, clamped
-by the station invariant; where the clamp binds the block sits above centre, which is the right
-trade. `MOTION.centre = 0` restores a flat `pin` in vh.
+It is a **separate `.page-grid`**, not a third item inside `.sec-grid`. Both lay out identically
+to the pixel, but a full-width item in the section's own grid would make the sticky aside a
+row-2 item whose containing block is that row — and the band could then never carry its own
+vertical rhythm without moving the icon with it.
 
-**`--sec-body-lead` (50vh) starts the body below the heading**, so the icon and h2 are on screen
-and pinned before the first paragraph arrives. Layout, not animation — a rAF transform on
-`.sec-col` is round 16.1's defect, and a `transform`/`filter`/`will-change` on any ancestor
-steals sticky's containing block.
+**`.sec-col` KEEPS `position: sticky` even though it now holds only the icon**, and that is not
+inertia: `sectionRun.measure()` reads this element's computed `top` to place the god-ray's
+stations, so making it static moves the LIGHT, not just the icon. It is `position: sticky`,
+NEVER a rAF transform — a transform runs on the main thread while the right column scrolls on
+the compositor, which is round 16.1's "10 fps, jumps 20px" exactly. It lost
+`text-align: var(--sec-col-align, center)` along with the text it was centring, and
+`--sec-col-align` is deleted from `motionParams.ts`: one property, not two, because the icon's
+own `--sec-icon-inline` margin now says everything.
+
+**The icon holds VERTICALLY CENTRED (round 25), and the pin is per section.** The pin that
+centres is `(viewH − colH)/2`; `sectionRun.measure()` writes each section's own `--sec-pin` in
+px, clamped by the station invariant, and `MOTION.centre = 0` restores a flat `pin` in vh.
+
+**MEASURED CONSEQUENCE OF THE BAND: `colH` stopped swinging.** It was 400–530 across the run and
+changed with every re-wrap of a Russian heading; with the icon alone it is a **constant 264**.
+`--sec-pin` went ~230 → **318** at 1440×900, and the station invariant
+`pin + colH + padBottom ≤ viewH` now clears by **+206px at every section** instead of clamping.
+The clamp was the thing putting blocks above centre; it no longer binds.
+
+**`--sec-body-lead` is 34vh (was 50).** It starts the body below the band so the icon is on
+screen and pinned before the first paragraph arrives — layout, not animation, because a rAF
+transform on `.sec-col` is round 16.1's defect and a `transform`/`filter`/`will-change` on any
+ancestor steals sticky's containing block. **The value was measured before it was changed, and
+the measurement is that this dial is not a correctness one:** at the scroll position where the
+icon reaches its pin, the body's first line is at y = 751 / 679 / 607 / 535 for leads
+50 / 42 / 34 / 26 in a 900 viewport, and **the light reads 1.00 in all four** — it reaches full
+strength with the icon's top still at 1881, long before the pin. Light peaks 1.00 and boundary
+dips 0.000 re-swept at leads 50 / 34 / 30 / 24 / 18. So the lead composes the section; it does
+not gate the envelope.
+
+**The default lives in two places and they must track each other**: `MOTION.bodyLead` in
+`motionParams.ts` and the CSS fallback `padding-top: var(--sec-body-lead, 34vh)` in
+`concept.css`. The page has to be correct with no JS.
+
+**Hyphenation is OFF on `.sec-h2`** (round 29), and `npm run probe:heads` is what makes that
+safe. It was load-bearing at a FLAT 40px in a four-column column — «для размышлений» is one
+unbreakable 407px NBSP run against a 442px measure — and the band changes both terms: ten
+columns, and `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. **«О Крестах» is the
+tightest of the three routes and runs on 2.8px of clearance at 1200**, so a copy edit to any
+`PAGE_SECTIONS.h2` must re-run the probe. At 72px a mid-word break is the most visible thing on
+the page, which is why `hyphens: auto` was not simply left on as insurance.
+
+**This page collapses on HEIGHT as well as width, and round 29's picture strip has to know.**
+`.ms--slider` is `width: 100vw` offset by `--ms-bleed`, which walks back from column 7's left
+edge (CONTENT_PAGES has the arithmetic). page.css carries the width half at `max-width: 1160px`
+for all three longreads; the `max-height: 720px` copy is `#screen-concept`-scoped in concept.css
+because nothing else on the site collapses on height. Miss it and the strip hangs 535px off the
+left of a short window.
 
 **`measure()` now re-runs on `document.fonts.ready`.** Its own header always said "call on
 resize, on font swap and on image load" and the font-swap call was never wired, so every
 measurement was taken against the fallback face. Round 25's centring made it visible — colH 458
 under the fallback against 506 under Chromius, putting the pin 24px high on four of five
 sections — but `colH` is also a term of the station invariant and of `iconY`'s `pushed` phase, so
-it was never harmless. A constant pin simply hid it.
+it was never harmless. A constant pin simply hid it. (Those two numbers are the pre-band column,
+heading included. Keep the call: `colH` is smaller now but it is still measured type-adjacent
+geometry, and the invariant still reads it.)
 
 Three silent breakages, all commented in `concept.css`:
 

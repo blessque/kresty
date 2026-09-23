@@ -5395,3 +5395,190 @@ Verified after the rebase: all eight routes error-free, seam ramps white → `#5
 `#2b4a7a` and still fires, `lint:tokens` + `tokens:check` + `tsc` + build clean. Note
 `#contacts` no longer reaches `networkidle` — round 27's Yandex iframe keeps the connection
 open, so route smoke tests need `domcontentloaded` plus a wait.
+
+## Round 29 (2026-09-23) — the inset goes, the headings get big, the strips break out
+
+Five client notes, four of them subtractions. The theme is that the editorial pages had been
+accumulating detail the design no longer wanted — a 16px inner inset on every text wrapper, a
+second star size, headings that pin and ride alongside the copy, arrow buttons on pictures —
+and what replaces them is one gesture per section and one per picture group.
+
+### The 16px inset was one token, and taking it out was arithmetic
+
+`--grid-text-inset` / `.gp-text` had no compensating geometry anywhere: no negative margins, no
+`calc()`s that cancelled it, no JS that measured it. Twelve declarations and fourteen class
+applications, deleted. `npm run spec:figma` before and after is the proof, and it is worth
+recording what to look at rather than "it looks flush":
+
+```
+              inset-bearing boxes     text on a column edge
+  concept          29 → 0                   22 → 28
+  news             15 → 0                    0 → 28
+  article          12 → 0                    7 → 21
+  rent              9 → 0                    9 → 23
+  contacts         10 → 0                    4 → 25
+```
+
+The second column is the real assertion. Zero inset-bearing boxes only says the padding is gone;
+text landing ON 148.656 or 732 says it went to the right place. «Новости» at 0 → 28 is the whole
+change in one number.
+
+### The heading band, and a 108px era name
+
+`.head-wide` is `grid-column: 2 / -2` plus the `--type-factoid-*` triple. The designer's frame
+`1253:701` settles the type by arithmetic rather than by eye: the hotel heading is drawn 1136
+wide and **237 tall**, which is 3 × 72 × 1.1 and cannot be anything else.
+
+**THE TYPE GOES ON THE HEADING, NEVER ON THE BAND.** Set on the wrapper, «Музей»'s era name came
+out at **108px** — the UA sheet's `h2 { font-size: 1.5em }` multiplying an inherited 72. It is
+larger than the site's H1 and entirely plausible on screen; the measurement caught it, looking
+did not. The selector is `h2.head-wide, .head-wide > h2, .article-body > h2`, because the band
+IS the heading on «О Крестах» and wraps it on «Музей».
+
+A second specificity trap in the same change: `.article-body h2` (H3 tokens, 32px) and the new
+rule are both (0,1,1), so source order decides and the old one is 250 lines further down.
+Leaving it as "the old value, harmlessly" would have kept the article at 32 while the other two
+longreads went to 72.
+
+### Hyphenation comes off, and that needed a probe rather than a paragraph
+
+`hyphens: auto` was load-bearing while H2 was a FLAT 40px in a four-column column — the type
+stopped shrinking below 1440 while the column kept going. The band changes both terms: ten
+columns, and `--fs-factoid` is fluid again at `clamp(60px, 5vw, 72px)`. At 72px a mid-word break
+is the most visible thing on the page, and `hyphens: auto` breaks to balance the rag rather than
+only to avoid overflow.
+
+**`npm run probe:heads` (`scripts/head-sweep.mjs`) is what makes that safe.** Worst clearance,
+negative meaning clearance:
+
+```
+  width    1440   1366   1309   1280   1240   1200   1180   1165
+  concept  −4.0   −3.5   −3.8   −3.6   −3.2   −2.8   −8.2   −5.6
+  museum   −244   −232   −222   −217   −210   −203   −187   −175
+  article  −38.6  −36.4  −35.2  −34.3  −33.0  −31.7  −15.7   −3.7
+```
+
+**Estimating this from the clamp gives the wrong answer**, and did: scaling the 1440 line width
+by the ratio of the two clamp values predicts a 28px overflow just above the breakpoint. There
+is none. Each heading re-wraps as the measure narrows, so WHICH heading is worst changes with
+the width — the concept row switches from «Остановиться…» to «Позаботиться…» at 1180. Only
+rendering knows where the lines break. «О Крестах» runs on 3px of headroom, so a copy edit to
+any `PAGE_SECTIONS.h2` has to re-run the probe.
+
+### What un-sticking did to the light, measured rather than feared
+
+`.sec-col` keeps `position: sticky` — it holds the icon, and `sectionRun.measure()` reads its
+computed `top` to place the god-ray's stations. What changed is what is in it:
+
+```
+                       before        after
+  colH            400–530 swinging   264 constant
+  --sec-pin       ~230               318         (1440×900)
+  invariant slack  clamping           +206 at every section
+```
+
+Round 25 needed a per-section measured pin precisely because `colH` swung 400px with the
+heading's wrap. It does not any more, and `pin + colH + padBottom ≤ viewH` stopped binding.
+
+**`--sec-body-lead` 50vh → 34vh, and the measurement is why it is only 34.** Its stated purpose
+is "the icon is on screen and pinned before the first paragraph arrives", so the test is: at the
+scroll position where the icon reaches its pin, where is the body's first line?
+
+```
+  lead        50vh   42vh   34vh   26vh
+  prose at     751    679    607    535     (viewport 900)
+  light        1.00   1.00   1.00   1.00
+```
+
+The light is at full strength in every one — it reaches 1.00 with the icon's top still at 1881,
+long before the pin — so the property holds far below 50 and this is a composition dial, not a
+correctness one. It moves at all because the heading band ADDED 430px above the grid, and at 50
+a section opened with 880px of heading-and-empty-column. 34 gives back a third of that; the band
+still costs more, so a section opens no faster than it did before this round. Peaks 1.00 and
+boundary dips 0.000 re-swept at 50/34/30/24/18.
+
+**Two ways that sweep lied first, both worth remembering.** The probe initially reported
+`peaks 0.00` at every lead — which reads as "the light is dead". It was reading the Three.js map
+canvas: `querySelector('a, b')` returns the first match in DOCUMENT ORDER, not the first
+selector that matches, and the fallback `canvas:not(.map-canvas)` caught the map. And comparing
+screenshots at three lead values taken at the SAME `scrollTop` compares different phases, because
+shortening the lead shortens the section. The stills made 50 look obviously wrong; the invariant
+said it was merely over-specified.
+
+### The strip: what it pans, and what it does not
+
+`animation-timeline: view()` rather than a rAF scroll handler, because the rAF version is
+bit-for-bit round 16.1's reported defect — a main-thread transform racing the compositor that
+scrolls the column beside it, 10 fps and 20px jumps. Script publishes one number, `--ms-travel`.
+Verified at cover 0/25/50/75/100 %: translateX 0 / −300 / −599 / −899 / −1198, and the last
+slide finishes flush on the viewport's right edge (1441 against 1440).
+
+**THE FULL-BLEED SNIPPET IS WRONG IN THIS COLUMN.** `margin-left: calc(50% - 50vw)` centres the
+100vw box on its CONTAINER, which is only the viewport's centre if the container is centred.
+`.col-main`'s centre at 1440 is 1011.67 against 720, so the strip came out 292px right of the
+page and ran off the other edge. `--ms-bleed` walks back from column 7's left edge to the
+viewport's out of the grid's own three constants; below the collapse there is no column 7 and it
+drops the six units.
+
+**Most sets do not pan, and that is the correct result.** Nine picture sets across three
+longreads; FIVE are two photographs, which at 410 tall measure ~1254 and fit inside 1440.
+Measured travels at 1440: 0, 0, 445, 1198, 0. So travel is a consequence of content, not a
+target, and `justify-content: safe center` is the whole mechanism for deciding: it centres a
+strip that fits and falls back to `flex-start` exactly when overflow starts, which is exactly
+when the pan takes over. Plain `center` is the bug — it centres the overflowing ones too, putting
+half the excess off the LEFT edge behind `overflow: clip`, so the first photo is unreachable at
+rest.
+
+Two consequences worth stating because they are correctness rather than polish. A strip that
+cannot pan must become a real scroll container (`@supports not (animation-timeline: view())` AND
+`prefers-reduced-motion`), or the three overflowing sets hide every slide past the first behind
+`overflow: clip` — silent content loss. And `min-width: 0` on `.page-grid > *` is now global and
+load-bearing: `1fr` is `minmax(auto, 1fr)`, so a track floors at min-content and a child with
+`width: 100vw` contributes 100vw. «Музей» already carried that as a local fix below 1160, where
+`.ms-frame`'s peek gave a 1501px column inside an 1100px viewport; it is one rule now.
+
+`MuseumRun.fitFrames()` is deleted. It existed to remove 49px of dead air above and below each
+wide slide in a 559 column, and a slide that fills the height exactly has none.
+
+### The hero, and a photograph that inverts across its own height
+
+Figma `1253:693`. The wordmark's colour over it is the one decision here that had to be measured
+rather than chosen — mean relative luminance of each band, against the three inks the site owns:
+
+```
+  band        bg L    white     ink #031721   link blue
+  wordmark    0.496   1.92:1    9.51:1        1.17:1
+  tagline     0.218   3.92:1    4.67:1        1.74:1
+  nav row     0.109   6.58:1    2.78:1        2.92:1
+```
+
+A dusk sky at the top and dark water at the foot, so the answer inverts: ink for the wordmark at
+the 32px corner, white for the links in the veil. The sitewide blue is the worst available in
+both places. The state class has to be its own (`over-hero`) and cannot be `:not(.past-intro)` —
+that turns over at 60 % of everything above the map, by which point the wordmark is on the white
+masthead, where white is the one colour it must not be.
+
+`MapScroll.measureIntro()` now reads `stage.offsetTop` instead of summing the blocks above it.
+`.concept-scroll` is `position: absolute` and therefore the offset parent, so that is exact
+whatever is up there and whatever margins collapse — which a sum is not.
+
+### One thing that improved by accident, and one that did not change
+
+Un-sticking the headings **reduced** how long a heading sits behind the pinned wordmark, which
+is the opposite of what was expected. Swept across each page's whole scroll range, the fraction
+of scroll with an `h2` inside the wordmark's box (32,32 → 283,72):
+
+```
+  «Аренда»    21.4 % → 2.8 %
+  «Контакты»   5.1 % → 5.3 %
+```
+
+«Аренда»'s form heading used to HOVER in that box while the column scrolled past it. A heading
+that scrolls away passes through in a fifth of the time.
+
+Not fixed, and pre-existing: `.map-mark` on «О Крестах» overflows the scroller by 33px at 1200
+and 40px at 1100. Measured identical on the pre-round build, so it is the map's own caption
+placement and not this round's.
+
+Verified: `tokens:check` + `tsc` + `vite build` clean, `lint:tokens` clean, `probe:heads` clean,
+`probe:headline` OK, `interact-test` clean, no 4xx on any of the six routes.

@@ -48,7 +48,6 @@ export class MapScroll {
 
   /** measured height of everything above the stage; 0 until `setIntro` */
   private introH = 0;
-  private intro?: HTMLElement;
 
   constructor(container: HTMLElement, vh = STAGE_VH) {
     this.scroller.className = 'concept-scroll';
@@ -58,18 +57,23 @@ export class MapScroll {
     container.appendChild(this.scroller);
   }
 
-  /** put a block above the map. Its height is MEASURED, never assumed — it is
-   *  wrapped type, so it grows when the window narrows. */
-  setIntro(el: HTMLElement) {
-    this.intro = el;
-    this.scroller.insertBefore(el, this.stage);
+  /** put one or more blocks above the map, in order. Round 29 made this variadic
+   *  for the hero, which sits above the masthead. Heights are MEASURED, never
+   *  assumed — it is wrapped type and a photograph, so both grow when the window
+   *  narrows. */
+  setIntro(...els: HTMLElement[]) {
+    for (const el of els) this.scroller.insertBefore(el, this.stage);
     this.measureIntro();
   }
 
-  /** re-read the intro's height; call from resize, before anything reads the
-   *  map's own scroll */
+  /** re-read the height of everything above the stage; call from resize, before
+   *  anything reads the map's own scroll */
   measureIntro() {
-    this.introH = this.intro ? this.intro.offsetHeight : 0;
+    // THE STAGE'S OWN OFFSET, not the sum of the blocks' heights. `.concept-scroll`
+    // is `position: absolute` and therefore the offset parent, so this is exactly
+    // the distance from the scroller's content top — and unlike a sum it stays
+    // right however many blocks are above and whatever margins they collapse.
+    this.introH = this.stage.offsetTop;
   }
 
   /** height of the block above the map stage */
@@ -112,6 +116,21 @@ export class MapScroll {
   /** has the intro scrolled away, i.e. is the map what you are looking at? */
   get pastIntro(): boolean {
     return this.scroller.scrollTop > this.introH * 0.6;
+  }
+
+  /**
+   * Is the hero still behind the pinned wordmark? (round 29)
+   *
+   * The wordmark sits at the page's 32px corner and is 40px tall, so what
+   * matters is whether the hero's BOTTOM EDGE is still below 72 — not whether
+   * the hero is on screen at all. Measured off the element rather than from a
+   * constant: its height is a `clamp` on `vw`, so it is a different number at
+   * every window width.
+   */
+  get overHero(): boolean {
+    const hero = this.scroller.firstElementChild as HTMLElement | null;
+    if (!hero || !hero.classList.contains('concept-hero')) return false;
+    return this.scroller.scrollTop < hero.offsetHeight - 72;
   }
 
   /** the viewport height this scroller occupies */

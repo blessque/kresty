@@ -27,3 +27,8 @@ memory/
 # shows up as an untracked folder every time.
 /undefined/
 tokens.zip
+
+# `npm run spec:figma` writes the measured build here (default `.figma-spec`,
+# and `--out` is how you keep a before/after pair to diff). It is a MEASUREMENT
+# of the code, not a source of it — regenerate rather than commit.
+/.figma-spec*/

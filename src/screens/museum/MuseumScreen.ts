@@ -62,13 +62,6 @@ const BUCKETS_Y = 4;
 const WARM_VH = 1.5;
 
 /**
- * Fraction of the half-frame over which an era title holds full strength before
- * it starts fading out toward the edge. 0.45 keeps it solid while it is in the
- * cross and spends the outer half of the travel on the fade — see `fadeEras()`.
- */
-const ERA_HOLD = 0.45;
-
-/**
  * Below the site's 1160 breakpoint the grid collapses to one column, and the
  * body copy moves under the cross's brightest region — the convergence point is
  * at the left EDGE, and at that width there is no left edge to spare. The light
@@ -166,9 +159,11 @@ export class MuseumScreen extends ContentScreen {
    * keep colours pinned to the widths they were first measured at.
    */
   protected remeasure() {
-    // BEFORE the stops: a frame's height is part of its section's height, and
-    // every stop is a section's `offsetTop`.
-    this.run?.fitFrames();
+    // Round 28 called `run.fitFrames()` first, on the rule that a frame's height
+    // is part of its section's height and every stop is a section's `offsetTop`.
+    // That rule still holds; there is just nothing left to fit — round 29's
+    // slides derive their width from a definite height, so a picture block is
+    // `--ms-h` tall from first layout and never moves a stop.
     this.shell.setStops(this.stops());
     this.light.setViewport(this.shell.scroller.clientWidth, this.shell.scroller.clientHeight);
   }
@@ -247,8 +242,6 @@ export class MuseumScreen extends ContentScreen {
       this.cross.style.setProperty('--mus-rot', `${deg}deg`);
     }
 
-    this.fadeEras(viewH);
-
     const ink = mixHex(INK_DARKFIELD, INK_LIGHTFIELD, white);
     if (ink !== this.lastInk) {
       this.lastInk = ink;
@@ -270,38 +263,24 @@ export class MuseumScreen extends ContentScreen {
     document.documentElement.style.setProperty('--grain-k', (1 - white).toFixed(3));
   };
 
-  /**
-   * One era at a time, in the light.
+  /* ROUND 29 DELETED `fadeEras()`.
    *
-   * A sticky column is on screen from the moment its section's top edge is, so
-   * at every section boundary the outgoing era sits at the top of the frame
-   * while the incoming one arrives at the bottom — two titles, both fully
-   * opaque, which reads as a layout fault rather than a handover. «О Крестах»
-   * never shows this because its light's envelope fades each station in and out
-   * and the eye follows the light; there is one cross here and it never moves,
-   * so the fade has to be on the titles instead.
+   * It wrote `--mus-era-op` on each era column every frame, an envelope of
+   * distance from the frame's middle. Its reason was structural: a STICKY column
+   * is on screen from the moment its section's top edge is, so at every boundary
+   * the outgoing era sat at the top of the frame while the incoming one arrived
+   * at the bottom — two titles, both fully opaque, reading as a layout fault
+   * rather than a handover. The era is a heading at the top of its section now
+   * and scrolls away like any other, so there are never two.
    *
-   * The envelope is distance from the frame's middle, which is also where the
-   * cross's convergence point is — so an era is at full strength exactly when
-   * it is inside the light, and gone by the time it reaches either edge. Four
-   * rects a frame, no cached geometry: they are already in the layout the
-   * browser just computed, and caching them is what would need invalidating.
+   * Noting it because the pairing it served is the thing the client gave up: the
+   * envelope peaked exactly at the cross's convergence point, so an era was at
+   * full strength precisely when it was inside the light. If a future round
+   * wants that back, it wants the sticky column back first — and note this
+   * method reached its target as `sec.firstElementChild?.firstElementChild`,
+   * which after round 29's restructuring would silently have found the heading
+   * band instead.
    */
-  private fadeEras(viewH: number) {
-    const run = this.run;
-    if (!run) return;
-    const mid = viewH / 2;
-    for (const sec of run.sections) {
-      const col = sec.firstElementChild?.firstElementChild as HTMLElement | undefined;
-      if (!col) continue;
-      const r = col.getBoundingClientRect();
-      // normalised distance of the column's centre from the frame's centre
-      const d = Math.abs((r.top + r.height / 2 - mid) / mid);
-      // flat across the middle half, then a smoothstep out to the edge
-      const k = clamp01((1 - d) / (1 - ERA_HOLD));
-      col.style.setProperty('--mus-era-op', (k * k * (3 - 2 * k)).toFixed(3));
-    }
-  }
 
   /**
    * How white the field is RIGHT NOW — 1 on the white section, falling to 0 both
