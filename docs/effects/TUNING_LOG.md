@@ -5826,3 +5826,20 @@ Result, 20 s on each page at 1440×900 @2x: main 0/20 windows with a slow frame,
 while scrolling, «О Крестах» 0/19 after entry. Its first window (6 slow frames) is the GPU
 context plus mask rasterizing — identical under `?bake`, and inside the governor's warm-up.
 
+### 31.3 — the shader grain goes; `#grain` carries the film grain alone
+
+Client, after the governor shipped: *"why is this grain so big and grainy? is it even necessary
+to render it?"* It was not, and it was the governor's side effect. The shader's `grain` is drawn
+per CANVAS pixel; at rung 2 (scale 1.25) on a 2× display each grain pixel is stretched ~1.6× and
+bilinear-smoothed into soft blotches, where scale 2 had drawn it one device pixel fine.
+Measured on zoomed device-pixel crops of one frozen frame: grain 0.06 @1.25 = mottled; @2 = fine;
+**grain 0 @1.25 = clean**, the march jitter's residue negligible. Interleaved-gradient-noise
+jitter was tried for that residue and REJECTED — it prints a regular diagonal crosshatch.
+
+«Сияние»'s `grain` is now 0. The film grain the brief asks for is the CSS `#grain` overlay, which
+is display-resolution on every page this light is on (main; «Музей», ramped by `--grain-k`);
+«О Крестах» hides `#grain` and had rendered its icons at grain 0 since round 16. This does NOT
+repeat round 28.2's damage: there `grain: 0` was one of two textures removed from a light with
+no `#grain` context argued for it — here the texture survives, at the right resolution. The
+shader's 1/255 dither stays; that is anti-banding, not grain.
+

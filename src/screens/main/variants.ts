@@ -63,7 +63,15 @@ const siyanieParams: RayFieldParams = {
   secIntensity: 0,
   dustAmount: 0.25,
   moteAmount: 0,
-  grain: 0.06,
+  // ROUND 31.3: 0, and the film grain is the CSS `#grain` overlay's job alone.
+  // Shader grain is drawn per CANVAS pixel, so it is only fine grain while the
+  // canvas matches the display. Since the frame governor renders at 1.25 on a
+  // 2× screen, each grain pixel is stretched ~1.6× and bilinear-smoothed into
+  // soft blotches (the client: "why is this grain so big?"). `#grain` is drawn
+  // at display resolution on every page this light is on (main, «Музей»);
+  // «О Крестах» hides it and already rendered its icons at grain 0. The 1/255
+  // dither in the shader stays — that is anti-banding, not grain.
+  grain: 0,
   ca: 0.03,
   hazeBase: 0.05,
   rotSpeed: 0.008,
