@@ -9,9 +9,10 @@
  *     what it always was, so the "old" column is exactly what the old build drew.
  *     A screenshot centroid corroborates it end to end.
  *
- *  2. THE «АРЕНДА» SEGMENTED CONTROL and the sticky heading columns, including
+ *  2. THE «АРЕНДА» SEGMENTED CONTROL and its heading columns, including
  *     the stacked layout below 1160 where an explicit `grid-column` would conjure
- *     implicit columns and a sticky column has nowhere to travel.
+ *     implicit columns. Round 29 took the pinning off every heading, so the
+ *     assertions here are that it stays off and that the four agree.
  *
  * Usage: `npx vite --port 5199 --strictPort` in one shell, `node scripts/seam-probe.mjs`
  * in another. OUT=dir to keep the screenshots.
@@ -256,35 +257,43 @@ async function rentPass(size) {
   await page.waitForTimeout(250);
   ok((await page.evaluate(() => document.querySelector('.rent-tab.on')?.id)) === 'rent-tab-0', 'Home returns to the first');
 
-  // the sticky heading columns
+  // THE HEADING COLUMNS, WHICH NO LONGER PIN (round 29).
+  //
+  // Round 28 asserted the opposite here: four `[data-sticky-head]` blocks, every
+  // column computing as `sticky`, a measured per-block `--sec-pin`, and
+  // «Помещения» holding the frame for 60 % of a 500px scroll. The client took the
+  // pinning off every heading on the site, so what this now guards is that it
+  // STAYS off — and that the four headings still agree with each other, which was
+  // round 28's actual complaint (three headings of one rank behaving three ways).
+  //
+  // Kept rather than deleted, because the rule it protects is invisible when it
+  // breaks: `concept.css` is imported globally and its `.sec-col { position:
+  // sticky }` reaches any content page that grows one.
   const heads = await page.evaluate(() => {
-    return [...document.querySelectorAll('[data-sticky-head]')].map((b) => {
-      const col = b.querySelector('.sticky-head, .sec-col');
-      return {
-        heading: col?.querySelector('h2')?.textContent.trim() ?? '(none)',
-        position: col ? getComputedStyle(col).position : '(no col)',
-        pin: b.style.getPropertyValue('--sec-pin'),
-        align: col ? getComputedStyle(col).textAlign : '',
-      };
-    });
+    return [...document.querySelectorAll('.rent-page .page-block, .rent-page .contact-form')]
+      .map((b) => b.querySelector('.col-aside'))
+      .filter(Boolean)
+      .map((col) => ({
+        heading: col.querySelector('h2')?.textContent.trim() ?? '(none)',
+        position: getComputedStyle(col).position,
+        align: getComputedStyle(col).textAlign,
+      }));
   });
-  ok(heads.length === 4, `four managed blocks — ${heads.map((h) => h.heading).join(' · ')}`);
-  // DOES IT ACTUALLY PIN, rather than merely compute as `position: sticky`.
-  //
-  // MEASURED ON «Помещения», NOT on the first block. Sticky travel is capped by
-  // the element's own grid area, so a SHORT block releases its heading almost at
-  // once — «Общая информация» is 532px tall and can only hold its heading for
-  // ~110px of a 400px scroll. That is the clamp working as designed, not a
-  // failure, and measuring it would set the bar at noise. The spaces block is the
-  // one with runway and the one a reader actually scrolls.
-  //
-  // Below 1160 the keyword test is meaningless in the other direction: every grid
-  // item becomes its own row, so the column still computes as `sticky` while
-  // having (almost) nowhere to travel. Only the travel is worth asserting.
+  ok(heads.length === 4, `four heading columns — ${heads.map((h) => h.heading).join(' · ')}`);
+  ok(heads.every((h) => h.position === 'static'), 'no heading column pins');
+  ok(
+    heads.every((h) => h.align === 'start' || h.align === 'left'),
+    `every heading is left-aligned (${[...new Set(heads.map((h) => h.align))].join(', ')})`,
+  );
+  // and the column TRAVELS with its body rather than holding the frame — the
+  // direct measurement, because `position: static` is the mechanism and this is
+  // the behaviour. Measured on «Помещения», the one block with runway.
   const travel = await page.evaluate(() => {
     const sc = document.querySelector('.rent-page .page-scroll');
-    const block = document.querySelectorAll('.rent-page [data-sticky-head]')[1];
-    const col = block.querySelector('.sticky-head');
+    const block = [...document.querySelectorAll('.rent-page .page-block')].find((b) =>
+      b.querySelector('.rent-tabs'),
+    );
+    const col = block.querySelector('.col-aside');
     sc.scrollTop = block.offsetTop;
     const s0 = sc.scrollTop;
     const t0 = col.getBoundingClientRect().top;
@@ -293,19 +302,10 @@ async function rentPass(size) {
     sc.scrollTop = 0;
     return out;
   });
-  const held = travel.scrolled - travel.moved;
-  if (stacked) {
-    ok(heads.every((h) => h.position === 'static'), 'stacked: the heading columns stop sticking');
-    ok(heads.every((h) => h.pin === ''), 'stacked: stickyHeads strips the stale --sec-pin');
-    ok(travel.moved > travel.scrolled * 0.95,
-       `stacked: the heading travels with its body (${travel.moved.toFixed(0)}/${travel.scrolled}px)`);
-  } else {
-    ok(held > travel.scrolled * 0.6,
-       `«Помещения» holds the frame while its body scrolls (held ${held.toFixed(0)} of ${travel.scrolled}px)`);
-    ok(heads.every((h) => h.position === 'sticky'), 'every heading column is sticky');
-    ok(heads.every((h) => h.pin && h.pin !== '14vh'), `per-block pins — ${heads.map((h) => h.pin).join(' · ')}`);
-    ok(new Set(heads.map((h) => h.align)).size === 1, `one alignment for all four (${heads[0].align})`);
-  }
+  ok(
+    travel.moved > travel.scrolled * 0.95,
+    `the heading travels with its body, pinned nowhere (${travel.moved.toFixed(0)}/${travel.scrolled}px)`,
+  );
 
   // the grid stacks cleanly below 1160 — template AND placement
   const grid = await page.evaluate(() => {

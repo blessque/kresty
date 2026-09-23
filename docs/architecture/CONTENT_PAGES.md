@@ -139,15 +139,28 @@ explained. `.anchor-outer` / `.anchor-inner` are deleted.
 - **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
   which `.col-main` now names directly.
 - **«Аренда»'s five spaces are a segmented control (round 28).** A vertical `role="tablist"` in
-  the sticky heading column under an H2 «Помещения»; `.col-main` holds all five panels with
-  four `hidden`. The label is a `<span>` inside a FULL-WIDTH BLOCK button, which is what lets
-  the underline hug the word while the column's own `text-align: var(--sec-col-align, center)`
-  still decides where the word sits — an inline-block button would need a second centring rule
-  that could then disagree with the H2 above it. `text-align: inherit` is required with it: the
-  UA sheet centres button contents outright and would ignore the escape hatch. Tabs are
-  tertiary at rest, ink + underline when chosen. **`select()` ends with `shell.measure()`** —
-  the panels are different heights, so a switch moves every colour stop below it and the
-  handoff's `offsetTop`; `NewsScreen.applyFilter` ends the same way for the same reason.
+  the left heading column under an H2 «Помещения»; `.col-main` holds all five panels with four
+  `hidden`. The label is a `<span>` inside a FULL-WIDTH BLOCK button, which is what lets the
+  underline hug the word while the COLUMN decides where the word sits — an inline-block button
+  would need its own alignment rule that could then disagree with the H2 above it.
+  `text-align: inherit` is required with it and is not tidy-up: the UA sheet centres button
+  contents outright, so without it the label ignores the column. Tabs are tertiary at rest, ink
+  + underline when chosen. **`select()` ends with `shell.measure()`** — the panels are different
+  heights, so a switch moves the page below the block and the seam has to be re-evaluated;
+  `NewsScreen.applyFilter` ends the same way for the same reason.
+
+  **ROUND 29: the column does not pin, and that costs almost nothing here.** The heading and the
+  five buttons share one column, so un-pinning the H2 un-pins the tabs with it. Measured before
+  accepting that: the panels are 837–872px and the whole block is **968px in a 900px viewport**,
+  so there are ~68px of scroll in which a pinned column would have behaved differently from a
+  travelling one. Round 28's own note — that this was the one block with runway — was true
+  against `--sec-pin`'s travel, not against the block's height. If a sixth space ever makes the
+  panels much taller, this is the decision to revisit, and the fix is to lift the H2 out of the
+  column so the tabs alone can pin.
+
+  `--sec-col-align` was that column's alignment escape hatch and is deleted with the pinning.
+  Nothing replaced it: `inherit` now resolves to the page's own `start`, which is exactly why
+  the label was written as `inherit` rather than as a value.
   A hidden panel is `display: none`, so its `loading="lazy"` photograph never fetches until
   first shown — one `pointerenter` warms it.
 

@@ -5582,3 +5582,50 @@ placement and not this round's.
 
 Verified: `tokens:check` + `tsc` + `vite build` clean, `lint:tokens` clean, `probe:heads` clean,
 `probe:headline` OK, `interact-test` clean, no 4xx on any of the six routes.
+
+### 29.1 — «Аренда» was never missing, it was never merged
+
+The client reported that «Аренда» had "gone back to a very previous look" — no tablist, no
+per-space panels, none of round 28's work. It had not been removed. **Round 29 was branched
+off a stale local `main`.**
+
+```
+  local main    cf2199a   «Музей»
+  origin/main   eb12731   «Аренда» joins the standard, and the cross lands centred (#14)
+```
+
+PR #14 had been merged upstream after the local snapshot, so the branch point predated the
+entire «Аренда» rework and `git diff main -- RentScreen.ts` showed round 29 touching exactly
+two lines of it. Both facts were true at once and only one of them was visible: nothing was
+deleted, and the page was still wrong.
+
+**The check that would have caught it costs one command.** `git log --oneline main..origin/main`
+before branching, or `git fetch` at all — `origin/main` had been ahead the whole session, and
+every `npm run build` passed because a stale branch point is not a broken one. The existing
+memory note for this project already says *the git state is never what you assume*; it was
+about force-pushes and a parallel session's `--amend`, and this is the same hazard from the
+third direction.
+
+Resolving it: `origin/main`'s `RentScreen.ts` taken whole, then round 29 re-applied to it —
+`gp-text` off four wrappers, `data-sticky-head` and `StickyHeads` out, `wideHead: false` on the
+form. Two things from round 28 had to survive rather than lose to HEAD, and both would have
+been silent losses:
+
+- **`.contacts-body` → `.page-flow`.** Round 28 generalised the flow-column class because
+  «Аренда» needed it three times. Taking HEAD's side of that hunk would have left «Контакты»
+  working and «Аренда»'s three panels with no vertical rhythm at all.
+- **`.rent-tab`'s `text-align: inherit`.** It reads the column's alignment, which used to be
+  `--sec-col-align` — a token round 29 deleted. Because it was written as `inherit` rather than
+  as a value, deleting the token was a no-op and the label simply follows the page's `start`
+  now. That is the difference between an escape hatch and a hard-coded centre.
+
+**The tab column stops pinning, and the number says that is fine.** Its H2 and its five buttons
+share one column, so un-pinning the heading un-pins the tabs. Panels measure 837–872px and the
+block is 968px against a 900px viewport, so there are ~68px of scroll across which a pinned
+column would have differed from a travelling one. Round 28 called this "the one block with
+runway" — true of `--sec-pin`'s travel, not of the block's height.
+
+`scripts/seam-probe.mjs` came with the merge and asserted the opposite of what now ships. It is
+inverted rather than deleted: four heading columns, none pinning, all agreeing on alignment, and
+the column measured travelling 500/500px with its body. The assertion round 28 actually cared
+about — three headings of one rank must not behave three ways — is the one that survives.
