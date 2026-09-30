@@ -138,31 +138,90 @@ explained. `.anchor-outer` / `.anchor-inner` are deleted.
   designer's own `(1142 − 2×24)/3 = 364.67` falls straight out of it.
 - **`RentScreen`'s empty `col-l` spacer is gone** — it existed only to push content right,
   which `.col-main` now names directly.
-- **«Аренда»'s five spaces are a segmented control (round 28).** A vertical `role="tablist"` in
-  the left heading column under an H2 «Помещения»; `.col-main` holds all five panels with four
-  `hidden`. The label is a `<span>` inside a FULL-WIDTH BLOCK button, which is what lets the
-  underline hug the word while the COLUMN decides where the word sits — an inline-block button
-  would need its own alignment rule that could then disagree with the H2 above it.
-  `text-align: inherit` is required with it and is not tidy-up: the UA sheet centres button
-  contents outright, so without it the label ignores the column. Tabs are tertiary at rest, ink
-  + underline when chosen. **`select()` ends with `shell.measure()`** — the panels are different
-  heights, so a switch moves the page below the block and the seam has to be re-evaluated;
-  `NewsScreen.applyFilter` ends the same way for the same reason.
+- **«Аренда»'s spaces were a segmented control (rounds 28–32).** A vertical `role="tablist"`
+  with one panel showing. **Round 32.1 deleted it** for a card per space, grouped by business —
+  see below. What it taught survives: a label that must follow its column is a `<span>` in a
+  full-width button with `text-align: inherit` (the UA centres button contents), and anything
+  that changes the page's height ends with `shell.measure()`.
 
-  **ROUND 29: the column does not pin, and that costs almost nothing here.** The heading and the
-  five buttons share one column, so un-pinning the H2 un-pins the tabs with it. Measured before
-  accepting that: the panels are 837–872px and the whole block is **968px in a 900px viewport**,
-  so there are ~68px of scroll in which a pinned column would have behaved differently from a
-  travelling one. Round 28's own note — that this was the one block with runway — was true
-  against `--sec-pin`'s travel, not against the block's height. If a sixth space ever makes the
-  panels much taller, this is the decision to revisit, and the fix is to lift the H2 out of the
-  column so the tabs alone can pin.
+### «Аренда» is the designer's page (rounds 32 → 32.2)
 
-  `--sec-col-align` was that column's alignment escape hatch and is deleted with the pinning.
-  Nothing replaced it: `inherit` now resolves to the page's own `start`, which is exactly why
-  the label was written as `inherit` rather than as a value.
-  A hidden panel is `display: none`, so its `loading="lazy"` photograph never fetches until
-  first shown — one `pointerenter` warms it.
+Round 32 put the real inventory on this page: **`src/shared/estate.ts`**, one record per thing
+a tenant can sign for. The map's drawer reads it too, so the two cannot quote different
+figures. Round 32.1 made the page a leasing tool. **Round 32.2 rebuilt it on the designer's own
+page (Figma `1320:112`) and card (`card-rental-space`, `1335:1561`).**
+
+The page is three files:
+- `RentScreen.ts`: composition, tabs and deep links.
+- `rentCard.ts`: one card.
+- `rentCopy.ts`: the page's own words.
+
+**The page, in order:**
+1. The head, with the designer's lead.
+2. «Кресты — точка притяжения активности»: five facts in ONE column, a Factoid over a Caption
+   Big label, then a line of prose.
+3. **Five tabs**, H2-sized, in `.col-aside`:
+   - «Открыть ресторан или кофейню»
+   - «Снять офис»
+   - «Открыть магазин»
+   - «Помещение под СПА и фитнес»
+   - «Пространства для мероприятий»
+
+   Each tab has a panel in `.col-main`: its line with a computed area range, then its cards in
+   one column, 64 apart.
+4. «Об аренде»: three sentences on fit-out, terraces and parking.
+5. The form, headed «Контакты», with its own first line via `ContactFormCopy.lead`. The other
+   pages keep the default.
+
+**What round 32.2 removed:** «Территория» (the aerial with a point per space, `rentTerritory.ts`),
+«Как арендовать» (the steps and «Уточним по запросу») and «Состояние помещений»'s five fit-out
+rows. The designer's page has none of them.
+
+- **Five categories, 20 cards from 15 offers.** `Offer.roles` lists each category an offer
+  serves: food, office, retail, wellness and events.
+  - A mixed building is a card in each tab it serves, framed by `Role.floors`. М1's restaurant
+    reads «1 этаж», its offices «2–3 этажи».
+  - A role may carry its own `name` and `area` (Д's pavilion, 288 м²).
+  - Counts per tab: 6 / 9 / 1 / 1 / 3.
+- **The card is the designer's.** Measured against `1335:1561` to the pixel:
+  - photo, 24, name (H3), 8, place (Caption Small, tertiary), 24
+  - area (Factoid) and «+ …» (H3) on one baseline, 24
+  - facts, 24, body (Base), 32, button
+  - Facts are a wrapping flex, `flex: 1 0 0; min-width: 240px`, with `space-between` and no
+    column gap, so two cells sit at 279.67.
+  - Two deliberate departures, both for text the frame never had to fit:
+    - The size row WRAPS where the frame says `nowrap` («1 670 м² + павильон для мероприятий
+      288 м²» is ~830px).
+    - The fact values wrap inside their cell.
+- **Formats of the facts:**
+  - «Этажность» is the role's floors, otherwise the building's, as «N этаж/этажа/этажей + подвал
+    и чердак» (`cardFloors`).
+  - «Отделка» uses `FINISHES[*].card`, which drops the word «отделка».
+  - **The fourth cell appears only where it decides the lease** (`keyFact`): parking on office
+    cards, the pavilion's 4 m ceilings, the stage's 80 kW, the SPA's engineering plan. Parking
+    elsewhere and all the notes were taken off by the designer; they are still in the data.
+- **Tabs:** a `role="tablist"` with a roving tabindex and the arrow keys, Home and End.
+  - The tablist carries `aria-label` «Для какого бизнеса», because the designer drew no H2
+    over the tabs.
+  - All panels are in the DOM, all but one `hidden`. A switch calls `shell.measure()`, because
+    the panels differ in height by thousands of pixels.
+- **Deep links: `#rent/<slug>`** open the tab of the slug's FIRST role, then land on the card
+  and flash it. М1 opens restaurants; `e1-spa` opens «СПА и фитнес». The map drawer's «Аренда»
+  relies on this. Arrival and `hashchange` land instantly.
+- **On a phone, two sizes are capped by their longest word:** `--type-factoid-fit-size` and
+  `--type-h2-fit-size` in `tokens.css`. At 360, «посетителей» and «мероприятий» otherwise clip
+  against the 344px column. Both equal the token above ~500px. Stacked below 1160, the tabs get
+  a 32px gap above their panel, because the page grid has no row gap.
+- **The copy in the head and the facts is the designer's.** `rentCopy.ts` flags the figures no
+  source holds: «1 миллион посетителей», and «800» and «300», which are our unconfirmed
+  estimates.
+- **`npm run probe:seam`** asserts:
+  - the five tabs, 6 / 9 / 1 / 1 / 3, one panel shown, the keyboard
+  - on every tab: one column, every photo a reserved 3:2 box, nothing overflowing
+  - both deep links and the form prefill
+  - no aerial, no steps, no litera
+
+  It also checks the drawer against its Figma frame (CONCEPT_MAP).
 
 ### The flow column — `.page-flow`
 

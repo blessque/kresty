@@ -5891,3 +5891,170 @@ probe rejected or nothing in 10 s (counted from nearing the viewport — the ifr
 Verified both: normal → `ready`, frame opacity 1; Yandex aborted → `failed`, «Карта не
 загрузилась» + the link.
 
+
+## Round 32 (2026-09-28) — the rental inventory, tied across «Аренда» and the map
+
+The client dropped two files into `references/`: `rent-spreadsheet.xlsx` (what is let, on what
+terms; red rows booked) and `57–126-for-claude.pdf` (НИиПИ «Спецреставрация», which litera is
+which building, with renders). «Аренда» was rebuilt on them, the map's names were re-derived
+from them, and Лит Б's roof stopped being a building of its own.
+
+**Decisions, with the reason each was taken:**
+
+- **Offers stay separate — fifteen tabs, grouped into three addresses, not merged into lots.**
+  A tenant signs for a building (or a named part of one), and every number that decides it —
+  area, terraces, parking, fit-out, one company or several — is per building. Lots would hide
+  exactly those. The grouping (Набережная · Улица Комсомола · Внутри квартала) is by ADDRESS
+  because on this site the address is the profile: offices with the Neva in the window on the
+  embankment, shopfronts and terraces on ул. Комсомола, food and leisure beside the two hotels
+  inside. A use filter was considered and not built — the groups already are one.
+- **Terraces are a field of their building**, never an offer: the client's rule, stated in the
+  spreadsheet («сдаётся вместе с террасами»).
+- **Е1's restaurant and SPA are offers**, although inside a Cosmos hotel: their rows are not red
+  («отдельный арендатор»). Е3 has nothing to let; its summer stage («УК/Отдельный оператор»,
+  550 м², 80 kW) is listed as an offer for an operator.
+- **One inventory, `shared/estate.ts`**, read by both screens — so `offerSummary()` is also one
+  function. For an hour the drawer quoted М2 at 985 м² (interior + terraces) against the tab's
+  768: two formatters, each reasonable, disagreeing.
+- **The aerial is the photoreal `overview.webp`**, not the 3D map (Three.js may not leave
+  `screens/concept/`) and not the deck's line axonometry (p40 — clean, but a drawing where the
+  page needs to sell).
+
+**Measured, not read:**
+
+- **Litera → part** by an affine fit of the deck's key plan onto GLB space, anchored on the two
+  cross centres. Both deck readers agreed and every litera landed inside one part. Five map
+  names were wrong as a result, `b12` «Котельная» the loudest (it is М2; the chimney is О's).
+- **`b17` is `b10`'s roof** — starts at b10's top (y 0.83), same footprint inset ~0.03. Folded
+  by an explicit `MERGE` after id assignment; see CONCEPT_MAP.
+
+**Four traps this round, each of which produced a plausible wrong answer:**
+
+1. **Extracting the deck's JPEGs.** No poppler, so the DCT streams were copied straight out of
+   the PDF — lossless, up to 4096px. Walking a page's resources by following every `N 0 R`
+   ALSO follows `/Parent` up to the page tree, so every image on the deck was attributed to
+   page 1 by the first page walked. Strip `/Parent` and skip the `/Pages` node. Several render
+   pages hide their images inside Form XObjects with nested resource dicts, which a
+   `/XObject <<…>>` regex misses — recurse through references instead.
+2. **The spreadsheet's drawings are anchored one row BELOW their litera** in places (merged
+   cells; an anchor's `row` is 0-based). Map them by content, not by row arithmetic alone.
+   `image16` (the summer stage) is a mood photograph of another city's bandstand, not the
+   project — not used.
+3. **A same-route hash change is invisible to the router.** `#rent/b` → `#rent/m1` returns
+   early on `route === current`; the screen listens to `hashchange` itself. The seam probe's
+   first version of this check PASSED at «panel top −2894px» because it only bounded one side.
+4. **Stacked below 1160 the panel is under fifteen tabs**, so «land on the directory» leaves it
+   off screen: land on the panel there. And a pin must select WITHOUT scrolling, or the phone
+   scrolls away from the zoom it just asked for.
+
+**Also:** `bindShortWords` now binds a dash to the word before it (a line opened with «— под
+офисы»). `spec:figma` before/after: article, contacts, museum and news unchanged in geometry;
+«О Крестах» differs only in the two edited map captions.
+
+**Open for the client:** the yellow cells (А «КВС-Коворкинг», Д's event pavilion) are shown as
+offers; tenant counts for the multi-tenant buildings are unknown; П, М2 and the stage have no
+render; the stage's position is «при Е3» and nothing more; all copy is ours, `TODO(copy)`.
+
+## Round 32.1 (2026-09-29) — «Аренда» as a leasing tool; the drawer from Figma `1268:340`
+
+The client's verdict on round 32: *technically right, but empathically the same spreadsheet
+but in web.* They supplied a leasing brief: the tenant's first question is «is this for my
+business?», and the page should progressively answer «relevant?» → «which space?» → «can I
+operate there?» → «what do I do now?» without inventing a rent, a tenant or a visitor count.
+For the map, they said it is for visitors first, and that no rent links or buttons go there
+beyond the designer's frame `1268:340`.
+
+**Decisions, with the reason each was taken:**
+
+- **Grouped by BUSINESS, not by address.** This reverses round 32's call, for the brief's
+  reason: «can my business work here» comes before «where». There are four categories (food,
+  office, retail, leisure). A mixed building is a card in EACH category it serves, framed by
+  its own floors, so 15 offers make 20 cards. The user chose category sections with every card
+  visible over a filter; offering the choice was justified, because both were sound.
+- **Every card visible, no tabs.** A tenant compares; a tablist shows one space at a time.
+  Cards are two abreast on `.col-full`, so each is five columns. Three abreast would be 3⅓.
+- **Ink hierarchy, no colour** (the user's answer). The «О Крестах» category palette (garnet,
+  emerald, amethyst, navy) was offered and declined. So the page is not grey through tone; it
+  is hierarchy through SIZE: Factoid counts, H3 names, H2-size areas, Caption Big values.
+  Secondary grey is only for true metadata; tertiary only draws the rules.
+- **No litera, no history kicker, no drawings.** The litera is the survey's index. The
+  axonometries and plan sheets were "low fidelity and cheap" (the client), so 20 webps were
+  deleted. П and М2, which the deck never rendered, lead with crops of the aerial render around
+  their pins. О and the rotunda lead with the interior renders round 32 had extracted but never
+  used, because a restaurateur wants the room.
+- **The unknowns are named.** Rents, the first stage's dates and engineering are one
+  «Уточним по запросу» line. The fit-outs became «Состояние помещений»: what is handed over and
+  what is left, per level, with the spaces it covers. That is the brief's «estimate the
+  complexity of entering», from data the spreadsheet does hold.
+- **The aerial lost its zoom and the 4000px tier.** The zoom showed a building while a tab
+  described it. Now a point lands on its card, and the neighbours are the only names on the
+  picture.
+- **The drawer is the designer's frame for every building.** It shows a star-cut photograph,
+  the name, one visitor sentence, and «Аренда» only where something is free. The residents'
+  list stays where there is no rent to offer, or where an operator runs the building (the
+  hotels). Thirteen names and briefs were rewritten for guests; К is the frame's own
+  «Торговая галерея».
+
+**Measured:** the drawer matches `1268:340` to the pixel at 1440×900: star (87, 130), name
+y 522, button (199, 713), close (1368, 32). `probe:seam` now asserts this.
+`spec:figma` before/after: article, concept, contacts, museum and news are byte-identical, and
+only rent differs.
+
+**Two traps, both timing, both in the probe:**
+
+1. **A taller page starved the seam sampler.** `SAMPLER` records a fixed 1s window. At 0.8
+   viewport per step, the ~2× taller «Аренда» reached the seam AFTER the window closed, so it
+   recorded the resting stage: 0.0px for BOTH formulas, which is exactly what a dead probe
+   looks like. The fix is to pre-scroll to five viewports above the bottom. That is still above
+   the three-viewport zone, so the crossing stays a real scroll. With that change the
+   screenshot centroid reads about −44px at 1440 on every route, the untouched ones included.
+   This is corroboration inside its deliberately loose ±60 bound, not the seam; the exact
+   per-frame check is 0.0px.
+2. **A smooth scroll outlasts a fixed wait.** `#rent/m1` via `hashchange` scrolled smoothly
+   across the whole page and read «card top −3564px» 600ms later. An address is a place, so it
+   now lands instantly. The probe waits for the scroller to SETTLE rather than for a fixed time.
+
+**Open for the client:** all copy is still ours (`TODO(copy)`), including the thirteen map
+briefs. «Открыт первый этап аренды» is the brief's premise, not a source's. The summer stage
+still has no render or exact position.
+
+## Round 32.2 (2026-09-30) — «Аренда» on the designer's page and card
+
+The designer redesigned the top of the page in Figma (`1320:112`) and built the card component
+`card-rental-space` (`1335:1561`). Both the web and the Figma layouts now follow them.
+
+**Decisions**, all the designer's, asked where the frame was silent:
+- **Five tabs, one column of cards.** The categories are said as tasks, and a mixed building
+  is a card in each tab it serves.
+- **The shops got their own tab.** Retail had no tab in the first draft; the designer added
+  «Открыть магазин».
+- **«Территория» and «Как арендовать» are removed.** Later the designer also replaced
+  «Состояние помещений» with three sentences, «Об аренде», and retitled the form «Контакты».
+  The page follows the frame's latest state.
+- **The card shows only Формат · Этажность · Отделка.** A fourth cell appears only where it
+  decides the lease: an office's parking, the pavilion's ceiling, the stage's power, the SPA's
+  engineering.
+
+**Measured:** the web card matches the component to the pixel at 1440 (24/8/24/24/24, cells
+279.67, the button 32 under the body). `spec:figma` before/after: article, concept, contacts,
+museum and news are byte-identical.
+
+**Four traps, each of which read as something else:**
+1. **A deleted image broke two pages I had not touched.** `overview.webp` looked referenced
+   only by the aerial, but a grep for the FILENAME missed «Новости» and «Новость», which name
+   it bare (`pic('overview', …)`). The spec diff caught it: `naturalW: 0`, `is-failed`.
+   **Grep for the stem, not the filename, before deleting an asset.** The file is restored.
+2. **A Figma paint bound to a variable still renders its stored colour.**
+   `setBoundVariableForPaint` on a black placeholder kept `{0,0,0}`, and the state frames'
+   inactive tabs rendered dark while every binding read tertiary. Resolve the variable
+   (`resolveForConsumer`) and store that colour together with the binding.
+3. **The designer's fact values are auto-width.** «Несколько арендаторов» is 284px in a
+   279.67px cell and ran under its neighbour. The fact texts now fill their cell and grow in
+   height, as the web does.
+4. **`lint:tokens` rejects `min()` font sizes** («use --type-*-size»). The phone caps became
+   named tokens in `tokens.css`, declared on `:root` on purpose: `var()` inside a custom
+   property is substituted where it is declared.
+
+**Flags in the designer's copy:** «1 миллион посетителей / половина … в гастроквартал» has no
+source; «800» and «300» are our estimates, never confirmed; «10 минут» hasn't been walked on a
+map.

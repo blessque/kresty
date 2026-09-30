@@ -100,7 +100,7 @@ export function splitConnectedParts(geometries: THREE.BufferGeometry[]): Buildin
     merged.set(best, list);
   }
 
-  return keep.map((p, i) => {
+  const parts = keep.map((p, i) => {
     const extras = merged.get(i);
     const geometry = extras ? concat([p.geometry, ...extras]) : p.geometry;
     if (extras) p.geometry.dispose();
@@ -113,6 +113,50 @@ export function splitConnectedParts(geometries: THREE.BufferGeometry[]): Buildin
       axisAngle: p.axisAngle,
     };
   });
+  return mergeNamed(parts);
+}
+
+/**
+ * Parts that are ONE BUILDING but cannot weld, keyed source → target.
+ *
+ * ROUND 32. `b17` is Лит Б's roof. It starts exactly where `b10`'s walls stop
+ * (y 0.83), its footprint is b10's inset by ~0.03 a side, and it is a separate
+ * component only because it sits in the GLB's OTHER primitive — and welding
+ * never crosses primitives (`connectedComponents` runs per geometry). So the
+ * map offered «Офисы на набережной» and, on top of it, a 0.21-high «Офисный
+ * корпус» that was its own roof.
+ *
+ * Applied AFTER ids are assigned, never by raising `MIN_TRIS`: the roof has 48
+ * tris and the pier `b18` has 46, so a threshold that swallowed one would drop
+ * the other and renumber from there. Here no id moves — `b17` simply stops
+ * existing, and `b18` is still the pier.
+ *
+ * The target keeps its own `triCount` and `axisAngle` (the body decides which
+ * way the building faces); its box and centroid grow to include the roof, so
+ * the focus camera frames the whole house.
+ */
+const MERGE: Record<string, string> = { b17: 'b10' };
+
+function mergeNamed(parts: BuildingPart[]): BuildingPart[] {
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  for (const [src, dst] of Object.entries(MERGE)) {
+    const a = byId.get(src);
+    const b = byId.get(dst);
+    // a re-exported GLB that re-keys the ids must not merge the wrong pair
+    // silently — but it must not take the map down either
+    if (!a || !b) {
+      console.warn(`[kresty] map: merge ${src} → ${dst} skipped, part missing`);
+      continue;
+    }
+    const geometry = concat([b.geometry, a.geometry]);
+    b.geometry.dispose();
+    a.geometry.dispose();
+    b.geometry = geometry;
+    b.bbox = b.bbox.clone().union(a.bbox);
+    b.centroid = b.bbox.getCenter(new THREE.Vector3());
+    byId.delete(src);
+  }
+  return parts.filter((p) => byId.get(p.id) === p);
 }
 
 // ---------------------------------------------------------------- internals

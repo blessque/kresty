@@ -556,47 +556,49 @@
 
 /* ── «Аренда» ────────────────────────────────────────────────────────────── */
 
+/* ROUND 32.2 — THE DESIGNER'S PAGE AND CARD (Figma `1320:112`, `1335:1561`).
+   An INK HIERARCHY with no added colour (the client's call, round 32.1): what a
+   tenant decides on is main ink at Factoid/H2/H3 size; tertiary is for labels
+   and where a space stands; secondary only for a hover. */
+
+/* «Кресты — точка притяжения активности» — five facts in ONE column. The figure
+   is words as well as digits («1 миллион посетителей»), so it wraps like any
+   heading; `column-reverse` puts it above its label while the markup keeps
+   `dt` first, as a `dl` must. */
 .rent-stats {
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-block);
 }
 .rent-stat {
-  margin: 0 0 var(--sp-text);
-}
-.rent-stat:last-child {
-  margin-bottom: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  min-width: 0;
 }
 .rent-stat dt {
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
-  color: var(--color-text-onlight-secondary);
 }
-/* «2500 м²», «9000 чел.» — these are the designer's FACTOID style (72/110%),
-   which had no token until round 27 and was standing in as H2. Now that the
-   token exists they are the thing it was named for. */
 .rent-stat dd {
-  margin: var(--sp-tight) 0 0;
+  margin: 0;
   font-family: var(--font-family-display);
   font-weight: var(--type-factoid-weight);
   font-size: var(--type-factoid-size);
   line-height: var(--type-factoid-lh);
 }
-/* ── the spaces, as the segmented control they are drawn as (round 28) ─────
-   Five names in the sticky heading column; the chosen one fills `.col-main`.
-   They used to be a `<ul>` beside one fixed photograph.
 
-   THE LABEL IS A SPAN INSIDE A FULL-WIDTH BLOCK BUTTON. That is what lets the
-   underline hug the word while the COLUMN decides where the word sits — an
-   inline-block button would need its own alignment rule, which could then
-   disagree with the H2 above it. `text-align: inherit` is required for the same
-   reason and is not tidy-up: the UA sheet centres button contents outright, so
-   without it the label ignores the column entirely.
+/* ── the five tabs ───────────────────────────────────────────────────────────
+   H2 type, because the tabs ARE this block's heading. Tertiary at rest, ink when
+   chosen — colour alone marks the tab (round 32.2 took the underline off).
 
-   ROUND 29: the column is left-aligned and no longer pins, so the escape hatch
-   this used to read (`--sec-col-align`) is deleted. `inherit` now resolves to
-   the page's own `start`, which is the whole point of having written it as
-   `inherit` rather than as a value. */
+   THE LABEL IS A SPAN INSIDE A FULL-WIDTH BLOCK BUTTON (round 28): the column
+   decides where the words sit, and `text-align: inherit` is required because
+   the UA centres button contents outright. */
 .rent-tabs {
-  margin-top: var(--sp-text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-text);
 }
 .rent-tab {
   display: block;
@@ -604,33 +606,18 @@
   padding: 0;
   text-align: inherit;
   font-family: var(--font-family-display);
-  /* stated, never inherited: on Chromius's 50/120/232 axis the UA's `normal`
-     clamps to 232 = Black, and `font: inherit` in global.css does not carry a
-     weight a form control will honour. That bug has shipped twice here. */
-  font-weight: var(--type-h3-weight);
-  font-size: var(--type-h3-size);
-  line-height: var(--type-h3-lh);
-  /* TERTIARY at rest, ink when chosen — the client's call. Not the blue the
-     «Новости» filters take: this control sits directly under an H2 of the same
-     family, and five blue names there read as five links out of the page.
-     `global.css` gives every <button> `color: inherit`, so an interactive
-     element is ink-by-default unless a rule says otherwise. */
+  /* stated, never inherited: a form control's `normal` clamps to Black on
+     Chromius's 50/120/232 axis. That bug has shipped twice here. */
+  font-weight: var(--type-h2-weight);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
   color: var(--color-text-onlight-tertiary);
+  cursor: pointer;
   transition: color 240ms var(--ease-out);
-}
-.rent-tab + .rent-tab {
-  margin-top: var(--sp-tight);
-}
-/* the underline is DRAWN, not toggled, so the transition has something to move */
-.rent-tab > span {
-  border-bottom: 2px solid transparent;
-  transition: border-color 240ms var(--ease-out);
 }
 .rent-tab.on {
   color: var(--color-text-onlight-main);
-}
-.rent-tab.on > span {
-  border-bottom-color: currentColor;
+  cursor: default;
 }
 @media (hover: hover) and (pointer: fine) {
   .rent-tab:not(.on):hover {
@@ -638,21 +625,38 @@
   }
 }
 
-/* ── a space's panel ──────────────────────────────────────────────────────── */
-
-/* The explicit guard `.news-card[hidden]` needs too: `hidden` is only a UA
-   default, and any later `display` rule on the element outranks it. */
-.rent-space[hidden] {
+/* A panel: its line, then its cards in one column. The explicit guard: `hidden`
+   is only a UA default and the `display` below would outrank it. */
+.rent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-text);
+}
+.rent-panel[hidden] {
   display: none;
 }
-/* 3:2, the shape the News card settled on, and the shape these renders actually
-   are (2400×1600) — so nothing is cropped away. It fills `.col-main`'s five
-   columns rather than sitting at a fixed 559 with slack beside it.
+.rent-panel > .page-prose {
+  margin: 0;
+}
+.rent-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-block);
+}
 
-   `height: auto` IS LOAD-BEARING. The `height="1600"` attribute lands as a
-   presentational hint, an explicit height outranks `aspect-ratio`, and that is
-   exactly what rendered the news card 559×1600 in round 27 — see the
-   post-mortem on `.news-card__img` above. */
+/* ── the card — `card-rental-space` ──────────────────────────────────────────
+   24 between groups, as the component's auto layout; the footer's 32 between
+   body and button is 24 + the body's 8. */
+.rent-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0; /* Russian min-content: one long word must not widen a track */
+}
+/* 3:2, the shape every render was cut to. `height: auto` IS LOAD-BEARING: the
+   `height` attribute is a presentational hint that outranks `aspect-ratio` —
+   the round-27 news card rendered 559×1600 that way. */
 .rent-photo {
   display: block;
   width: 100%;
@@ -660,26 +664,126 @@
   aspect-ratio: 3 / 2;
   object-fit: cover;
 }
-/* A space's two figures, side by side and SMALL — Caption Big, not the Factoid.
-   The Factoid is 72px and this column is 559 at the design frame, so two of them
-   abreast do not fit and one per line would shout louder than the H2 beside it.
-   The page's one headline number belongs to «Общая информация». */
-.rent-facts {
+.rent-card__head {
   display: flex;
-  gap: var(--grid-gutter);
+  flex-direction: column;
+  gap: 8px;
 }
-.rent-fact {
-  flex: 1 1 0;
+.rent-card__name {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
 }
-.rent-fact dt {
+.rent-card__place {
+  margin: 0;
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
+  color: var(--color-text-onlight-tertiary);
+}
+/* The area and what comes with it, on ONE BASELINE. It WRAPS where the frame
+   says `nowrap`: «1 670 м² + павильон для мероприятий 288 м²» is ~830px at these
+   sizes and the column is 559. */
+.rent-card__size {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  font-family: var(--font-family-display);
+}
+.rent-card__area {
+  font-weight: var(--type-factoid-weight);
+  font-size: var(--type-factoid-size);
+  line-height: var(--type-factoid-lh);
+  white-space: nowrap;
+}
+.rent-card__extra {
+  font-weight: var(--type-h3-weight);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+}
+/* Two cells a row with no column gap, exactly as the frame: each cell grows
+   from 0 with a 240px floor, and `space-between` parks them at the halves. A
+   lone third cell takes the whole row; on a phone every cell has a row. */
+.rent-card__facts {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  row-gap: 24px;
+}
+.rent-card__fact {
+  flex: 1 0 0;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rent-card__fact dt {
+  font-size: var(--type-caption-sm-size);
+  line-height: var(--type-caption-sm-lh);
+  color: var(--color-text-onlight-tertiary);
+}
+.rent-card__fact dd {
+  margin: 0;
   font-size: var(--type-caption-big-size);
   line-height: var(--type-caption-big-lh);
-  color: var(--color-text-onlight-secondary);
 }
-.rent-fact dd {
-  margin: var(--sp-tight) 0 0;
-  font-size: var(--type-caption-big-size);
-  line-height: var(--type-caption-big-lh);
+.rent-card__body {
+  margin: 0 0 8px;
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-lh);
+}
+.rent-card__cta {
+  align-self: flex-start;
+}
+/* a landing from a deep link: the card glows once, then settles, in the link
+   blue thinned on the page */
+.rent-card--flash::after {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-link) 14%, transparent);
+  animation: rent-flash 1.8s var(--ease-out) forwards;
+}
+@keyframes rent-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rent-card--flash::after {
+    animation-duration: 0.01s;
+  }
+}
+
+/* ── on a phone ──────────────────────────────────────────────────────────────
+   THE LONGEST WORD SETS THE SIZE, not the token. «посетителей» is ~6.5em and
+   «мероприятий» ~8.7em of their own size, so at 360 the Factoid clips at 400px
+   and the tab at 348px against a 344px column. `min(token, vw)` caps each to
+   what one word can occupy and is the token itself above ~500px, so desktop is
+   untouched (the two `--type-*-fit-size` tokens in tokens.css). The tabs are H2-SIZED CONTROLS, not H2s — «H2 is 40px on every
+   page» is about headings, and this is the one place a heading-sized word has
+   to fit a phone. Stacked, the tabs also need their gap above the panel: the
+   page grid has no row gap. */
+@media (max-width: 1160px) {
+  .rent-dir > .col-aside {
+    margin-bottom: var(--sp-text);
+  }
+}
+@media (max-width: 640px) {
+  .rent-stat dd {
+    font-size: var(--type-factoid-fit-size);
+  }
+  .rent-tab {
+    font-size: var(--type-h2-fit-size);
+  }
 }
 
 /* ── «Контакты» ──────────────────────────────────────────────────────────── */

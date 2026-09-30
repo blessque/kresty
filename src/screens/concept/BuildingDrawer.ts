@@ -1,10 +1,11 @@
-import { infoFor, type BuildingInfo, type Resident } from './buildingsInfo';
+import { infoFor, type Resident } from './buildingsInfo';
 import { bindShortWords } from '../../shared/ruTypography';
 import { escapeHtml } from '../../shared/escapeHtml';
 import { asset } from '../../shared/assetUrl';
+import { offersOn } from '../../shared/estate';
 
 /**
- * Left-side drawer listing a building's residents.
+ * Left-side drawer: one building, said to a VISITOR.
  *
  * Owns its own DOM and nothing else — ConceptScreen calls open()/close() and
  * reads `isOpen` / `hovered` so it can freeze the plan's lean while the pointer
@@ -12,10 +13,19 @@ import { asset } from '../../shared/assetUrl';
  * whole screen, and DEADZONE is 0, so without this the plan would keep tilting
  * while you read).
  *
- * ROUND 10.3 layout: a photographic hero carrying the operator's wordmark, the
- * close control over it, then the reading column. Buildings without a photo
- * (everything but the two hotels so far) open straight into the column — the
- * hero is optional by construction, not a hole to fill.
+ * ROUND 32.1 — THE DESIGNER'S FRAME `1268:340`, for every building. No opaque
+ * panel any more: a white fade rises out of the left edge and a centred column
+ * sits in it — a star-cut photograph, the name, one sentence, and «Аренда» only
+ * where something is free to let. The close moved to the screen's corner.
+ *
+ * THE MAP IS FOR GUESTS FIRST (the client's rule). Round 32 put a tenant's
+ * listing in here — «Свободно для аренды», areas, formats — and it read as a
+ * leasing sheet on a map people open to find a restaurant. The figures live on
+ * «Аренда»; the drawer only says the way there.
+ *
+ * The resident list survives where the frame has no rent to offer instead, or
+ * where an operator runs the building: the hotels, the church, the pier and the
+ * parking. A rentable building IS the designer's frame, which has no list.
  */
 
 /**
@@ -28,8 +38,8 @@ import { asset } from '../../shared/assetUrl';
  * and costs two paths. The geometry is copied verbatim from the designer's
  * files — only the hard-coded `white` / `#36A0FF` became `currentColor`.
  */
-const ICON_CLOSE = `<svg viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
-  <path d="M4 16L10 10M10 10L16 4M10 10L16 16M10 10L4 4" stroke="currentColor" stroke-width="1.84615"/>
+const ICON_CLOSE = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+  <path d="M2 14L14 2M14 14L2 2" stroke="currentColor" stroke-width="2"/>
 </svg>`;
 
 export class BuildingDrawer {
@@ -38,6 +48,8 @@ export class BuildingDrawer {
   /** pointer is over the panel — the caller should not lean the plan */
   hovered = false;
   onClose: () => void = () => {};
+  /** «Аренда» — the screen routes this to `#rent/<slug>` */
+  onRent: (slug: string) => void = () => {};
 
   private el: HTMLElement;
 
@@ -52,7 +64,10 @@ export class BuildingDrawer {
     // clicks inside must not fall through to the map's deselect handler
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.bld-close')) this.close();
+      const target = e.target as HTMLElement;
+      if (target.closest('.bld-close')) this.close();
+      const lease = target.closest<HTMLElement>('[data-rent]');
+      if (lease?.dataset.rent) this.onRent(lease.dataset.rent);
     });
 
     addEventListener('keydown', this.onKey);
@@ -72,26 +87,34 @@ export class BuildingDrawer {
     if (this.id === id) return;
     this.id = id;
     const info = infoFor(id);
+    const offers = offersOn(id);
 
-    const rows = info.residents.length
-      ? info.residents.map(row).join('')
-      : `<li class="bld-row bld-empty">${t('Список резидентов уточняется')}</li>`;
+    const listed = !offers.length || info.logo;
+    const rows = listed && info.residents.length ? info.residents.map(row).join('') : '';
 
-    // ROUND 18 cut the grey `kind` line that used to stand above the heading.
     // The operator wordmark stays — it is a brand mark rather than a caption,
     // and it is the only thing that distinguishes the two hotels at a glance.
     const mark = info.logo
       ? `<img class="bld-logo" src="${escapeHtml(asset(info.logo))}" alt="" aria-hidden="true">`
       : '';
 
+    // one button however many offers a building holds: it names the first, and
+    // «Аренда» lands on that card — the rest are on the same page
+    const rent = offers.length
+      ? `<button class="btn btn--onlight bld-rent" type="button" data-rent="${escapeHtml(offers[0].slug)}">Аренда</button>`
+      : '';
+
     this.el.innerHTML = `
       <div class="bld-scroll">
-        ${hero(info)}
         <div class="bld-body">
-          ${mark}
-          <h3 class="bld-name">${t(info.name)}</h3>
-          <p class="bld-brief">${t(info.brief)}</p>
-          <ul class="bld-list">${rows}</ul>
+          ${star(info.photo ?? offers[0]?.photo.src)}
+          <div class="bld-text">
+            ${mark}
+            <h3 class="bld-name">${t(info.name)}</h3>
+            <p class="bld-brief">${t(info.brief)}</p>
+          </div>
+          ${rows ? `<ul class="bld-list">${rows}</ul>` : ''}
+          ${rent}
         </div>
       </div>
       <button class="bld-close" type="button" aria-label="Закрыть">${ICON_CLOSE}</button>
@@ -122,11 +145,16 @@ export class BuildingDrawer {
   };
 }
 
-/** the photographic header */
-function hero(info: BuildingInfo): string {
-  if (!info.photo) return '';
-  return `<div class="bld-hero">
-    <img class="bld-photo shimmer" src="${escapeHtml(asset(info.photo))}" alt="" aria-hidden="true">
+/**
+ * The photograph, cut to the site's four-point star (the designer's `Star 2` is
+ * the same drawing as the 12px bullet, `src/assets/star-bullet.svg`, at 360).
+ * A building with no photo of its own borrows its first offer's render; the
+ * church, the pier and the parking have neither and open straight on the name.
+ */
+function star(photo: string | undefined): string {
+  if (!photo) return '';
+  return `<div class="bld-star">
+    <img class="bld-photo shimmer" src="${escapeHtml(asset(photo))}" alt="" aria-hidden="true">
   </div>`;
 }
 
@@ -144,13 +172,17 @@ function row(r: Resident): string {
   // there would be wrong as well as noisy. The Figma shows it as a plain
   // two-line entry with nothing in the right column.
   const floor =
-    r.type === 'hotel'
-      ? ''
-      : `<span class="bld-floor">${t(r.floor === 0 ? '1 этаж' : r.floor + 1 + ' этаж')}</span>`;
+    r.type === 'hotel' ? '' : `<span class="bld-floor">${t(storeys(r))}</span>`;
   // a resident that stands for many units («Номера», count 126) says so —
   // otherwise the drawer would flatten 126 rooms into one anonymous line
   const label = r.count && r.count > 1 ? t(`${r.label} · ${r.count}`) : t(r.label);
   return `<li class="bld-row"><span class="bld-resident">${label}</span>${floor}</li>`;
+}
+
+/** «1 этаж», or «1–3 этажи» for a resident that spans several */
+function storeys(r: Resident): string {
+  if (r.to === undefined || r.to === r.floor) return `${r.floor + 1} этаж`;
+  return `${r.floor + 1}–${r.to + 1} этажи`;
 }
 
 /** bind short words, then escape — every string the drawer renders goes through

@@ -16,7 +16,7 @@ import type { Route, Screen } from '../router';
  */
 export abstract class ContentScreen implements Screen {
   readonly shell: PageShell;
-  onNavigate: (to: Route) => void = () => {};
+  onNavigate: (to: Route, param?: string) => void = () => {};
   onScrollToMain: (from: number) => void = () => {};
   transitionBusy: () => boolean = () => false;
 

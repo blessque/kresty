@@ -1,3 +1,5 @@
+import { PARKING_TOTAL } from '../../shared/estate';
+
 /**
  * Resident data for the «Концепция» map, keyed by the stable part ids that
  * buildingSplit.ts assigns.
@@ -22,13 +24,16 @@
  * b01 and were mirrored — that is now fixed, and it is why the two cross blocks
  * previously carried each other's names.
  *
- * CONFIDENCE. Assigned from geometry, and certain: the two crosses (b01/b02),
- * the domed church (b00), the rotunda (b04), the flat slab on the water
- * (b18 = the pier) and the large flat deck (b15 = the parking structure).
- * Everything else is placed by its zone on the plan — offices and cafés along
- * the embankment, rental and catering along ул. Комсомола — NOT by reading a
- * lit letter off the drawing, which is not legible at that resolution. The
- * functions are the client's; the specific part each lands on is a reading.
+ * CONFIDENCE. Until round 32 only the crosses, the church, the rotunda, the
+ * pier and the parking were certain; everything else was placed by its zone on
+ * the plan. ROUND 32 MEASURED THE REST: the НИиПИ «Спецреставрация» deck
+ * (`references/57–126-for-claude.pdf`, key plan on pp. 1 and 52) was mapped into
+ * GLB space with the two cross centres as anchors, and every litera landed
+ * inside exactly one part — А b13, Б b10, В b16, К b05, П b14 on the
+ * embankment; Е5 b03, М1 b08, М2 b12, Л b09, Д b07 on ул. Комсомола; О b06 and
+ * Е4 b11 inside. The functions are the client's rental spreadsheet's. What a
+ * tenant can sign for — areas, terraces, fit-out — is NOT here: it lives in
+ * `shared/estate.ts`, which the drawer reads through `offersOn(id)`.
  *
  * CONFIRMED PROGRAMME (press, June 2026): ГК «КВС» + Cosmos Hotel Group, two
  * hotels in the two cross blocks totalling 262 rooms — 5★ with 126 rooms and a
@@ -83,6 +88,8 @@ export interface Resident {
   label: string;
   /** storey index; 0 = ground floor */
   floor: number;
+  /** last storey, when the resident spans several — «1–3 этажи» */
+  to?: number;
   type: ResidentType;
   /** how many of this thing — rooms, halls, parking bays. Defaults to 1. */
   count?: number;
@@ -156,8 +163,10 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     // exactly the three rows in the client's drawer design, in their order
     residents: [
       { label: 'Гостиница Cosmos Selection 5*', floor: 0, type: 'hotel' },
-      { label: 'Ресторан Cosmos', floor: 0, type: 'restaurant' },
-      { label: 'SPA-Комплекс', floor: 0, type: 'spa' },
+      // ROUND 32: the restaurant is the rotunda `b04` and is let to its own
+      // operator, as is the SPA — both are offers in shared/estate.ts
+      { label: 'Ресторан в ротонде', floor: 0, type: 'restaurant' },
+      { label: 'СПА-центр', floor: 0, type: 'spa' },
     ],
   },
 
@@ -175,7 +184,7 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     // and two crosses that list different amounts would read as an accident
     residents: [
       { label: 'Гостиница Cosmos Smart 4*', floor: 0, type: 'hotel' },
-      { label: 'Конференц-зал', floor: 0, type: 'hall' },
+      { label: 'Конференц-центр', floor: 0, type: 'hall' },
       {
         label: 'Мультимедийный музей «Кресты»',
         floor: 0,
@@ -185,178 +194,131 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     ],
   },
 
-  // 316 tris · far end of the ул. Комсомола row
+  // ROUND 32 — every entry below is placed by the deck's key plan, measured
+  // (see the header), and named after the client's rental spreadsheet.
+  //
+  // ROUND 32.1 — THE MAP SPEAKS TO VISITORS FIRST. `name` and `brief` say what a
+  // guest will find, never the terms of a lease («сдаётся целиком, 19
+  // машино-мест» was round 32's, and it is «Аренда»'s job). A tenant gets one
+  // «Аренда» button, where something is free, and the page does the rest. The
+  // invented brands of rounds 10–13 («Полка», «Башня», «Тесто»…) went with the
+  // buildings they had been put on; the ones the designer lettered onto the
+  // plan itself live in mapMarks.ts and were left alone.
+
+  // 316 tris · the long block on the west boundary, ул. Комсомола → Лит Е5
   b03: {
-    name: 'Арендный корпус',
-    kind: 'Арендные помещения',
-    brief: 'Арендные помещения вдоль улицы Комсомола: студии, шоурумы и небольшие офисы.',
-    residents: [
-      {
-        label: 'Книжный магазин «Полка»',
-        floor: 0,
-        type: 'shop',
-        brand: { logo: 'polka', url: 'https://polka-kresty.ru', cta: 'Сайт' },
-      },
-      { label: 'Шоурумы', floor: 0, type: 'shop', count: 4 },
-      { label: 'Студии и офисы', floor: 1, type: 'office', count: 6 },
-    ],
+    name: 'Бизнес-центр',
+    kind: 'Лит. Е5 · офисы',
+    brief: 'Бизнес-центр класса А под мансардной крышей на улице Комсомола.',
+    residents: [{ label: 'Офисы класса А', floor: 0, to: 2, type: 'office' }],
   },
 
-  // 304 tris · 1.76×1.76 · the round volume on the first corpus
+  // 300 tris · 1.76×1.76 · the round volume in Лит Е1's courtyard
   b04: {
     name: 'Ротонда',
-    kind: 'Панорамный ресторан',
-    brief: 'Круглый объём над первым корпусом. Панорамный ресторан и бар с видом на Неву.',
-    residents: [
-      {
-        label: 'Панорамный ресторан',
-        floor: 4,
-        type: 'restaurant',
-        brand: { logo: 'galereya', url: 'https://rotonda-kresty.ru', cta: 'Забронировать стол' },
-      },
-      {
-        label: 'Бар «Башня»',
-        floor: 4,
-        type: 'bar',
-        brand: { logo: 'bashnya', url: 'https://bashnya.bar', cta: 'Забронировать' },
-      },
-    ],
+    kind: 'Лит. Е1 · ресторан',
+    brief: 'Круглый ресторан во дворе Восточного креста — открыт не только постояльцам отеля.',
+    residents: [{ label: 'Ресторан в ротонде', floor: 0, type: 'restaurant' }],
   },
 
-  // 280 tris · 4.88×2.22 · the widest volume on the embankment row
+  // 280 tris · 4.88×2.22 · the widest volume on the embankment → Лит К
   b05: {
-    name: 'Главный офис',
-    kind: 'Главный офис комплекса',
-    brief: 'Управляющая компания квартала и представительства резидентов на набережной.',
-    residents: [
-      { label: 'Управляющая компания', floor: 0, type: 'office' },
-      {
-        label: 'Коворкинг «Набережная»',
-        floor: 1,
-        type: 'office',
-        brand: { logo: 'naberezhnaya', url: 'https://naberezhnaya.work', cta: 'Тарифы' },
-      },
-      { label: 'Офисы резидентов', floor: 2, type: 'office', count: 8 },
-    ],
-  },
-
-  // 272 tris · 2.48×3.81 · tall volume on the ул. Комсомола row
-  b06: {
-    name: 'Гастрономический корпус',
-    kind: 'Общественное питание',
-    brief: 'Гастрономический кластер квартала: фуд-холл, пекарня и винный бар под одной крышей.',
-    residents: [
-      { label: 'Фуд-холл', floor: 0, type: 'restaurant' },
-      {
-        label: 'Пекарня «Тесто»',
-        floor: 0,
-        type: 'cafe',
-        brand: { logo: 'testo', url: 'https://testo-bakery.ru', cta: 'Сайт' },
-      },
-      {
-        label: 'Кофейня «Свет»',
-        floor: 0,
-        type: 'cafe',
-        brand: { logo: 'svet', url: 'https://svet.coffee', cta: 'Сайт' },
-      },
-      {
-        label: 'Винный бар «Погреб»',
-        floor: 1,
-        type: 'bar',
-        brand: { logo: 'pogreb', url: 'https://pogreb-wine.ru', cta: 'Забронировать' },
-      },
-    ],
-  },
-
-  // 232 tris · 1.86×5.16 · long volume at the far end of the Комсомола row
-  b07: {
-    name: 'Офисный корпус',
-    kind: 'Офисы',
-    brief: 'Офисный корпус на границе участка. Отдельный вход со стороны улицы Комсомола.',
-    residents: [
-      { label: 'Офисы резидентов', floor: 0, type: 'office', count: 12 },
-      { label: 'Переговорные', floor: 2, type: 'hall', count: 3 },
-    ],
-  },
-
-  // 208 tris · 2.58×2.45 · Комсомола row
-  // ROUND 30: was «Кафе на Комсомола» — renamed in the client's docx. NOTE the
-  // name now repeats b09's; the client's text, applied as written.
-  b08: {
+    // ROUND 32.1: the designer's own words (Figma 1268:340), less the name the
+    // brief repeated there — here the name is the heading right above it
     name: 'Торговая галерея',
-    kind: 'Арендные помещения',
-    brief: 'Торговая галерея: магазины у входа и сервисы для гостей и постояльцев квартала.',
+    kind: 'Лит. К · офисы и магазины',
+    brief: 'Магазины у входа и сервисы для гостей и постояльцев квартала.',
     residents: [
       { label: 'Магазины', floor: 0, type: 'shop' },
-      { label: 'Сервисы для гостей', floor: 0, type: 'service' },
+      { label: 'Офисы', floor: 0, to: 1, type: 'office' },
     ],
   },
 
-  // 204 tris · 1.91×2.48 · Комсомола row
+  // 272 tris · 2.48×3.81 · north of Е1's west arm, by the chimney → Лит О
+  b06: {
+    name: 'Ресторанный корпус',
+    kind: 'Лит. О · общественное питание',
+    brief: 'Два ресторана с террасой там, где были тюремные кухня и пекарня.',
+    residents: [{ label: 'Рестораны', floor: 0, to: 1, type: 'restaurant', count: 2 }],
+  },
+
+  // 232 tris · 1.86×5.16 · along the east wall, ул. Комсомола → Лит Д
+  b07: {
+    name: 'Павильон и офисы',
+    kind: 'Лит. Д · офисы',
+    brief: 'Остеклённый павильон для мероприятий квартала при бизнес-центре на улице Комсомола.',
+    residents: [
+      { label: 'Управляющая компания', floor: 0, type: 'office' },
+      { label: 'Офисы', floor: 0, to: 1, type: 'office' },
+      { label: 'Павильон для мероприятий', floor: 0, type: 'hall' },
+    ],
+  },
+
+  // 208 tris · 2.58×2.45 · ул. Комсомола, the western (three-storey) М → Лит М1
+  b08: {
+    name: 'Ресторан с галереей',
+    kind: 'Лит. М1',
+    brief: 'Ресторан с остеклённой галереей и террасами вдоль улицы Комсомола.',
+    residents: [
+      { label: 'Ресторан', floor: 0, type: 'restaurant' },
+      { label: 'Офисы', floor: 1, to: 2, type: 'office' },
+    ],
+  },
+
+  // 204 tris · 1.91×2.48 · ул. Комсомола, east of М2 → Лит Л
   b09: {
-    name: 'Торговая галерея',
-    kind: 'Арендные помещения',
-    brief: 'Небольшая торговая галерея: магазины у входа и сервисы для жителей квартала.',
+    name: 'Выставочный зал',
+    kind: 'Лит. Л',
+    brief: 'Выставочный зал с террасой на улицу Комсомола в бывшем хирургическом бараке.',
     residents: [
-      { label: 'Магазины', floor: 0, type: 'shop', count: 5 },
-      { label: 'Пункт выдачи заказов', floor: 0, type: 'service' },
+      { label: 'Выставочный зал', floor: 0, type: 'hall' },
+      { label: 'Офисы', floor: 0, to: 1, type: 'office' },
     ],
   },
 
-  // 142 tris · 2.75×1.94 · embankment row
+  // 142 tris · 2.75×1.94 · embankment, west of К → Лит Б. Carries its roof
+  // since round 32 — the part that used to be `b17` (buildingSplit `MERGE`).
   b10: {
-    name: 'Офисы на набережной',
-    kind: 'Офисы',
-    brief: 'Офисные помещения с окнами на Неву и выходом на набережную.',
-    residents: [
-      { label: 'Офисы резидентов', floor: 0, type: 'office', count: 9 },
-      { label: 'Переговорные', floor: 1, type: 'hall', count: 2 },
-    ],
+    name: 'Особняк на набережной',
+    kind: 'Лит. Б · офисы',
+    brief: 'Трёхэтажный особняк конца XIX века фасадом на Неву.',
+    residents: [{ label: 'Офис одной компании', floor: 0, to: 2, type: 'office' }],
   },
 
-  // 130 tris · 2.58×1.40 · Комсомола row
-  // ROUND 30: was «Сервисный корпус» — renamed in the client's docx
+  // 130 tris · 2.58×1.40 · in Е3's north-east inner corner → Лит Е4
   b11: {
-    name: 'Гастрокластер',
-    kind: 'Общественное питание',
-    brief: 'Гастрономический кластер квартала: фуд-холл, рестораны и бар под одной крышей.',
-    residents: [
-      { label: 'Фуд-холл', floor: 0, type: 'restaurant' },
-      { label: 'Рестораны', floor: 0, type: 'restaurant' },
-      { label: 'Бар', floor: 1, type: 'bar' },
-    ],
+    name: 'Гастромаркет',
+    kind: 'Лит. Е4 · общественное питание',
+    brief: 'Гастромаркет в бывшей тюремной бане — разные кухни и две террасы во двор.',
+    residents: [{ label: 'Гастромаркет', floor: 0, to: 2, type: 'restaurant' }],
   },
 
-  // 128 tris · 1.44×2.63 · the chimneyed volume on the Комсомола row
+  // 128 tris · 1.44×2.63 · ул. Комсомола, the eastern (two-storey) М → Лит М2.
+  // Rounds 10–31 called this «Котельная»: the chimney belongs to Лит О.
   b12: {
-    name: 'Котельная',
-    kind: 'Котельная · инженерный корпус',
-    brief: 'Историческая котельная с трубой. Инженерное сердце комплекса, закрыта для гостей.',
-    residents: [{ label: 'Техническая служба квартала', floor: 0, type: 'service' }],
+    name: 'Ресторан с террасами',
+    kind: 'Лит. М2',
+    brief: 'Ресторан с двумя террасами на улице Комсомола.',
+    residents: [
+      { label: 'Ресторан', floor: 0, type: 'restaurant' },
+      { label: 'Офисы', floor: 1, type: 'office' },
+    ],
   },
 
-  // 110 tris · 2.50×1.47 · embankment row, near the main entrance
-  // ROUND 30: was «Кафе на набережной» — renamed in the client's docx
+  // 110 tris · 2.50×1.47 · the embankment's west corner → Лит А
   b13: {
-    name: 'Арендный корпус',
-    kind: 'Арендные помещения',
-    brief: 'Арендные помещения вдоль Арсенальной улицы: студии, шоурумы, кофейни и небольшие офисы.',
-    residents: [
-      { label: 'Студии и шоурумы', floor: 0, type: 'shop' },
-      { label: 'Кофейни', floor: 0, type: 'cafe' },
-      { label: 'Небольшие офисы', floor: 1, type: 'office' },
-    ],
+    name: 'Коворкинг',
+    kind: 'Лит. А · офисы',
+    brief: 'Коворкинг с видом на Неву в доме, где жили надзиратели.',
+    residents: [{ label: 'Коворкинг', floor: 0, to: 1, type: 'office' }],
   },
 
-  // 110 tris · 2.75×1.94 · embankment row, by the pier
+  // 110 tris · 2.75×1.94 · embankment, facing the pier → Лит П
   b14: {
-    name: 'Офисы у причала',
-    kind: 'Офисы',
-    brief: 'Небольшой офисный корпус у причала, с выходом к воде и подземному переходу.',
-    residents: [
-      { label: 'Офисы резидентов', floor: 0, type: 'office', count: 6 },
-      { label: 'Касса водных маршрутов', floor: 0, type: 'service' },
-    ],
+    name: 'Особняк у причала',
+    kind: 'Лит. П · офисы',
+    brief: 'Трёхэтажный особняк на набережной, напротив причала квартала.',
+    residents: [{ label: 'Офис одной компании', floor: 0, to: 2, type: 'office' }],
   },
 
   // 68 tris · 2.74×5.17 but only 0.43 high — a flat deck, not a volume
@@ -364,28 +326,17 @@ export const BUILDINGS_INFO: Record<string, BuildingInfo> = {
     name: 'Паркинг',
     kind: 'Временная конструкция паркинга',
     brief: 'Многоуровневый паркинг комплекса с въездом со стороны улицы Комсомола.',
-    residents: [{ label: 'Машино-места', floor: 0, type: 'parking', count: 240 }],
+    // the spreadsheet's «Паркинг на 179 м/м» (was an invented 240)
+    residents: [{ label: 'Машино-места', floor: 0, type: 'parking', count: PARKING_TOTAL }],
   },
 
-  // 59 tris · 1.07×1.38 · small pavilion on the embankment row
+  // 59 tris · 1.07×1.38 · small house behind А and Б → Лит В. It was drawn
+  // as the «Входной павильон» until round 32.
   b16: {
-    name: 'Входной павильон',
-    kind: 'Входная группа',
-    brief: 'Павильон главного входа: информационный центр с картой квартала и сувениры.',
-    residents: [
-      { label: 'Информационный центр', floor: 0, type: 'service' },
-      { label: 'Сувенирный магазин', floor: 0, type: 'shop' },
-    ],
-  },
-
-  // 48 tris · 2.67×1.87 · only 0.21 high — a canopy
-  // ROUND 30: was «Навес» — renamed in the client's docx. The GEOMETRY is still
-  // the 0.21-high canopy slab; the part's reading is theirs to make.
-  b17: {
-    name: 'Офисный корпус',
-    kind: 'Офисы',
-    brief: 'Офисное пространство с видом на Неву.',
-    residents: [{ label: 'Офисы', floor: 0, type: 'office' }],
+    name: 'Кофейня',
+    kind: 'Лит. В · кофейня',
+    brief: 'Кофейня с крытой террасой в бывшей прачечной — по пути с набережной во двор.',
+    residents: [{ label: 'Кофейня с террасой', floor: 0, type: 'cafe' }],
   },
 
   // 46 tris · 6.95×1.64 · 0.09 high — the slab lying on the water

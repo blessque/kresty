@@ -16,7 +16,8 @@ footprints procedurally**; `buildingsData.ts` is legacy/unused. Round 15 replace
 `map-w-river.glb` with it: straight roads, straight shoreline, no neighbouring blocks.
 
 **Buildings are derived, not authored.** The GLB is one mesh with no per-building nodes, so
-`buildingSplit.ts` recovers 19 buildings by connected components. Slivers are absorbed by
+`buildingSplit.ts` recovers 19 parts by connected components — 18 buildings once `MERGE` folds
+Лит Б's roof into its body (round 32, below). Slivers are absorbed by
 FOOTPRINT, not triangle count. IDs (`b00`…) are ordered by **triangle count — i.e. by
 modelling detail, not size** — and `buildingsInfo.ts` is keyed by them, so **replacing the
 GLB invalidates that mapping.**
@@ -48,6 +49,39 @@ cross names: screen-LEFT = «Западный крест» / Cosmos 4★ (`b02`)
 
 The GLB's normals are smoothed across hard edges by the exporter and are re-creased at load
 with `toCreasedNormals`. Do not remove this; it is what makes the geometry read.
+
+### Литеры — which part is which building (round 32, measured)
+
+The НИиПИ «Спецреставрация» deck (`references/57–126-for-claude.pdf`) draws a key plan on
+pp. 1 and 52 with every litera lettered. Its coordinates were mapped into GLB space with an
+affine fit on the two cross centres (Е3 ↔ `b02`, Е1 ↔ `b01`; scale ≈ 0.07 GLB units per PDF
+point on both axes, no rotation), and **every litera landed inside exactly one part**:
+
+| Embankment | ул. Комсомола | Inside | Crosses and church |
+|---|---|---|---|
+| А `b13` · В `b16` · Б `b10` · К `b05` · П `b14` | Е5 `b03` · М1 `b08` · М2 `b12` · Л `b09` · Д `b07` | О `b06` · Е4 `b11` | Е1 `b01` + rotunda `b04` · Е3 `b02` · Е2 `b00` |
+
+М1 is the WEST, three-storey block and М2 the east, two-storey one: the deck's north
+elevation (p37) shows the late annex between them being demolished, which is what splits one
+litera into two. У («Ледник») is under `MIN_TRIS` and folds into its neighbour. **Rounds 10–31
+had `b12` as «Котельная»** — the chimney is Лит О's. The rental figures are not in
+`buildingsInfo.ts`: they live in `shared/estate.ts`, and since round 32.1 the drawer reads
+`offersOn(id)` only to decide whether to show «Аренда» (see CONTENT_PAGES, «Аренда» is a leasing
+tool).
+
+### Parts that are one building — `MERGE` in `buildingSplit.ts` (round 32)
+
+The split now yields **18 buildings, not 19**. `b17` was Лит Б's ROOF: it starts exactly where
+`b10`'s walls stop (y 0.83), its footprint is b10's inset ~0.03 a side, and it was a separate
+part only because it lives in the GLB's other primitive — welding never crosses primitives.
+The client's docx had renamed it «Офисный корпус», so the map offered a building sitting on
+top of another one.
+
+`MERGE = { b17: 'b10' }` runs **after** ids are assigned, so no id moves and `b18` is still the
+pier. Do not solve this with thresholds: the roof has 48 tris and the pier 46, so raising
+`MIN_TRIS` drops the pier too and renumbers from there. A future export that re-keys the ids
+logs `merge … skipped` rather than merging the wrong pair. `?pick=<id>` opens a drawer once the
+model is in — the way to check a building headlessly.
 
 ---
 
@@ -191,6 +225,33 @@ lean stays window-relative on purpose.
 Hover/click live in `buildingPicker.ts`; the left resident drawer in `BuildingDrawer.ts`.
 Picking runs **per frame** (the shear moves geometry under a stationary cursor) and the drawer
 freezes the lean while hovered.
+
+### The drawer — Figma `1268:340`, for every building (round 32.1)
+
+**The drawer speaks to VISITORS first** (the client's rule: the map is for guests, then
+tenants). Round 32 put a tenant's listing in it — «Свободно для аренды», areas, formats — and
+that goes; `name` and `brief` in `buildingsInfo.ts` say what a guest will find. **The only rent
+affordance is the designer's own «Аренда» button**, rendered where `offersOn(id)` is non-empty,
+routing to `#rent/<first slug>` (on the 5★ hotel, the SPA). Do not add rent links, badges or
+figures the client did not ask for.
+
+- **Layout, measured off the frame at 1440×900** and asserted by `probe:seam` to the pixel:
+  - the column is 390 wide at x = 72, vertically centred (`margin-block: auto`, so a tall list
+    scrolls instead of clipping) and centre-aligned
+  - star photo 360 at (87, 130.5), then 32, name H3, 16, brief Base, 32, the button at
+    (199, 713.5)
+  - the close is 40px, white at 40% with a tertiary 16px cross, at (1368, 32) — the screen's
+    corner, not beside the column
+- **The star is `mask: url(star-bullet.svg)`** — the designer's `Star 2` is the site's 12px
+  bullet drawn at 360. A mask scales with its box, a `clip-path: path()` does not.
+- **The field is a radial gradient, not the frame's 150px-blurred ellipse**. A blur that big on
+  a surface that slides on every pick is expensive. The frame's 100px background blur is left
+  out too, because the map under it is a canvas redrawing every frame.
+- **`.bld-drawer` is still the positioning box, 534px** (72 + 390 + 72). The focus camera
+  reads `drawer.width`, so the framing needed no change.
+- **The resident list survives only where the frame has no rent to show instead**, or where an
+  operator runs the building: the hotels (with the wordmark above the name), the church, the
+  pier and the parking. A rentable building IS the designer's frame, which has no list.
 
 ---
 

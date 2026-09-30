@@ -286,36 +286,57 @@
 
 /* ---------------------------------------------------- building drawer */
 
-/* ── building drawer, to the client's Figma (node 86:42392) ───────────────
-   Measured off the designer's export rather than eyeballed: panel 400px, hero
-   297px, 32px inset, ink #010c11, link #36a0ff, floor tint #a7c2ca, wordmark
-   123px. The panel is OPAQUE white — the round-10 frosted translucent version
-   is gone; it let the map show through behind the type.
+/* ── building drawer, to the designer's frame `1268:340` (round 32.1) ────────
+   Measured off the frame at 1440×900: a 390px column at x = 72, vertically
+   centred and centre-aligned — star 360, gap 32, name (H3), gap 16, brief (Base),
+   gap 32, the button. It replaces round 10.3's opaque 400px panel with its
+   297px hero (node 86:42392).
 
-   `.bld-drawer` no longer scrolls: it is the positioning box, and its overflow
-   must stay visible so `.bld-close` can sit OUTSIDE it, on the map. The inner
-   `.bld-scroll` takes the scrolling. The focus camera reads `drawer.width` at
-   runtime, so the framing follows the 400 on its own — do not mirror it in
-   mapCamera.ts. */
+   THE FIELD IS A FADE, NOT A PANEL. The frame draws a white ellipse blurred by
+   150px out of the left edge, so the map shows through towards the right. A
+   150px `filter: blur` on a surface that slides every time a building is picked
+   is a lot to pay for a soft edge, so the same field is a radial gradient: solid
+   white under the column, gone by ~780px. The frame's 100px BACKGROUND blur is
+   left out for the same reason — the map below is a WebGL canvas redrawing
+   every frame, which a backdrop filter would re-sample every frame too.
+
+   `.bld-drawer` is still the positioning box, 72 + 390 + 72 = 534px wide, and
+   the focus camera reads `drawer.width` at runtime to frame the building into
+   the space right of it — do not mirror the number in mapCamera.ts. Its
+   overflow stays visible: the fade reaches past it, and the close sits in the
+   screen's far corner. */
 .bld-drawer {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 400px;
-  max-width: 86vw;
+  width: 534px;
+  max-width: 100vw;
   z-index: 8;
-  background: var(--color-bg-light-main);
   color: var(--color-text-onlight-main);
   /* the airy curve used across the project (rounds 6-7), named `--ease-move` in
-     round 22 — same value, no retune. It is the curve for things that TRAVEL,
-     as opposed to `--ease-out` for things that respond in place. */
+     round 22 — the curve for things that TRAVEL, as opposed to `--ease-out` for
+     things that respond in place */
   transition:
     transform 0.55s var(--ease-move),
     opacity 0.4s var(--ease-move);
-  transform: translateX(-100%);
+  transform: translateX(-48px);
   opacity: 0;
   pointer-events: none;
+}
+.bld-drawer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 780px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 780px 90% at 0 50%,
+    var(--color-bg-light-main) 60%,
+    transparent 100%
+  );
 }
 .bld-drawer.open {
   transform: translateX(0);
@@ -324,17 +345,14 @@
 }
 
 .bld-scroll {
+  position: relative; /* above the fade */
   height: 100%;
   overflow-y: auto;
-  /* The platform scrollbar is suppressed, not the scrolling. On macOS it only
-     shows during a scroll gesture, but on Windows and on a mouse-wheel Mac it
-     is a permanent grey gutter down the panel edge, which breaks the flush
-     hero and the 32px inset. All three engines need their own opt-out. */
+  /* The platform scrollbar is suppressed, not the scrolling. On Windows and on
+     a mouse-wheel Mac it is a permanent grey gutter down the column. All three
+     engines need their own opt-out. */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* the reading column is bottom-anchored in the Figma: brief and link sit
-     under the hero, the resident list sits at the foot of the panel with the
-     gap between them absorbing whatever is left over */
   display: flex;
   flex-direction: column;
 }
@@ -342,11 +360,29 @@
   display: none;
 }
 
-.bld-hero {
+/* `margin-block: auto` centres the column when it fits, exactly as the frame
+   draws it, and degrades to a top-aligned scroll when a long resident list
+   makes it taller than the viewport — `justify-content: center` would clip the
+   top instead. */
+.bld-body {
+  margin-block: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 48px 72px;
+  text-align: center;
+}
+
+/* The designer's `Star 2` is the site's four-point star — the same drawing as
+   the 12px bullet — at 360. `mask` rather than `clip-path: path()`, because a
+   path does not scale with its box and the mask does. */
+.bld-star {
   flex: none;
-  height: 297px;
-  overflow: hidden;
+  width: min(360px, 100%);
+  aspect-ratio: 1;
   background: var(--map-hero-tint);
+  mask: url(../../assets/star-bullet.svg) center / contain no-repeat;
 }
 .bld-photo {
   display: block;
@@ -355,107 +391,91 @@
   object-fit: cover;
 }
 
-.bld-body {
-  flex: 1 1 auto;
+.bld-text {
   display: flex;
   flex-direction: column;
-  padding: 32px 32px 40px;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
 }
 
-/* the operator wordmark; stands in for `.bld-kind` when a building has one */
+/* the operator wordmark, above the name on the two hotels */
 .bld-logo {
   display: block;
   width: 123px;
   height: auto;
-  margin-bottom: 19px;
 }
 
-/* ROUND 18: THREE SIZES IN THE WHOLE DRAWER — 34 for the title, 24 for prose,
-   16 for the resident list. The client asked for the scale to be cut down, and
-   what went with it was the grey kind-line above the heading («Панорамный
-   ресторан»), the per-resident CTA links («Купить билет») and the building's
-   own «Сайт отеля» link. Do not reintroduce a fourth size here without one. */
+/* THREE SIZES IN THE WHOLE DRAWER (round 18's rule, kept): H3 32 for the name,
+   Base 24 for the sentence, 16 for the resident list. */
 .bld-name {
-  margin: 0 0 18px;
-  /* Figma text style H3 (was a one-off 34/1.15). The drawer's "three sizes
-     only" rule is preserved — the COUNT is what round 18 asked for, and it is
-     still three: 32 / 24 / 16. */
+  margin: 0;
   font-size: var(--type-h3-size);
   font-weight: var(--type-h3-weight);
   line-height: var(--type-h3-lh);
 }
 
 .bld-brief {
-  margin-bottom: 22px;
+  margin: 0;
   font-size: var(--type-base-size);
   line-height: var(--type-base-lh);
 }
 
-/* `margin-top: auto` is what pins the list to the foot of the panel. When the
-   content is taller than the viewport there is no free space to absorb, so it
-   degrades to a normal flow item and `.bld-scroll` scrolls - which is the
-   right behaviour for the buildings with long resident lists. */
+/* Kept where the frame has no rent to offer instead: the hotels, the church,
+   the pier and the parking. Centred like everything else in the column, so a
+   row reads «Номера · 126 — 1 этаж» as one line rather than two ends of one. */
 .bld-list {
   list-style: none;
-  margin-top: auto;
-  padding-top: 40px;
+  margin: 0;
+  padding: 0;
 }
-
-/* No rules between rows: the Figma separates them with space alone. */
 .bld-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: baseline;
-  gap: 14px;
-  padding: 11px 0;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  padding: 6px 0;
   font-size: var(--type-caption-sm-size);
   line-height: var(--type-caption-sm-lh);
 }
-
-/* The resident's own name, and the floor it is on. Both 16px; the name carries
-   the plan's caption ink so the drawer and the map agree, and the floor steps
-   back to the margin tint the streets use. */
+/* the name carries the plan's caption ink so the drawer and the map agree, and
+   the floor steps back to the margin tint the streets use */
 .bld-resident {
-  flex: 1 1 auto;
-  min-width: 0;
   color: var(--map-ink-mark);
 }
-
 .bld-floor {
-  flex: none;
   color: var(--map-ink-margin);
 }
 
-.bld-empty {
-  opacity: 0.5;
-  font-style: italic;
-}
-
-/* OUTSIDE the panel, floating on the map - that is where the Figma puts it,
-   which is why `.bld-drawer` may not clip its overflow. */
+/* the designer's close (`1268:517`): 40px, white at 40%, a 16px cross in
+   tertiary ink — in the screen's top-right corner, not beside the column.
+   `left` is measured from the drawer, which starts at the viewport's left edge,
+   so `100vw` puts it 32px in from the right. */
 .bld-close {
   position: absolute;
-  left: calc(100% + 24px);
-  top: 24px;
-  width: 36px;
-  height: 36px;
+  left: calc(100vw - 32px - 40px);
+  top: 32px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(18, 58, 92, 0.28);
-  color: var(--color-text-ondark-main);
+  background: var(--color-text-ondark-secondary);
+  color: var(--color-text-onlight-tertiary);
   transition:
     background 240ms var(--ease-out),
+    color 240ms var(--ease-out),
     transform 240ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .bld-close:hover {
-    background: rgba(18, 58, 92, 0.45);
+    background: var(--color-bg-light-main);
+    color: var(--color-text-onlight-secondary);
   }
 }
-/* ROUND 22: a press state, ungated — a touch press should feel pressed. This one
-   dips BELOW rest (0.94, from Kowalski's 0.95-0.98 band) rather than the button's
-   1.02, because there is no hover swell here to fall back from. */
+/* ROUND 22: a press state, ungated — a touch press should feel pressed. It dips
+   BELOW rest (0.94) because there is no hover swell here to fall back from. */
 .bld-close:active {
   transform: scale(0.94);
   transition-duration: 120ms;
@@ -467,8 +487,24 @@
 }
 .bld-close svg {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
+}
+
+/* on a phone the column is the screen less its gutters, and the star shrinks
+   with it (`min(360px, 100%)` above) */
+@media (max-width: 640px) {
+  .bld-drawer {
+    width: 100vw;
+  }
+  .bld-body {
+    padding: 72px 16px 48px;
+    gap: 24px;
+  }
+  .bld-close {
+    left: calc(100vw - 16px - 40px);
+    top: 16px;
+  }
 }
 
 /* ---------------------------------------------------------------- captions */
