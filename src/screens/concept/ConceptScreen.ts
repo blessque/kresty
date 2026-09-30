@@ -103,7 +103,7 @@ const CREASE_DEG = 35;
 
 export class ConceptScreen {
   el: HTMLElement;
-  onNavigate: (to: Route) => void = () => {};
+  onNavigate: (to: Route, param?: string) => void = () => {};
   /**
    * The reader scrolled off the bottom into the main screen. Distinct from
    * `onNavigate` because it is a SEAM, not a click: the router uses it to pick
@@ -260,6 +260,8 @@ export class ConceptScreen {
     this.labels = new MapLabels(this.scroll.stage);
     this.drawer = new BuildingDrawer(this.el);
     this.drawer.onClose = () => this.setSelected(null);
+    // ROUND 32.1: the drawer's «Аренда» button opens that building's card on «Аренда»
+    this.drawer.onRent = (slug) => this.onNavigate('rent', slug);
     this.picker.onHoverChange = (id) => {
       this.el.classList.toggle('picking', id !== null);
     };
@@ -452,6 +454,11 @@ export class ConceptScreen {
     // nothing to write to until now
     this.pushWaterParams();
     this.primeFrame();
+    // Dev: `?pick=b10` opens that building's drawer once the model is in — the
+    // one way to check a drawer headlessly, since a click lands wherever the
+    // camera happens to be and every selection swings it (round 32).
+    const pick = new URLSearchParams(location.search).get('pick');
+    if (pick && parts.some((p) => p.id === pick)) this.setSelected(pick);
   }
 
   /** single entry point for selection: drawer, dimming and the camera swing */
@@ -668,8 +675,10 @@ export class ConceptScreen {
  *
  * Scale-free: a part counts once it stands at least this fraction of the
  * tallest volume. Measured on this model the split is unambiguous — the pier is
- * 3.3 % of the tallest building and the next-shortest part, the canopy `b17`,
- * is 7.4 % — but the test is a ratio so it survives a re-export at any units.
+ * 3.3 % of the tallest building and the next-shortest part, the parking deck
+ * `b15`, is 17 % — but the test is a ratio so it survives a re-export at any
+ * units. (Until round 32 the next-shortest was the 7.4 % «canopy» `b17`, which
+ * was Лит Б's roof and is now merged into `b10` — see buildingSplit `MERGE`.)
  *
  * Deliberately NOT a distance-from-the-cluster test: an outlier is not what is
  * wrong with the pier. A ground slab in the river is wrong for the framing

@@ -183,6 +183,20 @@ export class ContactForm {
     );
   }
 
+  /**
+   * ROUND 32: «Запросить планировки» on «Аренда» names the building here, so
+   * the reader arrives at a form that already says what they asked about. Only
+   * an EMPTY or still-prefilled message is replaced — never what they typed.
+   */
+  prefill(message: string) {
+    const ta = this.el.querySelector('textarea')!;
+    if (ta.value && ta.value !== this.prefilled) return;
+    ta.value = this.prefilled = message;
+    // the same path typing takes, so the field grows and the page re-measures
+    ta.dispatchEvent(new Event('input'));
+  }
+  private prefilled = '';
+
   get top(): number {
     return this.el.offsetTop;
   }

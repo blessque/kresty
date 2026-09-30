@@ -94,5 +94,8 @@ export function bindShortWords(text: string): string {
       out.push(words[i]);
     }
   }
-  return out.join(' ');
+  // A dash never STARTS a line (Мильчин): it stays with the word before it.
+  // Round 32 found «— под офисы» opening a line on «Аренда»; the rule is
+  // sitewide because the fault is, and `probe:heads` re-checks the headings.
+  return out.join(' ').replace(/ (—|–)/g, NBSP + '$1');
 }

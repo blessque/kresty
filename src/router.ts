@@ -23,8 +23,9 @@ export type Route =
  * ITSELF — the router does not touch the DOM.
  */
 export interface Screen {
-  /** the router assigns this; the screen calls it */
-  onNavigate: (to: Route) => void;
+  /** the router assigns this; the screen calls it. `param` rides in the hash —
+   *  `#rent/<slug>` — and the arriving screen reads it back from `location`. */
+  onNavigate: (to: Route, param?: string) => void;
   start(restore?: number): void;
   stop(): void;
   /** draw one frame before being revealed, so a transition never lands on blank */
@@ -68,6 +69,8 @@ function parseHash(): { route: Route; seam: Route | null } {
   // the article is the one route with a parameter; there is a single article in
   // the pitch, so the id is parsed and ignored rather than pretended away
   if (h.startsWith('#news/')) return { route: 'article', seam: null };
+  // ROUND 32: a building on «Аренда» — the screen resolves the slug itself
+  if (h.startsWith('#rent/')) return { route: 'rent', seam: null };
   if (h.startsWith(SEAM_PREFIX)) {
     const from = h.slice(SEAM_PREFIX.length) as Route;
     return { route: 'main', seam: from in SCREEN_IDS ? from : null };
@@ -87,10 +90,10 @@ const SCREEN_IDS: Record<Route, true> = {
   icons: true,
 };
 
-function hashFor(route: Route): string {
+function hashFor(route: Route, param?: string): string {
   if (route === 'main') return location.pathname + location.search;
   if (route === 'article') return '#news/1';
-  return `#${route}`;
+  return param ? `#${route}/${encodeURIComponent(param)}` : `#${route}`;
 }
 
 interface NavOpts {
@@ -98,6 +101,8 @@ interface NavOpts {
   style?: 'flash' | 'seam';
   /** scroll offset to restore; undefined means a fresh arrival */
   restore?: number;
+  /** carried in the hash, see `Screen.onNavigate` */
+  param?: string;
 }
 
 export class Router {
@@ -123,7 +128,7 @@ export class Router {
     }
 
     for (const [id, s] of Object.entries(screens) as [Route, Screen][]) {
-      s.onNavigate = (to) => this.navigate(to);
+      s.onNavigate = (to, param) => this.navigate(to, { param });
       s.transitionBusy = () => this.transition.busy;
       if (!s.onScrollToMain) continue;
       // The reader scrolled off the bottom. Two history operations, and the
@@ -214,9 +219,9 @@ export class Router {
   }
 
   async navigate(to: Route, opts: NavOpts = {}) {
-    const { push = true, style = 'flash', restore } = opts;
+    const { push = true, style = 'flash', restore, param } = opts;
     if (to === this.current || this.transition.busy) return;
-    if (push) history.pushState({ screen: to }, '', hashFor(to));
+    if (push) history.pushState({ screen: to }, '', hashFor(to, param));
     await this.swapTo(to, style, restore);
   }
 }

@@ -134,7 +134,7 @@ export interface Mark {
  * Several buildings carry more than one, which is the whole reason this is a
  * list and not the `Record<id, …>` round 13 used: `b02` alone is lettered three
  * times (the museum above, the hotel below, the lecture hall on its annexe),
- * and `b06` three more.
+ * and `b06` two more.
  *
  * The text is authored, NOT read from `buildingsInfo`. Round 13 deliberately
  * took the first line from `infoFor(id).name` so a rename could not leave the
@@ -169,14 +169,16 @@ export const BUILDING_MARKS: Mark[] = [
   // The office alley: two blocks lettered down their right flank, one turned to
   // fit the gap rather than shrink to it.
   { on: 'b08', lines: ['Офисы А1'], at: [0.069, -0.005], turn: 90 },
-  { on: 'b11', lines: ['Офисы А2'], at: [0.069, -0.005], turn: 90 },
+  // ROUND 32: b11 is Лит Е4, the gastromarket — the one caption the rental
+  // spreadsheet made factually wrong; the designer's position is kept
+  { on: 'b11', lines: ['Гастромаркет'], at: [0.069, -0.005], turn: 90 },
   { on: 'b09', lines: ['Офисы B1'], at: [-0.039, 0.066], align: 'left' },
 
-  // The gastronomy block: two tenants read UPWARD in the alley to its left, the
-  // hall reads level under its own footprint.
+  // The gastronomy block (Лит О): two tenants read UPWARD in the alley to its
+  // left. ROUND 32 took off the level «Фуд-холл» under its footprint — the
+  // spreadsheet lets О as exactly two restaurants, and the food hall is Е4's.
   { on: 'b06', lines: ['Mates Bistro'], at: [-0.085, -0.050], turn: -90 },
   { on: 'b06', lines: ['Pho Bo'], at: [-0.085, 0.037], turn: -90 },
-  { on: 'b06', lines: ['Фуд-холл'], at: [-0.063, 0.098], align: 'left' },
 
   /** white ink ON the parking deck, which is why it also carries the P chip */
   {

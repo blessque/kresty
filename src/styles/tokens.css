@@ -137,4 +137,14 @@
      rounds 6-7, NAMED here rather than re-picked. Its value is settled; see
      TUNING_LOG before touching it. */
   --ease-move: cubic-bezier(0.3, 0, 0.12, 1);
+
+  /* ROUND 32.2 — TWO SIZES CAPPED BY THEIR LONGEST WORD, for «Аренда» on a phone.
+     A Factoid «посетителей» is ~6.5em and an H2-sized tab «мероприятий» ~8.7em
+     of their own size: at 360 they clip at 400px and 348px against a 344px
+     column. `min()` returns the token itself above ~500px, so only a phone ever
+     sees the cap. Declared on :root on purpose — `var()` here is substituted on
+     the declaring element, and :root's `--type-*-size` is the fluid one the
+     content pages read (the main screen's fixed override never reaches rent). */
+  --type-factoid-fit-size: min(var(--type-factoid-size), 14.5vw);
+  --type-h2-fit-size: min(var(--type-h2-size), 10.8vw);
 }
