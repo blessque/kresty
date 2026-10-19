@@ -322,6 +322,10 @@ visible**. Built as a 3rd variant `siyanie`/«Сияние», now the default
   march/tap a texture at fixed offsets without per-pixel jitter.** Jitter is STATIC (no
   time term) — temporal jitter would crawl/sparkle; the animated film grain covers the
   fixed noise. Benefits «Прорезь» equally (verified on the same dark-map crop).
+  **AMENDED round 33: never UNDERSAMPLE — jitter, or integrate exactly above the source's
+  bandwidth.** The exact light takes no samples to jitter (a polar prefix sum, see round 33);
+  its band-limiting LOD is what keeps it above the bandwidth. The rule as written still
+  governs the march (`?rays=march`).
 - **Appearance burst** replaces the round-4 scale-in (user: "funny, the speed and the
   lack of drama... should be dramatic, hard and epic, like light smashes from nothing
   like an explosion"). CPU-side only, in `MainScreen.update`: `burstT` resets when a slit
@@ -6058,3 +6062,169 @@ museum and news are byte-identical.
 **Flags in the designer's copy:** «1 миллион посетителей / половина … в гастроквартал» has no
 source; «800» and «300» are our estimates, never confirmed; «10 минут» hasn't been walked on a
 map.
+
+## Round 33 (2026-10-20) — «Точный свет»: the light computed, not estimated
+
+Report: the light looks right only on the user's M1 Air. On the studio's 2018 Intel 5K iMacs it
+is grainy; on the iPhone it is bad, worst on «О Крестах»'s icons; the agency's own optimisation
+(buweb.ru/kresti) is no better. Even on the M1: *"these rainbows and ladders and grain… The worst
+thing is big grain, ladders and mechanical-like (grid or tile-like) repetitiveness of the
+shine."* Brief: great on every device from an old Android to a 4K TV, cross and icons, main and
+«Музей» — and if shaders cannot do it, another approach or handles.
+
+### Measured first, on the client's own screenshots
+
+| finding | number | the complaint |
+|---|---|---|
+| noise in the light | luminance RMS 2.3–4.0 (M1), 4.1 (main rays), **5.1 (iPhone)** | grain |
+| noise blob size | ~1.3 device px (M1, canvas 1.25×), **~3 px** (iPhone, «О Крестах») | *big* grain |
+| colour noise | chroma RMS **5.7 > luminance 4.1** in the main rays | rainbow speckle |
+| `#grain` | autocorrelation **0.59 at 256 device px** (0.02 at 250/262) | grid / tile repetition |
+| `hash21` | repeats exactly every **50 × 100 canvas px** (123.34·50 and 456.21·100 are integers); ~100 distinct values per 256² block at 5K | grid / tile repetition, worst on big screens |
+| `ca 0.03` | R and B scaled ±10.5 % about the light | rainbow fringes |
+
+### Five causes, and the first one is structural
+
+1. **The light was a Monte-Carlo estimate** — a 16–32-step jittered march plus a 24-tap jittered
+   bloom spiral. Noise is that estimator's normal output; rounds 5 and 31.4 only reshaped it
+   (31.4's half-step jitter is a comb — the ladders came back through it).
+2. **It rendered below screen resolution everywhere but the M1 default** (governor 1.25 → 0.6,
+   mobile cap 1.25, Intel start 1.0), so each noise pixel was stretched to 1.6–5 device px.
+3. **Three chromatic taps per step** decorrelate the noise per channel → colour grain.
+4. **The look depended on the device**: λ = −N·ln(decay), so the phone's N = 16 drew +20–57 % in
+   the wedges and 2.3× in the gaps against the M1's 28. The iPhone was a different light.
+5. **Two tiles**: `#grain` (one 128-CSS-px random tile) and the `hash21` seed (50×100 px, and it
+   loses its fraction bits at large coordinates).
+
+### The agency's build, dissected
+
+Not a different light: OUR shader as of before round 31, cut to the slit path, with rounds
+31–31.4 undone (12 bloom taps, 6 px G blur, full-step jitter, 16 steps on low tier, shader grain
+0.06), plus regressions of their own — the jitter re-seeded every frame (the noise boils), a
+shimmer from a hash of time (±1.8 % random flicker), no governor, the about page's canvas at
+0.22–0.48× (4–9 px blocks), and a CSS fake light `.footer__light` left at opacity 0.3 whose X turns
+at 2.9°/s over the shader's 0.72°/s — two crosses rotating at different speeds. **The fix lives
+in `src/gpu/` and ports to them**; a port note is the user's call.
+
+### The fix: integrate, do not sample
+
+Seen from the light centre every ray is a straight line, so a pixel's ray sum is a 1D integral
+along its angle — in polar coordinates, a **prefix sum**: three small passes into a fixed
+2048 × 384 texture per frame, three fetches per pixel. No random samples, so no grain, no
+ladders, no colour noise and no tiled seed, **by construction** rather than by tuning. The full
+anatomy is in RAY_FIELD.md «The exact light»; the decisions that matter here:
+
+- **The kernel is matched to the old march's EXPECTED VALUE, not the naive ∫₀¹** — see the
+  finding below. Decay fixed at N_ref = 28, the M1's, for every device.
+- **The bloom is baked** (a non-negative gaussian fit of the spiral's expected kernel, applied
+  to G), not tapped. **The dither is PCG**, monochrome TPDF, gated so black stays exactly black.
+- **The canvas resolution comes from the light's own detail** (`detailScale`): it now costs
+  so little that native is affordable — exact at 2× native is 3.4–4.2 ms on the M1, under the
+  march's 7.1 ms at its reduced 1.25× default. New ladder: fractions [1, 0.8, 0.65, 0.5] of the cap.
+- **`?rays=march` keeps the old light, untouched, rung and all** — the A/B is against the real
+  thing, not a reconstruction.
+
+### The finding that kept the look: the march's last sample lands BEHIND the centre
+
+The march's samples sit at tᵢ = 1 − (i + 1.25 + 0.5·jit)/N, so the weights carry a gain
+decay^−1.5, the range is [−1/N, 1 − 1/N], and the final sample falls past the light centre onto
+the emblem's solid middle. Averaged, that is an **isotropic glow floor — ~15 LSB in the gaps
+between rays at mid-field** — and it is part of what the client approved. A textbook exact
+integral over [0, 1] deletes it (`?rays=pure` keeps that version reachable, for the eye). The
+exact light adds it back as one term: the mean of the mask over [0.25, 0.75]·r/28 behind c, two
+prefix reads. Without it the gaps lose those ~15 LSB; with it the sector means match the old
+light to 1.46 LSB at worst.
+
+### Results (`npm run probe:light` — real renderers, both backends, «Сияние» at 1 texel/px)
+
+| | old march (same probe) | exact |
+|---|---|---|
+| noise, frame-to-frame RMS | 1.70 LSB | **0.45** — the dither alone |
+| colour noise (R−G) | 0.44 at `ca` 0 (5.7 at 0.03, screenshots) | **0.44** — 8-bit rounding |
+| vs a 2048-step reference, true kernel | — | max **1** / mean **0.05** LSB |
+| vs E[old march], 128 jitter offsets, sector means | — | max **1.46** / mean **0.44** LSB |
+| WebGL2 vs WebGPU | — | mean **0.000** / max 1 |
+| scroll seam, reveal 0 | 0 | **0** |
+| canvas at 1440, M1 | main 1.25×, «Музей» ≤1.5, icons ≤2 | main 1.024, «Музей» 1.0, icons **2.0 native** |
+| GPU time, main | 7.1 ms (rung 2, 1.25×) | 2.3–2.6 ms at its cap, 4.2–4.3 at native 2× |
+
+The two noise numbers differ from the screenshots' 2.3–5.1 because the probe runs at 1 texel per
+pixel and measures frame differences; the ratio, ~4×, is the like-for-like figure. The device
+numbers (5K iMac, iPhone) are still to be read through `?perf`.
+
+### The user's decisions (2026-10-19)
+
+- **Film grain: none by default**, admin panel only; when on it must look right phone → TV.
+  `shared/filmGrain.ts`: speck size in CSS px drawn at device resolution, three prime tiles
+  (509 / 761 / 1021) — autocorrelation at 256 px 0.59 → **0.003**. Amount 0 ⇒ `display: none`.
+- **Rainbow off**: `ca` 0.03 → 0 in «Сияние» (and so «Музей»), `MOTION.ca` 0.028 → 0 on the icons
+  (the designer's round-12.2 pick — the lab's `rainbow` at 0.028 restores it); `MotionPanel`
+  store key v3 → v4, or a stored 0.028 would outrank the new default.
+- **Penumbra and living haze built, shipped at 0.** Penumbra is a LOD bias over the mask's
+  gaussian mips (free). Haze multiplies the rays only and is ≈ mean-preserving. Penumbra at 0.8
+  is heavy on screen; try 0.15–0.3 first.
+- **Handles**: `?lab` on any light page — RAY_FIELD.md «The light lab». Round 5's «razor» is the
+  lab's `ray edge` 1, now without its stipple.
+
+### Traps, each of which returned a wrong number first
+
+- **Hoisting `life` (the `vnoise(time)` gate) to the CPU biased the whole light by −2.1 LSB.**
+  `hash21` is chaotic: the same formula in doubles and in fp32 returns different values. It is
+  computed in the shader again, for both branches.
+- **A single-frame high-pass counts ray EDGES as noise.** Freeze time, re-seed only the dither,
+  and take the frame difference / √2.
+- **Colour noise cannot go below ~0.4 LSB in 8 bits** — R−G of a monochrome dither still
+  rounds independently per channel. A threshold under 0.5 fails a perfect render.
+- **A probe at canvas scale 0.5 measured the band-limiting, not the light** — it trips P1's LOD.
+  Probe at 1 texel/px.
+- **E[march]'s own ladder sits inside the comparison.** The old march's half-duty comb survives
+  averaging, so a sector narrower than two comb periods measured the ladder (max 1.88 LSB) — at
+  ≥ 2 periods, 1.46.
+- **The bloom bias came from baking the wrong channel.** The spiral taps G, which the canvas has
+  already blurred by 18 px: bake from G with σ_eff = √(σ² − 18²), not from R.
+- **A Monte-Carlo check of a closed form disagreed because the check's LCG overflowed doubles.**
+  Verify a formula by quadrature (agreed to 1.4e-8).
+- **`npm run probe:sliders` hung on «Контакты»** — the Yandex iframe holds the `load` event, and
+  from this network yandex.ru timed out 1 try in 3. Not the light: the sweep now aborts Yandex
+  requests (the map's box is fixed by CSS). **Strict ports**: light-probe 5396, bench 5397,
+  sliders 5398, heads 5399 — light-probe had first been given 5398 and collided.
+
+### Not built, or not yet measured
+
+- **The client's devices.** 5K iMac (Chrome and Safari) and iPhone: `/?perf`, `/?perf#museum`,
+  `/?perf#concept`, then `?rays=march` for the A/B and `?lab` for the handles.
+- **GPU context loss** (`webglcontextlost` / WebGPU `device.lost`) is not handled — it was not
+  before either; a lost context leaves the page without its light, never blank.
+- The on-device `?lightprobe` HUD and the temporal (V4), banding (V7) and detail-cap (V9) probes
+  from the plan were not automated.
+
+### 33.1 — the user's look ships, and the grain that would have cost ten frames
+
+**On the user's devices**: both showed `rays exact` at **59–60 fps** (`?perf`, 2026-10-20).
+
+**The look is the user's own pick from `?lab`**, tuned on «О Крестах»: exposure 1.05 · trail
+1.23 · bloom 1.07 · core 1.01 · rainbow 0.02 · haze 0.18 / scale 270 / drift 0.7 / wind 1.65 · film
+grain 0.015, moving. It ships as `LOOK_DEFAULTS` (`shared/lightLook.ts`) and `GRAIN_DEFAULTS`
+(`shared/filmGrain.ts`) and applies to all three lights on top of their presets — the presets
+are untouched, so `?rays=march` and `probe:light` still compare like with like. Lab store key
+v1 → v2 (stored values outrank defaults). **The rainbow came back by the user's hand**, at 0.02
+against the old 0.03: what they rejected was the colour SPECKLE, which the exact light cannot
+make — the fringe itself is now a smooth integral per channel. Cost, M1 at native 2×: 4.7–5.0 ms
+moving against 4.2–4.3 for the bare preset (rainbow = 3 polar fetches instead of 1, haze = 2);
+at the main screen's ~1× cap, 2.3–2.4 ms.
+
+**Trap: the grain was invisible where it was tuned.** «О Крестах» and the content pages hide
+`#grain` (round 16, `opacity: 0` — over the map and white pages it reads as dirt), so a grain
+value set on `#concept` shows only on main and «Музей». The lab's hint says so now.
+
+**Trap: turning the grain ON by default put 130–190 ms of main-thread work at every load.** Off
+by default (round 33) the tile build never ran; on, `Promise.all` built all three tiles (1.9 M
+device px of noise, blur and PNG) in ONE task — on the M1 that is ten dropped frames, landing
+on the main screen's entrance burst. Fixed three ways, the output proven byte-identical to the
+old generator (0 of 2.1 M px differ, same seeds): the blur's per-tap modulo replaced by a padded
+line and a row-wise vertical pass; the tiles built one per task (each `await toBlob` hands the
+thread back); and the first build waits 1.5 s, past the burst. Measured during a rebuild: first
+task 11–14 ms, no task over 50 ms, worst frame gap 16.7 ms at 2× (one 33 ms gap in one run at 3×).
+
+**Deployed with `?lab` live** — the panel is its own chunk, fetched only under `?lab`, so a
+normal visit carries none of it (checked on the production build: no panel, no chunk request).

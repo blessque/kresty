@@ -1,5 +1,8 @@
 /**
- * TEMPORARY admin panel for the «Контакты» icon showcase.
+ * A schema-driven dev panel — first the «Контакты» icon showcase's (`?admin`),
+ * since round 33 also the light lab's (`?lab`). Moved to shared/ then: it
+ * imports nothing, and two screens use it. Options carry what used to be
+ * hard-coded for the showcase (its store key, its `#contacts` link).
  *
  * Schema-driven: adding a handle is one entry in the spec array. It is a dev
  * tool, not product UI — labels are English and terse on purpose.
@@ -59,6 +62,21 @@ export function normalizeHex(raw: string): string | null {
 // v3: round 20 moved the default field to the `bg-dark-main` token.
 const STORE_KEY = 'kresty.contacts.panel.v3';
 
+export interface ControlPanelOptions {
+  /** localStorage key — bump its version whenever a DEFAULT changes */
+  storeKey: string;
+  /** prefix of this panel's URL keys (`lab.` → `?lab.exp=1.2`), so they cannot
+   *  collide with a page's own (`?exp=` is «Музей»'s gain, `?rs=` the governor's) */
+  prefix?: string;
+  /** a flag Copy URL adds, so the copied link opens with the panel showing */
+  flag?: string;
+  /** where Copy URL lands when the page has no hash */
+  hash?: string;
+  title?: string;
+  /** extra class on the panel root, for placement */
+  className?: string;
+}
+
 type Widget =
   | { range: HTMLInputElement; out: HTMLElement }
   | { swatch: HTMLInputElement; hex: HTMLInputElement }
@@ -72,14 +90,21 @@ export class ControlPanel {
   private defaults: ControlValues;
   private specs: ControlSpec[];
   private inputs = new Map<string, Widget>();
+  private opts: ControlPanelOptions;
 
-  constructor(parent: HTMLElement, specs: ControlSpec[], defaults: ControlValues) {
+  constructor(
+    parent: HTMLElement,
+    specs: ControlSpec[],
+    defaults: ControlValues,
+    opts: ControlPanelOptions = { storeKey: STORE_KEY, hash: '#contacts' },
+  ) {
     this.specs = specs;
+    this.opts = opts;
     this.defaults = { ...defaults };
     this.values = { ...defaults, ...this.readStore(), ...this.readUrl() };
 
     this.el = document.createElement('div');
-    this.el.className = 'fx-panel';
+    this.el.className = opts.className ? `fx-panel ${opts.className}` : 'fx-panel';
     parent.appendChild(this.el);
     this.build();
     addEventListener('keydown', this.onKey);
@@ -87,7 +112,7 @@ export class ControlPanel {
 
   private readStore(): ControlValues {
     try {
-      const raw = localStorage.getItem(STORE_KEY);
+      const raw = localStorage.getItem(this.opts.storeKey);
       if (!raw) return {};
       const parsed = JSON.parse(raw) as ControlValues;
       // drop anything no longer in the schema, so a renamed handle cannot
@@ -114,7 +139,7 @@ export class ControlPanel {
     const q = new URLSearchParams(location.search);
     const out: ControlValues = {};
     for (const s of this.specs) {
-      const raw = q.get(s.key);
+      const raw = q.get((this.opts.prefix ?? '') + s.key);
       if (raw === null) continue;
       if (s.kind === 'color') {
         // URLSearchParams encodes '#' as %23 and decodes it back, but accept a
@@ -136,7 +161,7 @@ export class ControlPanel {
 
   private save() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(this.values));
+      localStorage.setItem(this.opts.storeKey, JSON.stringify(this.values));
     } catch {
       /* private mode — the panel still works, it just won't persist */
     }
@@ -145,7 +170,7 @@ export class ControlPanel {
   private build() {
     const head = document.createElement('div');
     head.className = 'fx-panel-head';
-    head.innerHTML = `<b>Effect controls</b><span>H — hide</span>`;
+    head.innerHTML = `<b>${this.opts.title ?? 'Effect controls'}</b><span>H — hide</span>`;
     this.el.appendChild(head);
 
     const body = document.createElement('div');
@@ -276,12 +301,14 @@ export class ControlPanel {
     copy.textContent = 'Copy URL';
     copy.addEventListener('click', () => {
       const q = new URLSearchParams();
+      if (this.opts.flag) q.set(this.opts.flag, '');
       // only non-default values, so the link stays readable
       for (const s of this.specs) {
         const v = this.values[s.key];
-        if (v !== undefined && v !== this.defaults[s.key]) q.set(s.key, String(v));
+        if (v !== undefined && v !== this.defaults[s.key]) q.set((this.opts.prefix ?? '') + s.key, String(v));
       }
-      const url = `${location.origin}${location.pathname}?${q}${location.hash || '#contacts'}`;
+      const query = String(q).replace(/=(&|$)/g, '$1');
+      const url = `${location.origin}${location.pathname}?${query}${location.hash || this.opts.hash || ''}`;
       void navigator.clipboard?.writeText(url).catch(() => {});
       copy.textContent = 'Copied';
       setTimeout(() => (copy.textContent = 'Copy URL'), 1200);

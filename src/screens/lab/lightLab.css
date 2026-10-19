@@ -1,0 +1,10 @@
+/* the light lab (`?lab`, round 33): pinned to the window, above the film grain
+   (z 85) and the transition flash (z 90), on every page. A dev tool's chrome —
+   lint-exempt like the other panels. */
+.fx-panel.fx-panel--lab {
+  position: fixed;
+  z-index: 95;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+}

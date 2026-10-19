@@ -50,6 +50,8 @@ const EXEMPT = [
   /styles\/fonts\.css$/,
   /waterPanel\.css$/,
   /motionPanel\.css$/, // round 23 — the page-motion panel, same reasoning
+  /controlPanel\.css$/, // round 33 — the shared ?admin / ?lab panel, same reasoning
+  /lightLab\.css$/, // round 33 — the light lab's placement
 ];
 
 /**

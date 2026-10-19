@@ -24,6 +24,9 @@ import { getPerfTier } from '../../shared/performanceTier';
 import * as governor from '../../shared/frameGovernor';
 import { perfHud } from '../../shared/perfHud';
 import { rasterizeMask } from '../../shared/rasterizeMask';
+import { buildLightMask } from '../../shared/lightMask';
+import { lightScale } from '../../page/lightScale';
+import { applyLook } from '../../shared/lightLook';
 
 /** Variants whose look is the logo-slit light (drive slitMix + the burst). */
 const SLIT_IDS = new Set(['siyanie', 'prorez', 'slider']);
@@ -72,12 +75,16 @@ export class MainScreen {
   private slideT = 10;
   private tier = getPerfTier();
   /**
-   * The light's live render scale (round 31): the frame governor's rung, capped
-   * by the perf tier (which already carries the DPR and the mobile cap). Set in
-   * `layout()`, read by `update()`, so the backing store and the coordinates
-   * handed to the shader can never disagree.
+   * The light's live render scale: since round 33 `page/lightScale.ts` — the
+   * exact light's own detail cap × the governor's rung (the old march keeps its
+   * round-31 tier cap). Set in `layout()`, read by `update()`, so the backing
+   * store and the coordinates handed to the shader can never disagree.
    */
   private rs = 1;
+  /** the exact path's dither, raised when the canvas is below screen density */
+  private dither = 1;
+  /** a window dragged to a screen of another density re-lays out (round 33) */
+  private dprQuery: MediaQueryList | null = null;
 
   private raf = 0;
   private running = false;
@@ -332,7 +339,15 @@ export class MainScreen {
   layout = () => {
     const s = stageScale();
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`;
-    this.rs = Math.min(governor.quality().renderScale, this.tier.renderScale);
+    const ls = lightScale({
+      spanCss: this.params.signSize * s,
+      params: applyLook(this.params),
+      cssW: innerWidth,
+      cssH: innerHeight,
+      marchCap: this.tier.renderScale,
+    });
+    this.rs = ls.scale;
+    this.dither = ls.dither;
     const w = Math.round(innerWidth * this.rs);
     const h = Math.round(innerHeight * this.rs);
     this.renderer?.resize(w, h);
@@ -413,11 +428,14 @@ export class MainScreen {
       this.renderer = r;
     }
     console.info(`[kresty] ray field backend: ${this.renderer.backend}`);
-    governor.seed(this.renderer.gpuName, this.tier.low);
+    governor.seed(this.renderer.gpuName, this.tier.low, this.renderer.exactAvailable);
     // rasterize the emblem (sign.svg) into the slit mask; on failure the
-    // «Прорезь» path falls back to the procedural cross glow (never blank)
+    // «Прорезь» path falls back to the procedural cross glow (never blank).
+    // Round 33: plus the exact light's data — mips, the ink box, the bloom
+    // baked once at «Сияние»'s dissolve (shared/lightMask.ts)
     try {
-      this.renderer.setSignMask(await rasterizeMask(signSvg, { raw: true }));
+      const cv = await rasterizeMask(signSvg, { raw: true });
+      this.renderer.setSignMask(cv, buildLightMask(cv, { dissolve: this.params.dissolve }));
     } catch (err) {
       console.warn('[kresty] sign mask failed; «Прорезь» falls back to cross glow', err);
     }
@@ -432,6 +450,7 @@ export class MainScreen {
     this.armIdleShow();
     addEventListener('resize', this.layout);
     addEventListener('keydown', this.onKeyDown);
+    this.watchDpr();
     this.lastT = performance.now();
     governor.reset();
     const loop = (now: number) => {
@@ -459,7 +478,25 @@ export class MainScreen {
     this.photoSlider.detach();
     removeEventListener('resize', this.layout);
     removeEventListener('keydown', this.onKeyDown);
+    this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.dprQuery = null;
   }
+
+  /**
+   * Re-layout when the window lands on a screen of another density — a laptop
+   * dragged onto an external monitor changes devicePixelRatio without always
+   * firing `resize`, and the canvas would keep the old screen's resolution.
+   * The query matches only the CURRENT density, so it is re-armed on each change.
+   */
+  private watchDpr() {
+    this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDpr);
+  }
+  private onDpr = () => {
+    this.layout();
+    this.watchDpr();
+  };
 
   private update(dt: number) {
     // hover easing: 150ms in, 300ms out — over every link, not a fixed four
@@ -515,8 +552,10 @@ export class MainScreen {
     // hidden tab cannot fast-forward past the flash)
     this.burstT += dt;
 
-    // transition converge override
-    let p = this.params;
+    // transition converge override. Round 33: the light lab's look goes FIRST,
+    // so the burst, the dip and the reveal below still multiply what it emits —
+    // the seam's exact black holds whatever the lab dialled
+    let p = applyLook(this.params);
     if (this.converge > 0) {
       const e = this.converge;
       p = { ...p };
@@ -620,6 +659,9 @@ export class MainScreen {
       layers: this.tier.layers,
       octaves: this.tier.octaves,
       raySteps: Math.min(governor.quality().raySteps, this.tier.raySteps),
+      rays: governor.quality().rays,
+      polarTheta: governor.quality().polarTheta,
+      dither: this.dither,
       params: p,
     };
     if (!governor.LIGHT_OFF) this.renderer.render(state);
@@ -638,6 +680,8 @@ export class MainScreen {
       dpr: devicePixelRatio,
       scale: this.rs,
       canvas: `${this.canvas.width}×${this.canvas.height}`,
+      rays: this.renderer?.raysActive ?? '?',
+      polar: `${governor.quality().polarTheta} · ${this.renderer?.polarBuilds ?? 0} builds`,
       steps: Math.min(governor.quality().raySteps, this.tier.raySteps),
       rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
       light: governor.LIGHT_OFF ? 'OFF' : governor.FIELD_FORCED ? 'field forced' : 'on',

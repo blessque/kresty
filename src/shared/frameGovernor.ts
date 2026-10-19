@@ -32,6 +32,40 @@ export interface QualityRung {
 }
 
 /**
+ * ROUND 33 — the exact light's rungs. The light is no longer an estimate, so a
+ * lower rung cannot magnify noise any more; it only softens. `frac` multiplies
+ * the light's OWN detail cap (`gpu/exactLight.ts detailScale`: how many pixels
+ * its sharpest feature needs, native on phones and on the icons), and
+ * `polarTheta` is the polar texture's angular resolution. The old ladder below
+ * stays for `?rays=march` — the A/B against today has to be today, rung and all.
+ */
+export interface ExactRung {
+  frac: number;
+  polarTheta: number;
+}
+export const EXACT_LADDER: readonly ExactRung[] = [
+  { frac: 1, polarTheta: 2048 },
+  { frac: 0.8, polarTheta: 2048 },
+  { frac: 0.65, polarTheta: 2048 },
+  { frac: 0.5, polarTheta: 1024 },
+];
+
+export type LightMode = 'exact' | 'march';
+export type RaysChoice = 'exact' | 'pure' | 'march';
+
+/** what a light should draw with right now, and at what resolution */
+export interface Quality {
+  mode: LightMode;
+  /** march: canvas px per CSS px (as before). exact: a FRACTION of the detail cap */
+  renderScale: number;
+  /** `?rs=` or the lab: an absolute canvas-px-per-CSS-px that wins over both */
+  absScale: number | null;
+  raySteps: number;
+  polarTheta: number;
+  rays: RaysChoice;
+}
+
+/**
  * Best first. Rung 2 is the default desktop start (was an implicit rung 0) —
  * MEASURED: at rung 1 the main screen dropped 4–10 frames a second on an M1
  * Retina (0 at rung 2, 0 with the light off), and the two look the same.
@@ -76,6 +110,8 @@ const MIN_GAP_MS = 2000; // between two changes: a resize is not free
  * every page, every session. `?rung=0|1` still reach them.
  */
 const PROBE_CEILING = 2;
+/** the exact light may probe all the way back to its detail cap: it is cheap */
+const EXACT_PROBE_CEILING = 0;
 
 const params = new URLSearchParams(location.search);
 function numParam(key: string): number | null {
@@ -90,6 +126,10 @@ const PINNED = numParam('rung');
 /** `?rs=` / `?steps=` override one axis of whatever rung is live */
 const RS_OVERRIDE = numParam('rs');
 const STEPS_OVERRIDE = numParam('steps');
+/** `?rays=march|pure|exact` — round 33's A/B switch; `march` is today, rung and all */
+const RAYS_URL: RaysChoice | null = (['march', 'pure', 'exact'] as const).find((v) => v === params.get('rays')) ?? null;
+/** `?polar=N` pins the polar texture's angular resolution */
+const POLAR_OVERRIDE = numParam('polar');
 /** `?light=off` skips the GPU submit: the compositor-only baseline */
 export const LIGHT_OFF = params.get('light') === 'off';
 /**
@@ -101,7 +141,20 @@ export const FIELD_FORCED = params.get('field') === 'on';
 /** `?perf` shows the HUD (perfHud.ts) */
 export const PERF_HUD = params.has('perf');
 
-const clampRung = (i: number) => Math.max(0, Math.min(LADDER.length - 1, Math.round(i)));
+/** live overrides from the light lab (round 33) — they win over the rung */
+let lab: { rs?: number | null; polar?: number | null; rays?: RaysChoice | null } = {};
+/** a lab change waiting to be reported by `frame()`, so consumers re-layout */
+let pendingChange = false;
+/** whether this device built the exact light — set by `seed` */
+let exactOk = false;
+let lowTier = false;
+
+function activeMode(): LightMode {
+  const want = lab.rays ?? RAYS_URL;
+  return exactOk && want !== 'march' ? 'exact' : 'march';
+}
+const ladderLen = () => (activeMode() === 'exact' ? EXACT_LADDER.length : LADDER.length);
+const clampRung = (i: number) => Math.max(0, Math.min(ladderLen() - 1, Math.round(i)));
 
 let index = PINNED !== null ? clampRung(PINNED) : 2;
 let seeded = PINNED !== null;
@@ -123,23 +176,68 @@ export let gpuName = '';
  * whichever light initialises first; later calls only record the name.
  * `low` is the perf tier's mobile/small-memory verdict.
  */
-export function seed(name: string, low: boolean): void {
+export function seed(name: string, low: boolean, exactAvailable = false): void {
   gpuName = name;
   if (seeded) return;
   seeded = true;
-  let start = 2;
-  if (/intel/i.test(name)) start = 3;
-  if (low) start = Math.max(start, 3);
-  index = start;
+  exactOk = exactAvailable;
+  lowTier = low;
+  index = PINNED !== null ? clampRung(PINNED) : startRung();
 }
 
-/** the live rung, with the URL overrides applied */
-export function quality(): QualityRung {
-  const r = LADDER[index];
+function startRung(): number {
+  if (activeMode() === 'exact') {
+    // round 33: native on Apple / discrete; one step down where fill rate is
+    // scarce — the governor probes back up, and a lower rung is only softer
+    return lowTier || /intel/i.test(gpuName) ? 1 : 0;
+  }
+  let start = 2;
+  if (/intel/i.test(gpuName)) start = 3;
+  if (lowTier) start = Math.max(start, 3);
+  return start;
+}
+
+/** the live rung, with the URL and lab overrides applied */
+export function quality(): Quality {
+  const abs = lab.rs ?? RS_OVERRIDE;
+  const mode = activeMode();
+  if (mode === 'exact') {
+    const r = EXACT_LADDER[Math.min(index, EXACT_LADDER.length - 1)];
+    return {
+      mode,
+      renderScale: r.frac,
+      absScale: abs,
+      raySteps: STEPS_OVERRIDE ?? 28,
+      polarTheta: lab.polar ?? POLAR_OVERRIDE ?? r.polarTheta,
+      rays: lab.rays ?? RAYS_URL ?? 'exact',
+    };
+  }
+  const r = LADDER[Math.min(index, LADDER.length - 1)];
   return {
-    renderScale: RS_OVERRIDE ?? r.renderScale,
+    mode,
+    renderScale: abs ?? r.renderScale,
+    absScale: abs,
     raySteps: STEPS_OVERRIDE ?? r.raySteps,
+    polarTheta: 2048,
+    rays: 'march',
   };
+}
+
+/**
+ * The light lab's knobs (round 33). Reported by the next `frame()` as a change,
+ * so every consumer's existing resize-on-true path applies them. Switching the
+ * estimator re-seats the rung on that mode's own ladder.
+ */
+export function setOverrides(o: { rs?: number | null; polar?: number | null; rays?: RaysChoice | null }): void {
+  const before = activeMode();
+  lab = { ...lab, ...o };
+  if (activeMode() !== before) index = PINNED !== null ? clampRung(PINNED) : startRung();
+  pendingChange = true;
+}
+
+/** allocated canvas ceiling, MPx — the «О Крестах» canvas is two viewports tall */
+export function maxMegapixels(): number {
+  return lowTier || /intel/i.test(gpuName) || gpuName === '' ? 8 : 16;
 }
 
 export function rungIndex(): number {
@@ -170,6 +268,13 @@ function percentile(sorted: number[], p: number): number {
  */
 export function frame(dtMs: number): boolean {
   const now = performance.now();
+  if (pendingChange) {
+    pendingChange = false;
+    win = [];
+    warm = WARMUP;
+    lastChange = now;
+    return true;
+  }
   if (dtMs > HITCH_MS) {
     // not a measurement: throw the partial window away rather than let one
     // pause tip it
@@ -191,12 +296,12 @@ export function frame(dtMs: number): boolean {
   stats.slowShare = slow;
   win = [];
 
-  if (PINNED !== null || RS_OVERRIDE !== null) return false;
+  if (PINNED !== null || RS_OVERRIDE !== null || lab.rs != null) return false;
   if (now - lastChange < MIN_GAP_MS) return false;
 
   if (slow > SLOW_SHARE) {
     calmSince = now;
-    if (index >= LADDER.length - 1) return false;
+    if (index >= ladderLen() - 1) return false;
     index++;
     downs++;
     // a probe that has to be undone is the answer: never probe again this
@@ -213,7 +318,8 @@ export function frame(dtMs: number): boolean {
     calmSince = now; // one slow frame is noise; two in a window breaks the calm
     return false;
   }
-  if (index > PROBE_CEILING && downs < MAX_DOWNS && now - calmSince > STEP_UP_CALM_MS) {
+  const ceiling = activeMode() === 'exact' ? EXACT_PROBE_CEILING : PROBE_CEILING;
+  if (index > ceiling && downs < MAX_DOWNS && now - calmSince > STEP_UP_CALM_MS) {
     index--;
     probing = true;
     lastChange = now;

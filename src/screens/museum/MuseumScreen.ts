@@ -200,6 +200,7 @@ export class MuseumScreen extends ContentScreen {
       dpr: devicePixelRatio,
       scale: this.light.scale,
       canvas: this.light.canvasSize,
+      rays: this.light.rays,
       steps: this.light.steps,
       rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
       light: governor.LIGHT_OFF ? 'OFF' : governor.FIELD_FORCED ? 'field forced' : 'on',

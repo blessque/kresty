@@ -22,18 +22,39 @@ struct U {
   p7: vec4f, // fiberDrift, angleWarp, ghosting, shadow
   p8: vec4f, // modeMix, slitMix, hasMask, signSize
   p9: vec4f, // godrays, bloom, dissolve, signRot
-  p10: vec4f, // lightR, lightG, lightB, (spare)
+  p10: vec4f, // lightR, lightG, lightB, frame (round 33: the dither's seed)
   p11: vec4f, // hoverDirX, hoverDirY, hoverAmt, raySteps
+  // ---- round 33: the exact light — appended, so no slot above moved ----------
+  p12: vec4f, // kc0..kc3: the forward kernel, a cubic in τ
+  p13: vec4f, // lightC.x, lightC.y, sLast, raysMode (0 march · 1 exact · 2 pure · 3 ref)
+  p14: vec4f, // kA, kWb, maskLod, ditherAmp
+  p15: vec4f, // polarNT, polarNS, (spare), jitOffset
+  p16: vec4f, // bloomPad, bloomDissolve, bloomScale, (spare)
+  p17: vec4f, // haze, hazeScale, hazeDrift, hazeWind
+  p18: vec4f, // kRef λ, kRef g, rayEdge, (spare)
 };
 
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var signMaskTex: texture_2d<f32>;
 @group(0) @binding(2) var signSamp: sampler;
+// round 33 — the exact light's textures
+@group(0) @binding(3) var polarTex: texture_2d<f32>;   // Nₙ(θ, s), rgba16float
+@group(0) @binding(4) var polarSamp: sampler;          // repeat on θ, clamp on s
+@group(0) @binding(5) var bloomTex: texture_2d<f32>;   // baked bloom, rg16float
+@group(0) @binding(6) var hazeTex: texture_2d<f32>;    // tiling FBM, r8unorm
+@group(0) @binding(7) var hazeSamp: sampler;           // repeat
 
 fn hash21(pin: vec2f) -> f32 {
   var p = fract(pin * vec2f(123.34, 456.21));
   p = p + dot(p, p + 45.32);
   return fract(p.x * p.y);
+}
+
+// round 33: the dither's hash — see the GLSL twin for why not hash21
+fn pcg(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
 }
 
 fn vnoise(p: vec2f) -> f32 {
@@ -137,6 +158,92 @@ fn signMaskRay(uv: vec2f) -> f32 {
   return textureSampleLevel(signMaskTex, signSamp, uv, 0.0).b;
 }
 
+// ---- round 33: the exact light — mirror of the GLSL twin's section ---------
+
+fn coreMask(uv: vec2f) -> f32 {
+  let c = clamp(uv, vec2f(0.0), vec2f(1.0));
+  if (any(c != uv)) { return 0.0; }
+  return textureSampleLevel(signMaskTex, signSamp, uv, u.p14.z).r;
+}
+
+fn bakedBloom(uv0: vec2f) -> f32 {
+  let b = textureSampleLevel(bloomTex, signSamp, (uv0 + u.p16.x) * u.p16.z, 0.0).rg;
+  let t = select(1.0, clamp(u.p9.z / u.p16.y, 0.0, 1.0), u.p16.y > 0.0);
+  return mix(b.y, b.x, t);
+}
+
+// (no polarManual here: WebGPU always renders rgba16float — the GLSL twin's
+// hand-made bilinear is a WebGL2-only fallback)
+
+fn polarN(uu: f32, rr: f32) -> vec4f {
+  let s = min(rr, u.p13.z);
+  let v = s / u.p13.z * (u.p15.y - 0.5) / u.p15.y;
+  let n = textureSampleLevel(polarTex, polarSamp, vec2f(uu, v), 0.0);
+  let k = s / max(rr, 1e-9);
+  let k2 = k * k;
+  return n * vec4f(k, k2, k2 * k, k2 * k2);
+}
+
+fn polarRays(uu: f32, rr: f32) -> f32 {
+  return max(dot(u.p12, polarN(uu, rr)), 0.0);
+}
+
+fn exactRays(uv0: vec2f, caS: f32) -> vec3f {
+  let d = uv0 - u.p13.xy;
+  let rd = length(d);
+  let th = select(atan2(d.y, d.x), 0.0, rd < 1e-7);
+  let uu = th * 0.15915494309 + 0.5;
+  let ra = rd * u.p14.x;
+  var rays: vec3f;
+  if (caS > 0.0) {
+    rays = vec3f(polarRays(uu, ra * (1.0 + caS)), polarRays(uu, ra), polarRays(uu, ra * (1.0 - caS)));
+  } else {
+    rays = vec3f(polarRays(uu, ra));
+  }
+  // the old march's last sample sat uniformly in [¼, ¾] of a step behind c
+  let b0 = rd * (0.25 / 28.0);
+  let b1 = rd * (0.75 / 28.0);
+  let behind = (b1 * polarN(uu + 0.5, b1).x - b0 * polarN(uu + 0.5, b0).x) / max(b1 - b0, 1e-9);
+  return rays + u.p14.y * behind;
+}
+
+fn refMask(uv: vec2f) -> f32 {
+  let c = clamp(uv, vec2f(0.0), vec2f(1.0));
+  if (any(c != uv)) { return 0.0; }
+  let t = textureSampleLevel(signMaskTex, signSamp, uv, u.p14.z);
+  return mix(t.b, t.r, u.p18.z);
+}
+
+fn refRays(uv0: vec2f) -> vec3f {
+  let d = uv0 - u.p13.xy;
+  var acc = 0.0;
+  for (var i = 0; i < 2048; i++) {
+    let t = (f32(i) + 0.5) / 2048.0;
+    acc = acc + refMask(u.p13.xy + d * (u.p14.x * t)) * u.p14.x * u.p18.y * exp(-u.p18.x * (1.0 - u.p14.x * t));
+  }
+  acc = acc / 2048.0;
+  var back = 0.0;
+  for (var i = 0; i < 64; i++) {
+    back = back + refMask(u.p13.xy - d * ((0.25 + 0.5 * (f32(i) + 0.5) / 64.0) / 28.0));
+  }
+  return vec3f(acc + u.p14.y * back / 64.0);
+}
+
+fn hazeDensity(p: vec2f, q: vec2f) -> f32 {
+  let sc = max(u.p17.y, 8.0);
+  let t = u.time * u.p17.z;
+  let ql = length(q);
+  let pd = clamp(ql / 380.0, 0.0, 1.0);
+  let wind = (q / max(ql, 1e-3)) * pd * u.p17.w * 40.0 * exp(-length(p - q) / 320.0);
+  let pw = p - wind;
+  let lod = max(0.0, log2(256.0 / (sc * u.scale)));
+  let uvB = (mat2x2f(vec2f(0.8, 0.6), vec2f(-0.6, 0.8)) * pw) / (sc * 1.618) + t * vec2f(-0.0047, 0.0031);
+  let nB = textureSampleLevel(hazeTex, hazeSamp, uvB, max(0.0, lod - 0.694)).r;
+  let uvA = pw / sc + t * vec2f(0.0061, 0.0019) + (nB - 0.5) * 0.35;
+  let nA = textureSampleLevel(hazeTex, hazeSamp, uvA, lod).r;
+  return max(0.0, 1.0 + u.p17.x * 2.0 * (nA * 0.62 + nB * 0.38 - 0.5));
+}
+
 // «Прорезь»/«Сияние»: the logo as light through a cross-shaped slit. Mirror of
 // the GLSL slitLight(). dissolve 0: crisp emblem core + bloom halo + god-rays;
 // dissolve 1: crisp paths vanish, strokes elongate into soft zoom-blur light
@@ -156,12 +263,24 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   let lightUv = vec2f(0.5) - (R * par) / S;
   let dissolve = u.p9.z;
 
+  let caS = u.p3.w * 3.5; // ca
+  var core: f32;
+  var bloom: f32;
+  var rays: vec3f;
+  if (u.p13.w > 0.5) {
+    // round 33: computed, not estimated — see the exact-light section above
+    core = coreMask(uv0) * (1.0 - dissolve);
+    bloom = bakedBloom(uv0);
+    if (u.p13.w > 2.5) { rays = refRays(uv0); } else { rays = exactRays(uv0, caS); }
+    if (u.p17.x > 0.001) { rays = rays * hazeDensity(p, q); }
+  } else {
+  // ---- the old estimator, VERBATIM — `?rays=march` is the A/B baseline -----
   // crisp emblem core — fades out entirely as the logo dissolves into light
-  let core = signMask(uv0) * (1.0 - dissolve);
+  core = signMask(uv0) * (1.0 - dissolve);
 
   // bloom halo; per-pixel spiral rotation turns 12 discrete taps into noise
   let bloomR = 0.085 * (1.0 + 1.2 * dissolve); // dissolved = wider, softer
-  var bloom = 0.0;
+  bloom = 0.0;
   // ROUND 31.4: 24 taps, was 12 — see the GLSL twin
   for (var i = 0; i < 24; i++) {
     let fi = f32(i);
@@ -172,7 +291,6 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
   bloom = bloom / 12.0;
 
   let N = i32(clamp(u.p11.w, 8.0, 32.0)); // raySteps
-  let caS = u.p3.w * 3.5; // ca
   let duv = (uv0 - lightUv) / f32(N);
   var acc = vec3f(0.0);
   var illum = 1.0;
@@ -190,19 +308,23 @@ fn slitLight(p: vec2f, q: vec2f, r: f32, hoverDir: vec2f, hoverAmt: f32, jit: f3
     ) * illum;
     illum = illum * decay;
   }
+  rays = acc / f32(N);
+  }
+
+  // computed here for both paths — see the GLSL twin (hash21 is chaotic)
+  var life = 1.0 + u.p4.w * 0.12 * sin(u.time * 0.6)
+    + u.p6.z * 0.12 * (vnoise(vec2f(u.time * 0.5, 7.3)) - 0.5);
+  life = life * (1.0 + 0.4 * hoverAmt);
+
   // crisp register: fade the rays near the very center so the emblem's own
   // strokes read there. Dissolved register WANTS the blown featureless core.
   let rayGate = mix(smoothstep(0.02, 0.17, length(uv0 - vec2f(0.5))), 1.0, dissolve);
-  var rays = acc / f32(N) * rayGate;
+  rays = rays * rayGate;
   // dissolved trails melt toward the screen edges instead of staying constant
   rays = rays * mix(1.0, exp(-r / (u.p0.z * 1.15)), dissolve); // falloffL
 
   let pd = clamp(length(q) / 380.0, 0.0, 1.0);
   let lean = 1.0 + 0.7 * clamp(dot(normalize(p + vec2f(1e-4)), normalize(q + vec2f(1e-4))), -1.0, 1.0) * pd;
-
-  var life = 1.0 + u.p4.w * 0.12 * sin(u.time * 0.6)
-    + u.p6.z * 0.12 * (vnoise(vec2f(u.time * 0.5, 7.3)) - 0.5);
-  life = life * (1.0 + 0.4 * hoverAmt);
 
   // crisp emblem core (readable logo) carries the shape; bloom + rays are light
   let col = vec3f(core) * u.p1.x * 1.8
@@ -590,7 +712,7 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     let hoverAmt = u.p11.z;
     var slit: vec3f;
     if (hasMask > 0.5) {
-      slit = slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), hash21(fragPx));
+      slit = slitLight(p, q, r, hoverDir, min(hoverAmt, 1.0), fract(hash21(fragPx) + u.p15.w));
     } else {
       slit = f.crossGlyph + vec3f(f.core); // never blank if the mask failed to load
     }
@@ -617,9 +739,21 @@ fn fs(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
 
   col = 1.0 - exp(-col * 1.6);
 
-  let g = hash21(fragPx + fract(u.time) * vec2f(113.1, 271.7));
-  col = col + (g - 0.5) * grain;
-  col = col + (g - 0.5) / 255.0;
+  if (u.p13.w > 0.5) {
+    // round 33: monochrome TPDF, integer hash, gated — see the GLSL twin
+    let ip = vec2u(fragPx);
+    let h1 = pcg(ip.x + pcg(ip.y + pcg(u32(u.p10.w))));
+    let h2 = pcg(h1 ^ 2654435769u);
+    let g1 = f32(h1 >> 8u) * (1.0 / 16777216.0);
+    let g2 = f32(h2 >> 8u) * (1.0 / 16777216.0);
+    let gate = clamp(max(col.r, max(col.g, col.b)) * 255.0, 0.0, 1.0);
+    col = col + (g1 - 0.5) * grain;
+    col = col + (g1 + g2 - 1.0) * (u.p14.w / 255.0) * gate;
+  } else {
+    let g = hash21(fragPx + fract(u.time) * vec2f(113.1, 271.7));
+    col = col + (g - 0.5) * grain;
+    col = col + (g - 0.5) / 255.0 * u.p14.w;
+  }
 
   return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)), 1.0);
 }

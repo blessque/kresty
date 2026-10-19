@@ -1,6 +1,10 @@
-import type { RayFieldRenderer, RayFieldState } from '../rayFieldTypes';
+import type { LightMaskData, RayFieldRenderer, RayFieldState, RaysMode } from '../rayFieldTypes';
 import vertSrc from './rayField.vert.glsl?raw';
 import fragSrc from './rayField.frag.glsl?raw';
+import { compileProgram, type GLProgram } from './glProgram';
+import { GLPolarPasses } from './polarPasses';
+import { createHaze, linearClamp, placeholder, uploadBloom, uploadMask } from './glTextures';
+import { RAYS_CODE, exactFrame, type MaskGeometry } from '../exactLight';
 
 const PARAM_UNIFORMS = [
   'primaryK',
@@ -36,18 +40,91 @@ const PARAM_UNIFORMS = [
   'lightR',
   'lightG',
   'lightB',
+  // round 33 — `trail` and `penumbra` are consumed on the CPU (exactLight.ts)
+  'rayEdge',
+  'haze',
+  'hazeScale',
+  'hazeDrift',
+  'hazeWind',
   'hoverMode',
   'compositeMode',
 ] as const;
 
+/**
+ * NOTE: a uniform missing from these lists is a SILENT no-op — `u()` returns
+ * null and `gl.uniform*(null, …)` does nothing. `compileProgram` checks the list
+ * against the shader source in dev (round 25: `u_signRot` was missing for
+ * eighteen rounds and the cross did not turn on WebGL2).
+ */
+const STATE_UNIFORMS = [
+  'u_resolution',
+  'u_center',
+  'u_pointer',
+  'u_time',
+  'u_scale',
+  'u_beamAngles',
+  'u_linkAngles',
+  'u_linkDist',
+  'u_linkHalfAng',
+  'u_beamHover',
+  'u_hoverDir',
+  'u_hoverAmt',
+  'u_bgMix',
+  'u_sceneDim',
+  'u_modeMix',
+  'u_slitMix',
+  'u_hasMask',
+  'u_signMask',
+  'u_layers',
+  'u_octaves',
+  'u_raySteps',
+  'u_signRot',
+  // round 33: the exact light
+  'u_raysMode',
+  'u_polar',
+  'u_polarBits',
+  'u_polarManual',
+  'u_lightC',
+  'u_sLast',
+  'u_polarDims',
+  'u_kc',
+  'u_kA',
+  'u_kWb',
+  'u_kRef',
+  'u_maskLod',
+  'u_bloomTex',
+  'u_bloomMap',
+  'u_hazeTex',
+  'u_frame',
+  'u_ditherAmp',
+  'u_jitOffset',
+] as const;
+
+/** texture units of the main pass (the polar passes add 2 and 3) */
+const UNIT = { mask: 0, polar: 1, polarBits: 4, bloom: 5, haze: 6 } as const;
+
 export class WebGL2RayFieldRenderer implements RayFieldRenderer {
   readonly backend = 'webgl2' as const;
   gpuName = '';
+  exactAvailable = false;
+  raysActive: RaysMode = 'march';
   private gl!: WebGL2RenderingContext;
-  private program!: WebGLProgram;
-  private uniforms = new Map<string, WebGLUniformLocation | null>();
+  private main!: GLProgram;
+  private polar: GLPolarPasses | null = null;
   private signTex: WebGLTexture | null = null;
+  private bloomTex: WebGLTexture | null = null;
+  private hazeTex: WebGLTexture | null = null;
+  private dummyF!: WebGLTexture;
+  private dummyU!: WebGLTexture;
   private hasMask = 0;
+  /** set by a mask that came with exact data; null = that mask can only be marched */
+  private mask: (MaskGeometry & { bloom: LightMaskData['bloom'] }) | null = null;
+  private frameNo = 0;
+  private debug = { ditherAmp: 1, jitOffset: 0, frame: -1 };
+
+  get polarBuilds(): number {
+    return this.polar?.builds ?? 0;
+  }
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     const gl = canvas.getContext('webgl2', {
@@ -64,96 +141,64 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     const dbg = gl.getExtension('WEBGL_debug_renderer_info');
     this.gpuName = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
 
-    const compile = (type: number, src: string) => {
-      const sh = gl.createShader(type)!;
-      gl.shaderSource(sh, src);
-      gl.compileShader(sh);
-      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-        throw new Error(`Shader compile failed: ${gl.getShaderInfoLog(sh)}`);
-      }
-      return sh;
-    };
-    const vs = compile(gl.VERTEX_SHADER, vertSrc);
-    const fs = compile(gl.FRAGMENT_SHADER, fragSrc);
-    const program = gl.createProgram()!;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
-    }
-    this.program = program;
-    gl.useProgram(program);
-
-    const names = [
-      'u_resolution',
-      'u_center',
-      'u_pointer',
-      'u_time',
-      'u_scale',
-      'u_beamAngles',
-      'u_linkAngles',
-      'u_linkDist',
-      'u_linkHalfAng',
-      'u_beamHover',
-      // NOTE: `u()` returns null for any name missing from this list, and
-      // `gl.uniform*(null, …)` is a silent no-op — a new uniform that is
-      // uploaded but not registered here simply never reaches the shader,
-      // with no error anywhere. Adding a uniform means adding it here too.
-      'u_hoverDir',
-      'u_hoverAmt',
-      'u_bgMix',
-      'u_sceneDim',
-      'u_modeMix',
-      'u_slitMix',
-      'u_hasMask',
-      'u_signMask',
-      'u_layers',
-      'u_octaves',
-      'u_raySteps',
-      // ROUND 25: `u_signRot` was MISSING here since round 7 — uploaded every
-      // frame at `render()` and silently discarded, so the cross's rotation was
-      // dead on WebGL2 and correct on WebGPU, which is why it read as "disabled"
-      // on some machines and not others. The note above was already written and
-      // the trap still landed, so the list now checks itself (below).
-      'u_signRot',
-      ...PARAM_UNIFORMS.map((k) => `u_${k}`),
-    ];
-    for (const n of names) this.uniforms.set(n, gl.getUniformLocation(program, n));
-
-    // A registration this list forgets is invisible: `u()` returns null and
-    // `gl.uniform*(null, …)` is a no-op with no error, no warning and often no
-    // visible artefact. The shader source is right here as a string, so the
-    // shader itself is the authority on what must be registered — anything it
-    // declares and this list omits is a silent no-op waiting to happen.
-    if (import.meta.env.DEV) {
-      const declared = [...fragSrc.matchAll(/^\s*uniform\s+\w+\s+(u_\w+)/gm)].map((m) => m[1]);
-      const missing = declared.filter((n) => !this.uniforms.has(n));
-      if (missing.length) {
-        console.error(
-          `[kresty] ${missing.length} uniform(s) declared in rayField.frag.glsl but not in the ` +
-            `name list — every upload to them is a SILENT no-op: ${missing.join(', ')}`,
-        );
-      }
-    }
-    gl.uniform1i(this.uniforms.get('u_signMask') ?? null, 0); // sampler on unit 0
+    this.main = compileProgram(
+      gl,
+      vertSrc,
+      fragSrc,
+      [...STATE_UNIFORMS, ...PARAM_UNIFORMS.map((k) => `u_${k}`)],
+      'rayField',
+    );
+    gl.useProgram(this.main.program);
+    gl.uniform1i(this.main.u('u_signMask'), UNIT.mask);
+    gl.uniform1i(this.main.u('u_polar'), UNIT.polar);
+    gl.uniform1i(this.main.u('u_polarBits'), UNIT.polarBits);
+    gl.uniform1i(this.main.u('u_bloomTex'), UNIT.bloom);
+    gl.uniform1i(this.main.u('u_hazeTex'), UNIT.haze);
 
     // bufferless triangle still needs a bound VAO on some drivers
     gl.bindVertexArray(gl.createVertexArray());
+
+    this.dummyF = placeholder(gl, false);
+    this.dummyU = placeholder(gl, true);
+    this.hazeTex = createHaze(gl);
+    // round 33: the exact light, if this device can build it — a self-test runs
+    // first; on failure the light is the old march, never blank
+    this.polar = GLPolarPasses.create(gl);
+    this.exactAvailable = this.polar !== null;
   }
 
-  setSignMask(source: TexImageSource): void {
+  setSignMask(source: TexImageSource, data?: LightMaskData): void {
     const gl = this.gl;
     if (!this.signTex) this.signTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.signTex);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // top row -> v=0 (p.y is down)
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (data) {
+      uploadMask(gl, this.signTex!, data);
+      if (!this.bloomTex) this.bloomTex = gl.createTexture();
+      uploadBloom(gl, this.bloomTex!, data.bloom);
+      this.mask = {
+        size: data.size,
+        inkBox: data.inkBox,
+        revision: (this.mask?.revision ?? 0) + 1,
+        bloom: data.bloom,
+      };
+      this.polar?.invalidate();
+    } else {
+      // the pre-round-33 upload, verbatim — a mask without exact data is marched
+      gl.bindTexture(gl.TEXTURE_2D, this.signTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // top row -> v=0 (p.y is down)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      // reset: global state, and the next upload must not inherit a flip
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      // a previous exact upload left a mip chain behind; this is one level
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
+      linearClamp(gl);
+      this.mask = null;
+    }
     this.hasMask = 1;
+  }
+
+  setDebug(d: { ditherAmp?: number; jitOffset?: number; frame?: number }): void {
+    Object.assign(this.debug, d);
   }
 
   resize(w: number, h: number): void {
@@ -167,8 +212,21 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
 
   render(s: RayFieldState): void {
     const gl = this.gl;
-    const u = (n: string) => this.uniforms.get(n) ?? null;
-    gl.useProgram(this.program);
+    const u = this.main.u;
+
+    // round 33: which estimator draws this frame — exact unless asked otherwise
+    // or unable; reported back so the HUD and the probes see the truth
+    const want: RaysMode = s.rays ?? 'exact';
+    const exact = want !== 'march' && this.polar !== null && this.mask !== null && s.slitMix > 0.001;
+    const mode: RaysMode = exact ? want : 'march';
+    this.raysActive = mode;
+    const f = exact ? exactFrame(s, this.mask!, mode, s.polarTheta ?? 2048) : null;
+    if (f) this.polar!.run(f, this.signTex!, this.mask!.size);
+
+    // the final pass: restore everything the polar passes may have touched
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.useProgram(this.main.program);
     gl.uniform2f(u('u_resolution'), gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.uniform2f(u('u_center'), s.centerPx[0], s.centerPx[1]);
     gl.uniform2f(u('u_pointer'), s.pointerPx[0], s.pointerPx[1]);
@@ -193,10 +251,34 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
     for (const k of PARAM_UNIFORMS) {
       gl.uniform1f(u(`u_${k}`), s.params[k]);
     }
-    if (this.signTex) {
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.signTex);
+    gl.uniform1f(u('u_raysMode'), RAYS_CODE[mode]);
+    gl.uniform1f(u('u_frame'), this.debug.frame >= 0 ? this.debug.frame : this.frameNo);
+    gl.uniform1f(u('u_ditherAmp'), this.debug.ditherAmp * (s.dither ?? 1));
+    gl.uniform1f(u('u_jitOffset'), this.debug.jitOffset);
+    if (f) {
+      const k = f.kernel;
+      const b = this.mask!.bloom;
+      gl.uniform2f(u('u_lightC'), f.c[0], f.c[1]);
+      gl.uniform1f(u('u_sLast'), f.sLast);
+      gl.uniform2f(u('u_polarDims'), f.nTheta, f.nS);
+      gl.uniform4f(u('u_kc'), k.kc[0], k.kc[1], k.kc[2], k.kc[3]);
+      gl.uniform1f(u('u_kA'), k.a);
+      gl.uniform1f(u('u_kWb'), k.wb);
+      gl.uniform2f(u('u_kRef'), k.lambda, k.g);
+      gl.uniform1f(u('u_maskLod'), f.maskLod);
+      gl.uniform1f(u('u_polarManual'), this.polar!.manual ? 1 : 0);
+      gl.uniform3f(u('u_bloomMap'), b.pad, b.dissolve, 1 / (1 + 2 * b.pad));
     }
+    const manual = this.polar?.manual ?? false;
+    const bind = (unit: number, tex: WebGLTexture | null) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+    };
+    bind(UNIT.mask, this.signTex ?? this.dummyF);
+    bind(UNIT.polar, f && !manual ? this.polar!.texture : this.dummyF);
+    bind(UNIT.polarBits, f && manual ? this.polar!.texture : this.dummyU);
+    bind(UNIT.bloom, this.bloomTex ?? this.dummyF);
+    bind(UNIT.haze, this.hazeTex ?? this.dummyF);
     if (s.scissorPx) {
       // GL's scissor is bottom-left origin; the contract's is top-left
       const [x, y, w, h] = s.scissorPx;
@@ -206,10 +288,16 @@ export class WebGL2RayFieldRenderer implements RayFieldRenderer {
       gl.disable(gl.SCISSOR_TEST);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.frameNo = (this.frameNo + 1) & 0xffff;
   }
 
   destroy(): void {
-    if (this.signTex) this.gl?.deleteTexture(this.signTex);
-    this.gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    const gl = this.gl;
+    if (!gl) return;
+    for (const t of [this.signTex, this.bloomTex, this.hazeTex, this.dummyF, this.dummyU]) {
+      if (t) gl.deleteTexture(t);
+    }
+    this.polar?.destroy();
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }

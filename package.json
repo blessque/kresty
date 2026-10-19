@@ -17,7 +17,8 @@
     "shots:figma": "node scripts/figma-shots.mjs",
     "probe:heads": "node scripts/head-sweep.mjs",
     "probe:sliders": "node scripts/slider-sweep.mjs",
-    "bench:light": "node scripts/light-bench.mjs"
+    "bench:light": "node scripts/light-bench.mjs",
+    "probe:light": "node scripts/light-probe.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

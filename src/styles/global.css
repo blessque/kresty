@@ -65,7 +65,13 @@ button {
      #56b7e6 an overlay grain is VISIBLE — it is a no-op only against black. Left
      undriven it pops in at the swap, which is exactly the tell the seam exists
      to remove. Defaults to 1, so every other path is unchanged. */
-  opacity: calc(0.07 * var(--grain-k, 1));
+  /* round 33: `--grain-amt` is the film grain's amount (shared/filmGrain.ts —
+     0.015 shipped since 33.1, the light lab's handle); at 0 it also sets
+     `display: none`, so no full-screen overlay blend runs at all. The tiles are
+     generated at device resolution and never repeat on screen (the old 128 px
+     tile repeated every 256 device px on a 2× screen: the "grid"). */
+  display: none;
+  opacity: calc(var(--grain-amt, 0) * var(--grain-k, 1));
   mix-blend-mode: overlay;
 }
 

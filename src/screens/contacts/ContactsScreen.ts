@@ -2,12 +2,14 @@ import type { Route } from '../../router';
 import logoSvg from '../../assets/logo.svg?raw';
 import { asset } from '../../shared/assetUrl';
 import { rasterizeMask, maskCoverage, maskToOverlayUrl } from '../../shared/rasterizeMask';
+import { buildLightMask, type LightMaskBuild } from '../../shared/lightMask';
+import * as governor from '../../shared/frameGovernor';
 import { SmoothPointer } from '../../shared/pointer';
 import { T } from '../../styles/tokens.gen';
 import { getPerfTier } from '../../shared/performanceTier';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
-import { ControlPanel, type ControlSpec, type ControlValues } from './ControlPanel';
+import { ControlPanel, type ControlSpec, type ControlValues } from '../../shared/controlPanel';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
 
 /**
@@ -226,6 +228,12 @@ interface IconMask {
   exposure: number;
   /** crisp white icon for the DOM overlay, derived from the mask's R channel */
   overlayUrl: string;
+  /**
+   * Round 33: the exact light's data. Baked at dissolve 1 so the panel's live
+   * `dissolve` slider still widens the bloom — the shader blends the two baked
+   * radii (dissolve 1 and 0) by the slider's value.
+   */
+  data: LightMaskBuild;
 }
 
 export class ContactsScreen {
@@ -487,6 +495,8 @@ export class ContactsScreen {
         this.renderer = r;
       }
       console.info(`[kresty] contacts backend: ${this.renderer.backend}`);
+      // round 33: only so `?rays=` and the governor's mode mean the same here
+      governor.seed(this.renderer.gpuName, this.tier.low, this.renderer.exactAvailable);
       this.layout();
       this.activeIdx = -1; // force the first mask upload
     } finally {
@@ -508,6 +518,7 @@ export class ContactsScreen {
         canvas,
         exposure: coverage > 0 ? REF_COVERAGE / coverage : 1,
         overlayUrl: maskToOverlayUrl(canvas),
+        data: buildLightMask(canvas, { dissolve: 1 }),
       };
       this.masks[i] = m;
       return m;
@@ -575,7 +586,7 @@ export class ContactsScreen {
         // a slow rasterize could land after another snap — only upload if the
         // section is still the live one
         if (!m || this.activeIdx !== idx) return;
-        this.renderer?.setSignMask(m.canvas);
+        this.renderer?.setSignMask(m.canvas, m.data);
         this.exposure = m.exposure;
         this.overlay.src = m.overlayUrl;
         this.lastKey = '';
@@ -667,6 +678,7 @@ export class ContactsScreen {
       layers: steps / 8,
       octaves: 0,
       raySteps: steps,
+      rays: governor.quality().rays,
       params: p,
     };
     this.renderer.render(state);

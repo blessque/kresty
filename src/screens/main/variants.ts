@@ -42,6 +42,14 @@ const base: RayFieldParams = {
   lightR: 1,
   lightG: 1,
   lightB: 1,
+  // round 33 — the exact light's handles, every one at the shipped look
+  trail: 1,
+  rayEdge: 0,
+  penumbra: 0,
+  haze: 0,
+  hazeScale: 420,
+  hazeDrift: 1,
+  hazeWind: 1,
   hoverMode: 0,
   compositeMode: 0,
 };
@@ -72,7 +80,12 @@ const siyanieParams: RayFieldParams = {
   // «О Крестах» hides it and already rendered its icons at grain 0. The 1/255
   // dither in the shader stays — that is anti-banding, not grain.
   grain: 0,
-  ca: 0.03,
+  // ROUND 33: 0, was 0.03. The user: "I don't like these rainbows". It was a
+  // ±10.5 % radial scale of R and B about the light, and under the jittered
+  // march each channel landed its noise somewhere else — rainbow SPECKLE (chroma
+  // noise measured above luminance noise in the main rays). The exact light
+  // would draw it as a clean fringe; the light lab's `rainbow` brings it back.
+  ca: 0,
   hazeBase: 0.05,
   rotSpeed: 0.008,
   parallax: 1.0,

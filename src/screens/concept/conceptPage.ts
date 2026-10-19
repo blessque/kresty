@@ -434,6 +434,7 @@ export class ConceptPage {
       dpr: devicePixelRatio,
       scale: light.scale,
       canvas: light.canvasSize,
+      rays: light.rays,
       steps: governor.quality().raySteps,
       rung: `${governor.rungIndex()}${governor.isLocked() ? ' (locked)' : ''}`,
       light: governor.LIGHT_OFF ? 'OFF' : BAKE ? 'baked' : 'live',

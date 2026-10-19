@@ -1,5 +1,8 @@
 import signSvg from '../../assets/sign.svg?raw';
 import { rasterizeMask } from '../../shared/rasterizeMask';
+import { buildLightMask } from '../../shared/lightMask';
+import { lightScale } from '../../page/lightScale';
+import { applyLook } from '../../shared/lightLook';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
@@ -146,6 +149,8 @@ export class MuseumLight {
   private tierSteps = 32;
   /** shader runs since load — the per-frame-cost assertion reads this */
   renderCount = 0;
+  /** the exact path's dither, raised below screen density (page/lightScale.ts) */
+  private dither = 1;
 
   constructor() {
     this.canvas.className = 'museum-light';
@@ -194,7 +199,7 @@ export class MuseumLight {
         this.renderer = r;
       }
       console.info(`[kresty] museum light backend: ${this.renderer.backend}`);
-      governor.seed(this.renderer.gpuName, tier.low);
+      governor.seed(this.renderer.gpuName, tier.low, this.renderer.exactAvailable);
       this.renderScale = this.liveScale();
       this.applySize();
       void this.uploadMask();
@@ -216,7 +221,7 @@ export class MuseumLight {
       // near-miss of it. Coverage normalisation is therefore also a no-op:
       // `sign.svg` IS the reference coverage the concept light divides by.
       const mask = await rasterizeMask(signSvg, { raw: true });
-      this.renderer.setSignMask(mask);
+      this.renderer.setSignMask(mask, buildLightMask(mask, { dissolve: SIYANIE.dissolve }));
       this.maskReady = true;
       if (this.lastArgs) this.render(this.lastArgs.rot, this.lastArgs.pointer, this.lastArgs.timeSec);
     } catch (err) {
@@ -234,6 +239,8 @@ export class MuseumLight {
     if (w === this.viewW && h === this.viewH) return;
     this.viewW = w;
     this.viewH = h;
+    // round 33: the scale depends on the viewport (the emblem's span, the ceiling)
+    if (this.renderer) this.renderScale = this.liveScale();
     this.applySize();
   }
 
@@ -249,12 +256,31 @@ export class MuseumLight {
     this.applySize();
   }
 
+  /**
+   * Round 33: `page/lightScale.ts`. The exact light's detail cap on this page is
+   * about 1 CSS px — the emblem is 2.2 viewports across, so even its sharpest
+   * edge spans several device pixels — and `?ls=` still wins, as before.
+   */
   private liveScale(): number {
-    return Math.min(governor.quality().renderScale, this.tierScale);
+    const ls = lightScale({
+      spanCss: Math.max(1, this.viewH * this.signVh),
+      params: applyLook(SIYANIE),
+      cssW: Math.max(1, this.viewW),
+      cssH: Math.max(1, this.viewH),
+      marchCap: this.tierScale,
+      override: renderScaleOverride(),
+    });
+    this.dither = ls.dither;
+    return ls.scale;
   }
 
   get scale(): number {
     return this.renderScale;
+  }
+
+  /** what the last frame drew with — the HUD's `rays` row */
+  get rays(): string {
+    return this.renderer?.raysActive ?? 'none';
   }
 
   get steps(): number {
@@ -300,7 +326,7 @@ export class MuseumLight {
     // spread and MUST keep coming through it — each one that gets a local
     // opinion is a step back toward a lookalike.
     const g = this.gain;
-    const p: RayFieldParams = {
+    const p: RayFieldParams = applyLook({
       ...SIYANIE,
       godrays: SIYANIE.godrays * g,
       bloom: SIYANIE.bloom * g,
@@ -310,7 +336,7 @@ export class MuseumLight {
       // hero magnitude and decays inside the frame exactly as on the main
       // screen.
       signSize: this.viewH * this.signVh,
-    };
+    });
 
     const state: RayFieldState = {
       // THE CLOCK IS LIVE. It is what `breathe`, `shimmer`, the dust drift, the
@@ -342,6 +368,9 @@ export class MuseumLight {
       layers: this.layers,
       octaves: this.octaves,
       raySteps: this.steps,
+      rays: governor.quality().rays,
+      polarTheta: governor.quality().polarTheta,
+      dither: this.dither,
       params: p,
     };
     if (!governor.LIGHT_OFF) this.renderer.render(state);

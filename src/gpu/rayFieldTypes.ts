@@ -49,6 +49,17 @@ export interface RayFieldParams {
   lightR: number;
   lightG: number;
   lightB: number;
+  /**
+   * ROUND 33 — the exact light's look handles. Every default is the shipped
+   * look (1 / 0), so a preset that never names them is unchanged.
+   */
+  trail: number; // multiplier on the trails' decay exponent λ: < 1 longer, > 1 shorter
+  rayEdge: number; // ray source: 0 = B radial smear (shipped), 1 = R crisp (round 5's razor)
+  penumbra: number; // extended light source, 0..1: ray edges feather with distance
+  haze: number; // living haze, 0..1: drifting air density the beams pass through (0 = off)
+  hazeScale: number; // haze feature size, reference px
+  hazeDrift: number; // haze drift speed, × the default
+  hazeWind: number; // how hard the cursor's wind stirs the haze, × the default
   hoverMode: number; // 0 brighten+turb | 1 widen | 2 flood | 3 arm-elongate | 4 mote-stream
   compositeMode: number; // 0 additive light | 1 eclipse (bright haze, dark channels)
 }
@@ -89,6 +100,13 @@ export const NUMERIC_KEYS: ParamKey[] = [
   'lightR',
   'lightG',
   'lightB',
+  'trail',
+  'rayEdge',
+  'penumbra',
+  'haze',
+  'hazeScale',
+  'hazeDrift',
+  'hazeWind',
 ];
 
 export function lerpParams(a: RayFieldParams, b: RayFieldParams, t: number): RayFieldParams {
@@ -169,17 +187,86 @@ export interface RayFieldState {
    * must not pay for the viewport that is off screen. Omitted = whole canvas.
    */
   scissorPx?: [number, number, number, number];
+  /**
+   * Which estimator draws the god-rays (round 33). Omitted = `exact` whenever the
+   * renderer could build it, else `march`; the renderer falls back silently and
+   * reports what it actually used in `raysActive`.
+   */
+  rays?: RaysMode;
+  /** angular resolution of the polar texture — the governor's knob; default 2048 */
+  polarTheta?: number;
+  /**
+   * Exact-path dither amplitude in 8-bit LSB, default 1. A canvas drawn below
+   * ~0.75 of the screen's density has its dither averaged down by the
+   * compositor's upscale, so such consumers pass ~1.5 to keep gradients unbanded.
+   */
+  dither?: number;
   params: RayFieldParams;
+}
+
+/**
+ * The god-ray estimator (round 33).
+ *  - `exact`: the polar prefix sum with the kernel MATCHED to the old march's
+ *    expected value — today's look without its noise. The default.
+ *  - `pure`: the same, with the naive ∫₀¹ kernel (no behind-centre glow floor).
+ *  - `march`: the old jittered march, byte-identical — the A/B baseline.
+ *  - `ref`: a dense un-jittered march with the true kernel — probes only.
+ */
+export type RaysMode = 'exact' | 'pure' | 'march' | 'ref';
+
+/**
+ * What the exact light needs beyond the mask canvas (round 33). Built once per
+ * mask by `shared/lightMask.ts` — which cannot import this type (shared/ imports
+ * nothing internal), so the two are matched STRUCTURALLY and TypeScript checks the
+ * match at each `screens/` call site.
+ */
+export interface LightMaskData {
+  /** level-0 edge, texels (a square power-of-two-ish size, e.g. 640) */
+  size: number;
+  /**
+   * RGBA8 mip chain, level 0 first, each `max(1, size >> k)` square. Rows are
+   * BOTTOM-UP — the bytes today's Y-flipped canvas upload produced — so the
+   * orientation is exactly as before (the emblem mirror stays an open issue).
+   * Level 0's channels are byte-identical to the canvas: R crisp, G 18 px blur,
+   * B radial smear. Levels ≥ 1 are gaussian, which is what makes `penumbra` a
+   * LOD bias rather than a second texture.
+   */
+  levels: Uint8Array<ArrayBuffer>[];
+  /** B-channel ink box in texture uv `[u0, v0, u1, v1]` — the polar support */
+  inkBox: [number, number, number, number];
+  /**
+   * The bloom, baked: the old 24-tap spiral's EXPECTED kernel applied once, so
+   * the pixel reads it with one fetch instead of 24 jittered ones. RG binary16,
+   * x = at `dissolve`, y = at dissolve 0; covers uv `[−pad, 1 + pad]²` so the
+   * glow's tail outside the emblem square survives.
+   */
+  bloom: { size: number; pad: number; dissolve: number; halves: Uint16Array<ArrayBuffer> };
 }
 
 export interface RayFieldRenderer {
   init(canvas: HTMLCanvasElement): Promise<void>;
   resize(widthPx: number, heightPx: number): void;
-  /** upload the rasterized emblem mask sampled by the «Прорезь» slit path */
-  setSignMask(source: TexImageSource): void;
+  /**
+   * Upload the rasterized emblem mask sampled by the «Прорезь» slit path. With
+   * `data` the mask also feeds the exact light (round 33); without it that mask
+   * can only be drawn by the old march.
+   */
+  setSignMask(source: TexImageSource, data?: LightMaskData): void;
   render(state: RayFieldState): void;
   destroy(): void;
   readonly backend: 'webgpu' | 'webgl2';
+  /** the exact light could be built on this device (known after `init`) */
+  readonly exactAvailable: boolean;
+  /** what the LAST frame actually drew with — for the HUD and the probes */
+  readonly raysActive: RaysMode;
+  /** polar texture rebuilds since init — the skip logic's probe */
+  readonly polarBuilds: number;
+  /**
+   * Probe-only switches: `ditherAmp` 0 turns the dither off (frames become
+   * deterministic and comparable), `jitOffset` shifts the old march's jitter so
+   * a probe can average it into its expected value.
+   */
+  setDebug(d: { ditherAmp?: number; jitOffset?: number; frame?: number }): void;
   /**
    * What the device calls its GPU, best effort, after `init()` (round 31) —
    * "ANGLE (Intel Inc., Intel(R) Iris(TM) Plus Graphics…)", "apple metal-3",

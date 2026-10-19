@@ -14,8 +14,15 @@ and legacy presets. The `V` key reveals the switcher.
 ## Ray field
 
 - **The GLSL and WGSL shaders are mirrored twins** — `src/gpu/webgl2/rayField.frag.glsl` ↔
-  `src/gpu/webgpu/rayField.wgsl`. ANY math change lands in **both**, same structure, same
-  names.
+  `src/gpu/webgpu/rayField.wgsl`, and since round 33 `rayPolar.frag.glsl` ↔ `rayPolar.wgsl`
+  (the exact light's polar passes). ANY math change lands in **both** of its pair, same
+  structure, same names.
+- **The light is computed, not estimated (round 33)** — a polar prefix sum instead of the
+  jittered march; RAY_FIELD.md «The exact light». `MainScreen` sizes its canvas through
+  `page/lightScale.ts` (the detail cap: ≈ 1.02 at 1440 on a 2× screen), passes its params through
+  `applyLook` (the shipped look since 33.1 — `LOOK_DEFAULTS`, the user's pick; `?lab` moves it) and re-lays out when the DPR
+  changes. The HUD (`?perf`) shows `rays` and `polar`; `?rays=march` brings the old light back
+  for an A/B.
 - All shader distances are in **reference px** (the 1440×800 design frame); the shader divides
   by `u_scale`. Never hardcode screen px.
 - Variants are **uniform presets + two integer mode uniforms** (`hoverMode`,
@@ -59,7 +66,11 @@ and legacy presets. The `V` key reveals the switcher.
   returns empty (no `preserveDrawingBuffer`), and pixel-diffing screenshots cannot isolate an
   interaction because the light rotates at ~0.72°/s and the slider cycles — every frame differs
   anyway. Intercept `getUniformLocation` to map location → name, then wrap the `uniform*` call
-  and read what is actually sent.
+  and read what is actually sent. On WebGPU, wrap `GPUQueue.writeBuffer` and read the 104-float
+  block. Round 33 checked all five links this way on both backends: each hover's `hoverDir`
+  reaches the GPU and moves the exact light's centre by 0.052 uv, in five directions 72° apart.
+  To read the LIGHT itself, `npm run probe:light` renders the real renderers into a probe
+  canvas (`__krestyProbe` gives the WebGPU canvas `COPY_SRC`).
 
 ---
 

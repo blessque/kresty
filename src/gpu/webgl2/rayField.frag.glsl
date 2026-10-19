@@ -1,5 +1,9 @@
 #version 300 es
 precision highp float;
+// round 33: the dither's PCG hash needs 32-bit uints, and the fragment default
+// is mediump — on mobile that prints patterns. The default SAMPLER precision is
+// left alone on purpose: changing it would move the old march's numbers.
+precision highp int;
 
 // ---- frame state ------------------------------------------------------
 uniform vec2 u_resolution;   // internal canvas px
@@ -64,6 +68,31 @@ uniform float u_lightR;        // colour of the light itself, per channel;
 uniform float u_lightG;        //   (1,1,1) = white = every shipped variant.
 uniform float u_lightB;        //   Applied before the tone curve — see main().
 
+// ---- round 33: the exact light (gpu/exactLight.ts, webgl2/polarPasses.ts) ---
+uniform float u_raysMode;            // 0 march (the old estimator) · 1 exact · 2 pure · 3 reference
+uniform highp sampler2D u_polar;     // Nₙ(θ, s), RGBA16F, REPEAT on θ (unit 1)
+uniform highp usampler2D u_polarBits; // the same as fp32 bits, where RGBA16F cannot be rendered (unit 4)
+uniform float u_polarManual;         // 1 → read u_polarBits with a hand-made bilinear
+uniform vec2 u_lightC;               // light centre, mask uv — CPU-computed, shared with the passes
+uniform float u_sLast;               // radius of the last polar texel centre, uv
+uniform vec2 u_polarDims;            // (Nθ, Ns)
+uniform vec4 u_kc;                   // the forward kernel, a cubic in τ
+uniform float u_kA;                  // forward radius scale: 1 − 1/28 matched, 1 pure
+uniform float u_kWb;                 // behind-centre weight (0 pure)
+uniform vec2 u_kRef;                 // probe-only reference march: (λ, g)
+uniform float u_maskLod;             // LOD of the core fetch: the emblem's size on screen
+uniform highp sampler2D u_bloomTex;  // baked bloom, RG16F: x at the bake dissolve, y at 0 (unit 5)
+uniform vec3 u_bloomMap;             // pad (uv), bake dissolve, 1/(1 + 2·pad)
+uniform highp sampler2D u_hazeTex;   // tiling FBM for the living haze (unit 6)
+uniform float u_rayEdge;             // ray source: 0 = B radial smear, 1 = R crisp
+uniform float u_haze;                // living haze, 0 = off
+uniform float u_hazeScale;           // haze feature size, ref px
+uniform float u_hazeDrift;           // haze drift, × the default
+uniform float u_hazeWind;            // cursor stir, × the default
+uniform float u_frame;               // dither seed, a frame counter
+uniform float u_ditherAmp;           // TPDF amplitude in LSB (0 = off: probes)
+uniform float u_jitOffset;           // probe-only: shifts the old march's jitter
+
 out vec4 fragColor;
 
 // ---- noise ------------------------------------------------------------
@@ -71,6 +100,15 @@ float hash21(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
+}
+
+// round 33: the dither's hash. `hash21` above repeats EXACTLY every 50 × 100 px
+// on pixel centres (123.34·50 and 456.21·100 are integers) and loses its fraction
+// bits at large coordinates — a grid in the dither on big canvases.
+uint pcg(uint v) {
+  uint s = v * 747796405u + 2891336453u;
+  uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
 }
 
 float vnoise(vec2 p) {
@@ -153,7 +191,7 @@ vec3 fiberComb(float dTh, float r, float t, float seed, float disp) {
 float signMask(vec2 uv) {
   vec2 c = clamp(uv, 0.0, 1.0);
   if (c != uv) return 0.0;
-  return texture(u_signMask, uv).r;
+  return textureLod(u_signMask, uv, 0.0).r; // LOD 0: the mask has mips since round 33
 }
 
 // round-blurred emblem channel — bloom taps sample this: sparse jittered taps
@@ -161,7 +199,7 @@ float signMask(vec2 uv) {
 float signMaskSoft(vec2 uv) {
   vec2 c = clamp(uv, 0.0, 1.0);
   if (c != uv) return 0.0;
-  return texture(u_signMask, uv).g;
+  return textureLod(u_signMask, uv, 0.0).g; // LOD 0: the mask has mips since round 33
 }
 
 // RADIALLY-smeared emblem channel — the god-ray march samples this: the march
@@ -170,7 +208,126 @@ float signMaskSoft(vec2 uv) {
 float signMaskRay(vec2 uv) {
   vec2 c = clamp(uv, 0.0, 1.0);
   if (c != uv) return 0.0;
-  return texture(u_signMask, uv).b;
+  return textureLod(u_signMask, uv, 0.0).b; // LOD 0: the mask has mips since round 33
+}
+
+// ---- round 33: the exact light ----------------------------------------------
+// The god-rays as a polar prefix sum (gpu/exactLight.ts has the derivation), the
+// bloom baked once (shared/lightMask.ts), the core at the LOD it is drawn at. No
+// per-pixel jitter anywhere on this path: there is nothing left to estimate.
+
+// the crisp core, read at the emblem's on-screen size — an icon drawn smaller
+// than its 640 texels no longer stair-steps its edges
+float coreMask(vec2 uv) {
+  vec2 c = clamp(uv, 0.0, 1.0);
+  if (c != uv) return 0.0;
+  return textureLod(u_signMask, uv, u_maskLod).r;
+}
+
+// the bloom, baked: the old 24-tap spiral's EXPECTED kernel, applied once
+float bakedBloom(vec2 uv0) {
+  vec2 b = textureLod(u_bloomTex, (uv0 + u_bloomMap.x) * u_bloomMap.z, 0.0).rg;
+  float t = u_bloomMap.y > 0.0 ? clamp(u_dissolve / u_bloomMap.y, 0.0, 1.0) : 1.0;
+  return mix(b.y, b.x, t);
+}
+
+// the polar texture with a hand-made bilinear, for devices that can render
+// RGBA32UI (core WebGL2) but not RGBA16F: θ wraps, s clamps
+vec4 polarManual(float u, float v) {
+  float x = u * u_polarDims.x - 0.5;
+  float y = clamp(v * u_polarDims.y - 0.5, 0.0, u_polarDims.y - 1.0);
+  float x0 = floor(x);
+  float y0 = floor(y);
+  vec2 f = vec2(x - x0, y - y0);
+  int xa = int(mod(x0, u_polarDims.x));
+  int xb = int(mod(x0 + 1.0, u_polarDims.x));
+  int ya = int(y0);
+  int yb = int(min(y0 + 1.0, u_polarDims.y - 1.0));
+  vec4 a = uintBitsToFloat(texelFetch(u_polarBits, ivec2(xa, ya), 0));
+  vec4 b = uintBitsToFloat(texelFetch(u_polarBits, ivec2(xb, ya), 0));
+  vec4 c = uintBitsToFloat(texelFetch(u_polarBits, ivec2(xa, yb), 0));
+  vec4 d = uintBitsToFloat(texelFetch(u_polarBits, ivec2(xb, yb), 0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Nₙ·k^{n+1} at radius rr along u = θ/2π + ½: beyond the mask's support the
+// moments stop growing, so the far tail is exact rather than clipped
+vec4 polarN(float u, float rr) {
+  float s = min(rr, u_sLast);
+  // texel j's centre is s = (j + ½)·Δs, and Δs = sLast/(Ns − ½)
+  float v = s / u_sLast * (u_polarDims.y - 0.5) / u_polarDims.y;
+  vec4 n = u_polarManual > 0.5 ? polarManual(u, v) : textureLod(u_polar, vec2(u, v), 0.0);
+  float k = s / max(rr, 1e-9);
+  float k2 = k * k;
+  return n * vec4(k, k2, k2 * k, k2 * k2);
+}
+
+float polarRays(float u, float rr) {
+  return max(dot(u_kc, polarN(u, rr)), 0.0);
+}
+
+// the matched kernel: Σ cₙ·Nₙ at a·r, plus the old march's LAST sample, which
+// landed behind the centre on the emblem's solid disc — an isotropic glow floor
+// the look was signed off with. Rainbow = today's per-channel radial scale,
+// which is exactly a per-channel radius.
+vec3 exactRays(vec2 uv0, float caS) {
+  vec2 d = uv0 - u_lightC;
+  float rd = length(d);
+  // atan(0, 0) is undefined in GLSL ES, and a centred cursor puts c on a pixel
+  float th = rd < 1e-7 ? 0.0 : atan(d.y, d.x);
+  float u = th * 0.15915494309 + 0.5;
+  float ra = rd * u_kA;
+  vec3 rays = caS > 0.0
+    ? vec3(polarRays(u, ra * (1.0 + caS)), polarRays(u, ra), polarRays(u, ra * (1.0 - caS)))
+    : vec3(polarRays(u, ra));
+  // the old march's last sample sat UNIFORMLY in [¼, ¾] of a step behind c:
+  // the mean over that band, from two prefix reads (N₀(s) = mean over [0, s])
+  float b0 = rd * (0.25 / 28.0);
+  float b1 = rd * (0.75 / 28.0);
+  float behind = (b1 * polarN(u + 0.5, b1).x - b0 * polarN(u + 0.5, b0).x) / max(b1 - b0, 1e-9);
+  return rays + u_kWb * behind;
+}
+
+// probe-only: the same kernel with the TRUE exponential as a dense un-jittered
+// march, so one comparison measures the polar texture and the cubic fit at once
+float refMask(vec2 uv) {
+  vec2 c = clamp(uv, 0.0, 1.0);
+  if (c != uv) return 0.0;
+  // the same band-limit the polar pass applies, so the comparison is like for like
+  vec4 t = textureLod(u_signMask, uv, u_maskLod);
+  return mix(t.b, t.r, u_rayEdge);
+}
+vec3 refRays(vec2 uv0) {
+  vec2 d = uv0 - u_lightC;
+  float acc = 0.0;
+  for (int i = 0; i < 2048; i++) {
+    float t = (float(i) + 0.5) / 2048.0;
+    acc += refMask(u_lightC + d * (u_kA * t)) * u_kA * u_kRef.y * exp(-u_kRef.x * (1.0 - u_kA * t));
+  }
+  acc /= 2048.0;
+  float back = 0.0;
+  for (int i = 0; i < 64; i++) back += refMask(u_lightC - d * ((0.25 + 0.5 * (float(i) + 0.5) / 64.0) / 28.0));
+  return vec3(acc + u_kWb * back / 64.0);
+}
+
+// living haze: visible scattered light = light × air density. ONE tiling FBM
+// read twice at incommensurate scales drifting ~130° apart, one domain warp —
+// the river's recipe (map rounds 11/14): no tiling, no conveyor belt, nothing
+// trackable. Cartesian on purpose: round 3's onion rings came from polar noise.
+// The cursor's wind pushes the air near it — disturbed dust, never following.
+float hazeDensity(vec2 p, vec2 q) {
+  float sc = max(u_hazeScale, 8.0);
+  float t = u_time * u_hazeDrift;
+  float ql = length(q);
+  float pd = clamp(ql / 380.0, 0.0, 1.0);
+  vec2 wind = (q / max(ql, 1e-3)) * pd * u_hazeWind * 40.0 * exp(-length(p - q) / 320.0);
+  vec2 pw = p - wind;
+  float lod = max(0.0, log2(256.0 / (sc * u_scale)));
+  vec2 uvB = (mat2(0.8, 0.6, -0.6, 0.8) * pw) / (sc * 1.618) + t * vec2(-0.0047, 0.0031);
+  float nB = textureLod(u_hazeTex, uvB, max(0.0, lod - 0.694)).r;
+  vec2 uvA = pw / sc + t * vec2(0.0061, 0.0019) + (nB - 0.5) * 0.35;
+  float nA = textureLod(u_hazeTex, uvA, lod).r;
+  return max(0.0, 1.0 + u_haze * 2.0 * (nA * 0.62 + nB * 0.38 - 0.5));
 }
 
 // «Прорезь»/«Сияние»: the logo as light through a cross-shaped slit. At
@@ -198,15 +355,27 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   vec2 par = (q * 0.06 + hoverDir * 26.0) * u_parallax;
   vec2 lightUv = 0.5 - (R * par) / S;
 
+  float caS = u_ca * 3.5;
+  float core;
+  float bloom;
+  vec3 rays;
+  if (u_raysMode > 0.5) {
+    // round 33: computed, not estimated — see the exact-light section above
+    core = coreMask(uv0) * (1.0 - u_dissolve);
+    bloom = bakedBloom(uv0);
+    rays = u_raysMode > 2.5 ? refRays(uv0) : exactRays(uv0, caS);
+    if (u_haze > 0.001) rays *= hazeDensity(p, q);
+  } else {
+  // ---- the old estimator, VERBATIM — `?rays=march` is the A/B baseline -----
   // crisp emblem core — fades out entirely as the logo dissolves into light
-  float core = signMask(uv0) * (1.0 - u_dissolve);
+  core = signMask(uv0) * (1.0 - u_dissolve);
 
   // bloom halo: spiral taps of the mask -> a glow that keeps the shape;
   // per-pixel spiral rotation turns discrete taps into smooth noise.
   // ROUND 31.4: 24 taps, was 12 — the jitter's residue is 1/√taps, and below
   // display resolution (the frame governor's rungs) it read as sand in the rays
   float bloomR = 0.085 * (1.0 + 1.2 * u_dissolve); // dissolved = wider, softer
-  float bloom = 0.0;
+  bloom = 0.0;
   for (int i = 0; i < 24; i++) {
     float fi = float(i);
     float rad = (fi + 0.5) / 24.0 * bloomR;
@@ -219,7 +388,6 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   // accumulating the mask — light streaming out through the slits.
   // per-channel chromatic scale about the center = prism fringing.
   int N = int(clamp(u_raySteps, 8.0, 32.0));
-  float caS = u_ca * 3.5;
   vec2 duv = (uv0 - lightUv) / float(N);
   vec3 acc = vec3(0.0);
   float illum = 1.0;
@@ -239,10 +407,21 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
     ) * illum;
     illum *= decay;
   }
+  rays = acc / float(N);
+  }
+
+  // living light: gentle breathing, no rave flicker. Both paths compute it here,
+  // in the shader: `hash21` is chaotic, so a CPU copy in doubles and this one in
+  // fp32 land on DIFFERENT shimmer values — round 33 measured a 1.8 % brightness
+  // gap between the exact light and the march from exactly that
+  float life = 1.0 + u_breathe * 0.12 * sin(u_time * 0.6)
+    + u_shimmer * 0.12 * (vnoise(vec2(u_time * 0.5, 7.3)) - 0.5);
+  life *= 1.0 + 0.4 * hoverAmt;
+
   // crisp register: fade the rays near the very center so the emblem's own
   // strokes read there. Dissolved register WANTS the blown featureless core.
   float rayGate = mix(smoothstep(0.02, 0.17, length(uv0 - vec2(0.5))), 1.0, u_dissolve);
-  vec3 rays = acc / float(N) * rayGate;
+  rays *= rayGate;
   // dissolved trails melt toward the screen edges instead of staying constant
   rays *= mix(1.0, exp(-r / (u_falloffL * 1.15)), u_dissolve);
 
@@ -250,11 +429,6 @@ vec3 slitLight(vec2 p, vec2 q, float r, vec2 hoverDir, float hoverAmt, float jit
   // vector dot, continuous everywhere
   float pd = clamp(length(q) / 380.0, 0.0, 1.0);
   float lean = 1.0 + 0.7 * clamp(dot(normalize(p + 1e-4), normalize(q + 1e-4)), -1.0, 1.0) * pd;
-
-  // living light: gentle breathing, no rave flicker
-  float life = 1.0 + u_breathe * 0.12 * sin(u_time * 0.6)
-    + u_shimmer * 0.12 * (vnoise(vec2(u_time * 0.5, 7.3)) - 0.5);
-  life *= 1.0 + 0.4 * hoverAmt;
 
   // crisp emblem core (readable logo) carries the shape; bloom + rays are light
   vec3 col = vec3(core) * u_coreIntensity * 1.8
@@ -590,7 +764,7 @@ void main() {
     // touching the vec4 link slots (see rayFieldTypes.ts).
     // never blank: fall back to the procedural cross glow if the mask is absent
     vec3 slit = (u_hasMask > 0.5)
-      ? slitLight(p, q, r, u_hoverDir, min(u_hoverAmt, 1.0), hash21(fragPx))
+      ? slitLight(p, q, r, u_hoverDir, min(u_hoverAmt, 1.0), fract(hash21(fragPx) + u_jitOffset))
       : (f.crossGlyph + vec3(f.core));
     col = mix(field, slit, u_slitMix);
   }
@@ -620,10 +794,24 @@ void main() {
   // filmic shoulder — soft highlights instead of clipped white
   col = 1.0 - exp(-col * 1.6);
 
-  // grain + dither (kills banding on the soft gradients)
-  float g = hash21(fragPx + fract(u_time) * vec2(113.1, 271.7));
-  col += (g - 0.5) * u_grain;
-  col += (g - 0.5) / 255.0;
+  if (u_raysMode > 0.5) {
+    // round 33: monochrome TPDF from an integer hash — no 50 × 100-px tile — and
+    // GATED, so a pixel with no light stays exactly black: the scroll seam swaps
+    // to the main screen on a frame that must equal its flat field bit for bit
+    uvec2 ip = uvec2(fragPx);
+    uint h1 = pcg(ip.x + pcg(ip.y + pcg(uint(u_frame))));
+    uint h2 = pcg(h1 ^ 2654435769u);
+    float g1 = float(h1 >> 8u) * (1.0 / 16777216.0);
+    float g2 = float(h2 >> 8u) * (1.0 / 16777216.0);
+    float gate = clamp(max(col.r, max(col.g, col.b)) * 255.0, 0.0, 1.0);
+    col += (g1 - 0.5) * u_grain;
+    col += (g1 + g2 - 1.0) * (u_ditherAmp / 255.0) * gate;
+  } else {
+    // grain + dither (kills banding on the soft gradients)
+    float g = hash21(fragPx + fract(u_time) * vec2(113.1, 271.7));
+    col += (g - 0.5) * u_grain;
+    col += (g - 0.5) / 255.0 * u_ditherAmp;
+  }
 
   fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

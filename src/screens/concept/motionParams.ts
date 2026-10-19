@@ -230,7 +230,9 @@ export const MOTION_DEFAULTS: MotionParams = {
   bloom: 0.9,
   falloff: 990,
   exposure: 1.3,
-  ca: 0.028,
+  // round 33: 0 — the user dislikes the rainbow (0.028 was their own round-12.2
+  // pick; the light lab's `rainbow` restores it)
+  ca: 0,
 };
 
 /**

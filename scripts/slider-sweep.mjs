@@ -45,6 +45,10 @@ try {
     console.log(`\n── ${hash}`);
     for (const [width, height] of VIEWPORTS) {
       const page = await browser.newPage({ viewport: { width, height } });
+      // «Контакты»' Yandex map iframe holds the `load` event for as long as
+      // yandex.ru takes, and from some networks that is 30 s+ (round 33 measured
+      // 1 timeout in 3 tries). Its box is fixed by CSS, so the gaps do not need it
+      await page.route(/yandex|yastatic/, (r) => r.abort());
       await page.goto(`http://127.0.0.1:${PORT}/${hash}`, { waitUntil: 'load' });
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(600);

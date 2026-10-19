@@ -59,7 +59,8 @@ export interface MotionPanelHost {
  * keep seeing the old tuning and report the change as not landing. That is a
  * real bug this project has shipped once (contacts panel, round 18).
  */
-const STORE_KEY = 'kresty.concept.motion.v3';
+// v4: round 33 moved the `ca` default to 0 — a stored v3 set would keep 0.028
+const STORE_KEY = 'kresty.concept.motion.v4';
 
 export class MotionPanel {
   private el = document.createElement('aside');

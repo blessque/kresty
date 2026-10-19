@@ -109,6 +109,16 @@ same defaults**, so the page is correct with no JS.
   2-viewport canvas and its `translate3d` stay, so the light never chases the scroll; a
   `scissorPx` band shades only the on-screen viewport, so it costs what the main screen costs.
   Everything below about bakes, cells and the settle timer is now **`?bake` only**.
+- **Round 33: the icons are the exact light at NATIVE resolution.** `MOTION.dissolve` < 1 keeps a
+  crisp core on screen, so `detailScale` returns the full DPR (2.0 at 1440 on a 2× screen,
+  2880×3600 with the two viewports — inside the 16 MPx cap; Intel's 8 MPx cap lands it near 1.76).
+  Each icon's mask carries its own `buildLightMask` data, baked at `MOTION.dissolve`. `MOTION.ca`
+  0.028 → 0 (the rainbow, off by the user's call) with `MotionPanel`'s store key v3 → v4, and the
+  light lab's handles reach the icons through `applyLook({ ...SIYANIE, dissolve: MOTION.dissolve })`
+  — which since 33.1 carries the shipped look (rainbow 0.02 back, noise-free; haze 0.18). The
+  user tuned that look ON this page. The film grain stays hidden here (round 16).
+  The iPhone's "worst on the icons" was the march at 16 steps, its noise ~3 px a blob; the exact
+  path has neither steps nor a sub-native canvas (on-device check still pending).
 - **The cursor moves the light again, in 5 × 4 = 20 quantised cells.** Three things were off,
   not one: `MOTION.parallax` was 0 (which zeroes every consumer of `q`), `bake()` was never
   called on cursor movement despite its own doc comment saying it was, and **the pointer was

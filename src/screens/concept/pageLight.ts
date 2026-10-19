@@ -6,6 +6,9 @@ import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/
 import { MOTION } from './motionParams';
 import * as governor from '../../shared/frameGovernor';
 import { getPerfTier } from '../../shared/performanceTier';
+import { buildLightMask, type LightMaskBuild } from '../../shared/lightMask';
+import { lightScale } from '../../page/lightScale';
+import { applyLook } from '../../shared/lightLook';
 
 /**
  * The envelope's shape. `smoothstep` is what shipped and is the default, so the
@@ -141,6 +144,8 @@ interface IconMask {
   canvas: HTMLCanvasElement;
   /** hero-matching exposure multiplier for godrays/bloom/core */
   exposure: number;
+  /** round 33: the exact light's data, baked in the same idle chain */
+  data: LightMaskBuild;
 }
 
 /**
@@ -182,6 +187,8 @@ export class PageLight {
   private prewarmed = false;
   /** shader runs since load — the per-frame-cost assertion reads this */
   renderCount = 0;
+  /** the exact path's dither, raised below screen density (page/lightScale.ts) */
+  private dither = 1;
 
   constructor(private icons: string[]) {
     this.canvas.className = 'page-light';
@@ -221,9 +228,9 @@ export class PageLight {
       // screen, where readers arrive first). A lower rung is a smaller bake: on
       // a weak GPU that is the 70–117 ms hitch shrinking, and the result is
       // moved on the compositor either way.
-      governor.seed(this.renderer.gpuName, getPerfTier().low);
+      governor.seed(this.renderer.gpuName, getPerfTier().low, this.renderer.exactAvailable);
       this.scaleCap = renderScale;
-      this.renderScale = Math.min(renderScale, governor.quality().renderScale);
+      this.renderScale = this.liveScale();
       this.applySize();
       this.activeIdx = -1; // force the first mask upload
       this.prewarm();
@@ -274,6 +281,8 @@ export class PageLight {
     if (w === this.viewW && h === this.viewH) return;
     this.viewW = w;
     this.viewH = h;
+    // round 33: the scale depends on the viewport (the allocation ceiling)
+    if (this.renderer) this.renderScale = this.liveScale();
     this.applySize();
   }
 
@@ -283,10 +292,32 @@ export class PageLight {
   /** a governor rung change: resize only if the scale actually moved */
   refreshQuality() {
     if (!this.renderer) return;
-    const rs = Math.min(this.scaleCap, governor.quality().renderScale);
+    const rs = this.liveScale();
     if (rs === this.renderScale) return;
     this.renderScale = rs;
     this.applySize();
+  }
+
+  /**
+   * Round 33: `page/lightScale.ts`. The icons keep a visible crisp core
+   * (dissolve 0.41), so the exact light's cap is the screen's own density; the
+   * two-viewport canvas counts in full against the allocation ceiling.
+   */
+  private liveScale(): number {
+    const ls = lightScale({
+      spanCss: LIGHT.px / CONTENT_FRAC,
+      params: applyLook({ ...SIYANIE, dissolve: MOTION.dissolve }),
+      cssW: Math.max(1, this.viewW),
+      cssH: Math.max(1, this.viewH * CANVAS_VH),
+      marchCap: this.scaleCap,
+    });
+    this.dither = ls.dither;
+    return ls.scale;
+  }
+
+  /** what the last frame drew with — the HUD's `rays` row */
+  get rays(): string {
+    return this.renderer?.raysActive ?? 'none';
   }
 
   get scale(): number {
@@ -322,6 +353,7 @@ export class PageLight {
       const m: IconMask = {
         canvas,
         exposure: coverage > 0 ? REF_COVERAGE / coverage : 1,
+        data: buildLightMask(canvas, { dissolve: MOTION.dissolve }),
       };
       this.masks[i] = m;
       return m;
@@ -447,7 +479,7 @@ export class PageLight {
       void this.maskFor(idx).then((m) => {
         // a slow rasterize can land after another section became live
         if (!m || this.activeIdx !== idx) return;
-        this.renderer?.setSignMask(m.canvas);
+        this.renderer?.setSignMask(m.canvas, m.data);
         this.exposure = m.exposure;
         this.lastKey = '';
         // the bake below this ran against the PREVIOUS mask; repeat it now that
@@ -478,7 +510,7 @@ export class PageLight {
     // NORMALISATION (a measurement), not a taste dial, and multiplying the two
     // is what keeps a solid silhouette matching the hero cross.
     const gain = this.exposure * MOTION.exposure;
-    const p: RayFieldParams = {
+    const p: RayFieldParams = applyLook({
       ...SIYANIE,
       dissolve: MOTION.dissolve,
       godrays: MOTION.godrays * gain,
@@ -498,7 +530,7 @@ export class PageLight {
       // invariant), and a fixed signSize would draw a 220 px icon into a 128 px
       // box on a short window — the light simply overflowed it.
       signSize: px / CONTENT_FRAC,
-    };
+    });
 
     const state: RayFieldState = {
       // live: the running clock, so `breathe` and `shimmer` work; baked: 0
@@ -526,6 +558,9 @@ export class PageLight {
       layers: 4,
       octaves: 0,
       raySteps: governor.quality().raySteps,
+      rays: governor.quality().rays,
+      polarTheta: governor.quality().polarTheta,
+      dither: this.dither,
       scissorPx: band
         ? [0, Math.floor(band[0] * rs), this.canvas.width, Math.ceil(band[1] * rs)]
         : undefined,

@@ -13,6 +13,7 @@ import './styles/pages.css';
 import './screens/main/main.css';
 import './screens/concept/concept.css';
 import './screens/contacts/contacts.css';
+import './styles/controlPanel.css';
 import './screens/museum/museum.css';
 
 import { MainScreen } from './screens/main/MainScreen';
@@ -26,25 +27,18 @@ import { MuseumScreen } from './screens/museum/MuseumScreen';
 import { Router } from './router';
 import { ScrollIntent } from './shared/scrollIntent';
 import { watchImageLoads } from './shared/imgShimmer';
+import { initGrain } from './shared/filmGrain';
 
-// global film grain overlay (tiny generated noise tile, blend: overlay)
-function makeGrain() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d')!;
-  const img = g.createImageData(128, 128);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = Math.floor(Math.random() * 255);
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const grain = document.getElementById('grain')!;
-  grain.style.backgroundImage = `url(${c.toDataURL()})`;
-}
 
 async function boot() {
-  makeGrain();
+  // round 33: the film grain is OFF by default (the light lab turns it on) and,
+  // when on, drawn at device resolution from tiles that never repeat on screen
+  initGrain(document.getElementById('grain')!);
+  // `?lab`: the light lab (round 33) — split into its own chunk, so a normal
+  // visit never downloads it
+  if (new URLSearchParams(location.search).has('lab')) {
+    void import('./screens/lab/lightLab').then((m) => m.mountLightLab());
+  }
   // before any screen builds, so no photo can finish loading unobserved
   watchImageLoads();
 
