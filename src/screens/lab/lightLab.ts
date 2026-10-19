@@ -24,7 +24,7 @@ const SPECS: ControlSpec[] = [
   { key: 'core', label: 'core', group: 'Light', min: 0, max: 3, step: 0.01,
     hint: 'the crisp emblem (only where dissolve < 1: the icons)' },
   { key: 'rainbow', label: 'rainbow', group: 'Light', min: 0, max: 0.04, step: 0.001,
-    hint: 'prismatic fringe on the rays; 0.02 shipped, 0.028–0.03 was the old look' },
+    hint: 'prismatic fringe on the rays; 0 shipped, 0.028–0.03 was the old look' },
   { key: 'penumbra', label: 'penumbra', group: 'Physics', min: 0, max: 1, step: 0.01,
     hint: 'size of the light source: rays feather the further they travel' },
   { key: 'haze', label: 'haze', group: 'Physics', min: 0, max: 1, step: 0.01,
@@ -35,7 +35,7 @@ const SPECS: ControlSpec[] = [
   { key: 'hazeWind', label: 'haze wind', group: 'Physics', min: 0, max: 4, step: 0.05,
     hint: 'how hard the cursor stirs the haze' },
   { key: 'grain', label: 'film grain', group: 'Film grain', min: 0, max: 0.3, step: 0.005,
-    hint: '0 = off · 0.015 shipped · shows on main and «Музей» only (hidden over the map and white pages)' },
+    hint: '0 = off (shipped) · shows on main and «Музей» only (hidden over the map and white pages)' },
   { key: 'grainSize', label: 'speck size', group: 'Film grain', min: 0.5, max: 4, step: 0.1,
     hint: 'CSS px — the same apparent size on a phone, a laptop and a TV' },
   { key: 'grainMode', label: 'motion', group: 'Film grain', kind: 'choice',
@@ -84,8 +84,8 @@ export function mountLightLab(): void {
   mounted = true;
   const panel = new ControlPanel(document.body, SPECS, DEFAULTS, {
     // bump whenever a DEFAULT changes — stored values outrank defaults
-    // (v2, round 33.1: the shipped look became the user's pick)
-    storeKey: 'kresty.light.lab.v2',
+    // (v2, round 33.1: the shipped look became the user's pick; v3, 33.2: their second)
+    storeKey: 'kresty.light.lab.v3',
     prefix: 'lab.',
     flag: 'lab',
     title: 'Light lab',

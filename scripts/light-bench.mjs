@@ -22,10 +22,11 @@
  * skipped (their key is unchanged: «Музей» or an icon at rest); `c moving` = they
  * rebuild every frame (the main screen, whose cross turns). Its `steps` column is
  * N_ref, the decay it is matched to — it marches nothing. Its rows run the
- * SHIPPED look (round 33.1: the preset through `applyLook`, rainbow + haze on);
- * `bare` is the preset alone. Measured on the M1 (2026-10-20): exact at NATIVE 2×
- * costs 4.1–5.0 ms shipped, 4.2–4.3 bare, under the march's own M1 default rung
- * (1.25×, 7.1 ms) — so the canvas no longer has to shrink to afford it.
+ * SHIPPED look (the preset through `applyLook`); `bare` is the preset alone.
+ * Measured on the M1 (2026-10-20): exact at NATIVE 2×, moving, costs 4.1–4.2 ms
+ * with 33.2's look (= bare: no rainbow, no haze; 33.1's rainbow + haze added
+ * 0.4–0.8), under the march's own M1 default rung (1.25×, 6.4–7.1 ms) — so the
+ * canvas no longer has to shrink to afford it.
  *
  * Own port and strict, like head-sweep: it must measure THIS checkout.
  */

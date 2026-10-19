@@ -67,47 +67,68 @@ const SAMPLER = `
   })()
 `;
 
-/** luminance centroid of the brightest pixels, computed in-page off a screenshot */
+/**
+ * Where the LIGHT is on screen: the luminance it ADDS — a screenshot with the ray
+ * canvas minus one without it — and the centroid of the brightest of that.
+ *
+ * ROUND 33.2: this used to be the brightest pixels of the plain screenshot, which
+ * also caught the white nav labels and logo (alone, their centroid sits at −189px).
+ * A bright light outvoted them (33.1's look: −48px, inside the bound); the user's
+ * dimmer 33.2 look did not (−85px) while the light sat exactly on centre — the
+ * per-frame sampler read 0.00px throughout. The difference cancels everything that
+ * does not come from the canvas: −2px at 33.2, −4px at 33.1, and it still moves
+ * (−58…−64px) when the light really does, with the cursor at the far left.
+ */
 async function centroid(page) {
-  const b64 = (await page.screenshot()).toString('base64');
-  return page.evaluate(async (data) => {
+  const hide = (v) =>
+    page.evaluate((vis) => {
+      const c = document.querySelector('.ray-canvas');
+      if (c) c.style.visibility = vis;
+    }, v);
+  const withLight = (await page.screenshot()).toString('base64');
+  await hide('hidden');
+  await page.waitForTimeout(80);
+  const without = (await page.screenshot()).toString('base64');
+  await hide('');
+  return page.evaluate(async ([a64, b64]) => {
     // createImageBitmap off a blob, not `new Image().src = dataURL` — the latter
     // rejects with a bare Event that says nothing and cannot cross the bridge
     // atob → Blob, NOT `fetch('data:…')`: the dev page's connect-src refuses a
     // data URL and the failure arrives as a bare "Failed to fetch"
-    const bin = atob(data);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const img = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    const c = document.createElement('canvas');
-    // downscale: the centroid does not need full resolution and this keeps the
-    // whole pass under a frame
-    const W = (c.width = 360);
-    const H = (c.height = Math.round((img.height / img.width) * 360));
-    const g = c.getContext('2d');
-    g.drawImage(img, 0, 0, W, H);
-    const d = g.getImageData(0, 0, W, H).data;
-    const luma = new Float32Array(W * H);
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (let i = 0; i < W * H; i++) {
-      const l = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2];
-      luma[i] = l;
-      if (l < lo) lo = l;
-      if (l > hi) hi = l;
-    }
-    // the field is a flat blue; only the light's core clears this
-    const cut = lo + 0.85 * (hi - lo);
+    const luma = async (data) => {
+      const bin = atob(data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const img = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const c = document.createElement('canvas');
+      // downscale: the centroid does not need full resolution and this keeps the
+      // whole pass under a frame
+      const W = (c.width = 360);
+      const H = (c.height = Math.round((img.height / img.width) * 360));
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, W, H);
+      const d = g.getImageData(0, 0, W, H).data;
+      const l = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) l[i] = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2];
+      return { W, l };
+    };
+    const A = await luma(a64);
+    const B = await luma(b64);
+    // what the light adds: `screen` only ever lightens, so this is ≥ 0 where it shows
+    const D = A.l.map((v, i) => Math.max(0, v - B.l[i]));
+    let hi = 0;
+    for (const v of D) if (v > hi) hi = v;
+    const cut = 0.85 * hi;
     let sx = 0;
     let sw = 0;
-    for (let i = 0; i < W * H; i++) {
-      if (luma[i] < cut) continue;
-      const w = luma[i] - cut;
-      sx += (i % W) * w;
+    for (let i = 0; i < D.length; i++) {
+      if (D[i] < cut) continue;
+      const w = D[i] - cut;
+      sx += (i % A.W) * w;
       sw += w;
     }
-    return sw > 0 ? { x: (sx / sw / W) * innerWidth, centre: innerWidth / 2, px: sw } : null;
-  }, b64);
+    return sw > 0 ? { x: (sx / sw / A.W) * innerWidth, centre: innerWidth / 2, px: sw } : null;
+  }, [withLight, without]);
 }
 
 async function seamPass(route, size) {
@@ -177,12 +198,11 @@ async function seamPass(route, size) {
     return null;
   });
   if (c) {
-    // CORROBORATION, NOT THE TEST, and the bound is loose on purpose. The
-    // screenshot lands at an arbitrary point in the 900ms reveal, where the light
-    // is still faint and its bloom asymmetric, so the brightest-pixel centroid
-    // wanders by ±25px between runs on identical code. Tightening it would buy a
-    // flaky gate, not a better check — the per-frame transform sampling above is
-    // exact and discriminating. This only has to rule out a gross displacement.
+    // CORROBORATION, NOT THE TEST, and the bound is loose on purpose: the
+    // per-frame transform sampling above is exact and discriminating; this only
+    // has to rule out a gross displacement end to end. (Before round 33.2 the
+    // centroid also counted the white UI, which is where its ±25px run-to-run
+    // wander came from — see `centroid()`.)
     const off = c.x - c.centre;
     console.log(`       rendered light centroid ${off.toFixed(1)}px from centre`);
     ok(Math.abs(off) < 60, `${route}: rendered light is not grossly displaced (${off.toFixed(1)}px)`);

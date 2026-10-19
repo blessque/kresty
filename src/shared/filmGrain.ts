@@ -1,6 +1,8 @@
 /**
- * The film grain (round 33). ROUND 33.1: on by default at the user's pick from
- * the light lab — 0.015, 1 CSS px, moving like film (`GRAIN_DEFAULTS`).
+ * The film grain (round 33). Its default is the user's pick from the light lab
+ * (`GRAIN_DEFAULTS`): 0.015 moving in 33.1, OFF again in 33.2 — at 0 no tile is
+ * ever built and the layer is `display: none`. Size and motion keep 33.1's
+ * values, so switching it back on in the lab starts from there.
  *
  * WHAT IT REPLACES, AND WHY: `#grain` was one 128×128 random tile at CSS-pixel
  * size, static, 0.07 overlay. Measured on the user's own screenshots it repeated
@@ -41,8 +43,8 @@ const TILES = [509, 761, 1021];
 /** the layer is this much larger than the screen on every side, CSS px — room for film jitter */
 const OVERSCAN = 64;
 
-/** the shipped grain — the user's pick (2026-10-20): barely there, alive */
-export const GRAIN_DEFAULTS: GrainSettings = { amount: 0.015, size: 1, film: true };
+/** the shipped grain — the user's pick (33.2: off; 33.1 was 0.015, moving) */
+export const GRAIN_DEFAULTS: GrainSettings = { amount: 0, size: 1, film: true };
 
 let el: HTMLElement | null = null;
 let current: GrainSettings = { ...GRAIN_DEFAULTS };

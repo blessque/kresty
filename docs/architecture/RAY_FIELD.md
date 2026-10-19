@@ -44,11 +44,11 @@ is already top-left). Everything is computed in reference px: `p = (fragPx − u
 | `dustAmount/Scale` | fbm wisps inside beams |
 | `moteAmount` | discrete dust specks (Cartesian cells, radial streaks) |
 | `grain` | film grain amplitude — **0 in every shipped preset since 31.3**; the film grain is CSS (`shared/filmGrain.ts`, off by default since round 33) |
-| `ca` | chromatic fringe: per-channel angular lobe offset (radians); in the slit light, a per-channel RADIAL scale ±`ca`·3.5 — **0 in the presets since round 33**; the shipped look adds **0.02** (33.1), noise-free now |
-| `trail` | round 33: multiplier on the decay exponent λ — < 1 longer rays, > 1 shorter. 1 in the presets, **×1.23 shipped** (33.1) |
-| `rayEdge` | round 33: the rays' source, 0 = B's radial smear (shipped) … 1 = R crisp — round 5's «razor», noise-free now |
+| `ca` | chromatic fringe: per-channel angular lobe offset (radians); in the slit light, a per-channel RADIAL scale ±`ca`·3.5 — **0 in the presets since round 33**; the shipped look added 0.02 in 33.1 and **0 again in 33.2** |
+| `trail` | round 33: multiplier on the decay exponent λ — < 1 longer rays, > 1 shorter. 1 in the presets, **×1.47 shipped** (33.2; ×1.23 in 33.1) |
+| `rayEdge` | round 33: the rays' source, 0 = B's radial smear … 1 = R crisp — round 5's «razor», noise-free now. **0.41 shipped** (33.2) — which also raises the detail cap |
 | `penumbra` | round 33: extended light source — ray edges feather with distance. 0 shipped |
-| `haze`, `hazeScale`, `hazeDrift`, `hazeWind` | round 33: living haze — drifting air density multiplying the RAYS only (amount, billow size in ref px, drift speed, cursor stir). 0 in the presets; **0.18 / 270 / 0.7 / 1.65 shipped** (33.1) |
+| `haze`, `hazeScale`, `hazeDrift`, `hazeWind` | round 33: living haze — drifting air density multiplying the RAYS only (amount, billow size in ref px, drift speed, cursor stir). 0 in the presets; 0.18 / 270 / 0.7 / 1.65 in 33.1, **haze 0 again in 33.2** |
 | `hazeBase` | ambient glow; the whole field in eclipse mode |
 | `channelDark` | eclipse: how dark beams carve into the haze |
 | `parallax` | pointer influence on dust layers + wind push |
@@ -235,7 +235,8 @@ A noise-free light needs no more pixels than its finest feature — the mask edg
 `page/lightScale.ts` turns it into every consumer's canvas scale — exact: `detailScale` × the
 rung's fraction; march: the old ladder's scale — then caps the allocation at **8 MPx** (Intel,
 low tier, unknown GPU) or **16 MPx**, counting «О Крестах»'s full 2-viewport canvas. Measured
-at 1440 on the M1: main 1.024, «Музей» 1.0, «О Крестах» 2.0.
+at 1440 on the M1: main 1.024, «Музей» 1.0, «О Крестах» 2.0 — and with 33.2's ray edge 0.41, main
+**1.31** (crisper edges are finer detail); «Музей» stays on its ½·DPR floor, the icons on native.
 
 ## Quality governor (round 31; two ladders since round 33)
 
@@ -278,9 +279,10 @@ frame — Apple GPUs' hidden-surface removal otherwise shades only the last of N
 ## The light lab — `?lab` (round 33) and the shipped look (33.1)
 
 **What ships is the preset THROUGH the look**: `shared/lightLook.ts`'s `LOOK_DEFAULTS` is the
-user's own pick from the lab (2026-10-20) — exposure 1.05 · trail 1.23 · bloom 1.07 · core 1.01 ·
-rainbow 0.02 · haze 0.18 / scale 270 / drift 0.7 / wind 1.65 — applied by every light builder on
-top of its preset (`applyLook`), plus the film grain at 0.015, moving (`GRAIN_DEFAULTS`). The
+user's own pick from the lab — since 33.2 exposure 1.05 · trail 1.47 · ray edge 0.41 · bloom 0.34 ·
+core 0.67, no rainbow, no haze — applied by every light builder on top of its preset
+(`applyLook`), and the film grain off (`GRAIN_DEFAULTS`). 33.1 had shipped trail 1.23, bloom 1.07,
+core 1.01, rainbow 0.02, haze 0.18 and grain 0.015 the same morning. The
 presets themselves are untouched, so `?rays=march` and the probes still compare like with like.
 To bake a new look: change those two constants and bump the lab's store key.
 
@@ -295,9 +297,9 @@ every light builder passes its params through (`applyLook` — the identity at d
 `governor.setOverrides` and `setGrain`. Its panel is the contacts showcase's `ControlPanel`,
 moved to `shared/controlPanel.ts` and parameterised (store key, URL prefix, flag, title).
 
-**The film grain** (`shared/filmGrain.ts`) ships at **0.015, 1 CSS px, moving** (33.1) and shows
-on main and «Музей» only — «О Крестах» and the content pages hide `#grain` by design (round 16:
-over the map and white pages it reads as dirt). The speck size is set in CSS px (≈ constant
+**The film grain** (`shared/filmGrain.ts`) ships **off** (33.2; it was 0.015, 1 CSS px, moving in
+33.1) and, when on, shows on main and «Музей» only — «О Крестах» and the content pages hide
+`#grain` by design (round 16: over the map and white pages it reads as dirt). The speck size is set in CSS px (≈ constant
 visual angle, phone to TV) and drawn at
 device resolution: white noise per device pixel, gaussian-blurred to that size, in three
 prime-edged tiles (509 / 761 / 1021 device px) at equal weight, so nothing repeats on any

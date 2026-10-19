@@ -6228,3 +6228,36 @@ task 11–14 ms, no task over 50 ms, worst frame gap 16.7 ms at 2× (one 33 ms g
 
 **Deployed with `?lab` live** — the panel is its own chunk, fetched only under `?lab`, so a
 normal visit carries none of it (checked on the production build: no panel, no chunk request).
+
+### 33.2 — the user's second look: crisper, shorter, nothing laid over it
+
+Same day, after living with 33.1 on the deployed site, the user re-tuned in `?lab` on «Музей»:
+**trail 1.47 · ray edge 0.41 · bloom 0.34 · core 0.67 · rainbow 0 · haze 0 · film grain 0**
+(exposure stays 1.05; Copy URL writes only what differs from the defaults, so an absent handle
+means "keep"). Shorter, crisper rays with a third of the glow, and no rainbow, haze or grain —
+33.1's additions all taken back. Lab store key v2 → v3.
+
+**Ray edge is the one handle that is not only a look.** Part-way to the crisp R channel makes the
+light's finest feature finer, so `detailScale` asks for more pixels: main at 1440 on a 2× screen
+**1.02× → 1.31×** (~1.6× the pixels). «Музей» stays on its ½·DPR floor (its emblem is 2.2
+viewports tall — even crisp edges are coarser than its screen pixels), the icons on native. Cost
+on the M1: 4.1–4.2 ms at native 2× moving — the same as the bare preset, because dropping the
+rainbow and the haze paid for the edge — and ≈ 2.6–2.7 ms on main at its new 1.31×, +0.3 ms. On a
+weaker GPU the governor's exact ladder steps the canvas down on its own.
+
+**The probe now checks the look that ships, not only the preset**: V1 runs a second time on
+`applyLook(preset)`. At 33.2's look: max 2 / mean 0.07 LSB on both backends (the bare preset: max
+1 / 0.05) — the extra LSB is the crisp channel meeting P1's per-bin band-limit, which the
+reference applies as one uniform LOD. Inside the ≤ 2 spec, and seam still exactly 0.
+
+**Trap: a dimmer look failed `probe:seam`, and the light had not moved.** Four seams read
+"rendered light centroid −80px" against a 60px bound, while the exact per-frame sampler read
+0.00px. The corroborating centroid took the brightest pixels of a plain screenshot, which also
+caught the white nav labels and the logo — alone, 451 px at −189px. 33.1's bright bloom
+outvoted them (−48px); 33.2's third of the glow did not (−85px). Proven on identical code with
+the look swapped at runtime — **on a FRESH server**: the user's long-running dev server had
+hot-reloaded `lightLook.ts`, so the app imported `lightLook.ts?t=…` and an override through a
+plain dynamic import landed on a different module instance (the first A/B read 1491 vs 1490
+px and proved nothing). The centroid is now the luminance the light ADDS — a screenshot with the
+canvas minus one without — so static UI cancels: −2.1 to −2.7px on every seam, and it still
+moves (−58…−64px) when the cursor at the far left really leans the light.

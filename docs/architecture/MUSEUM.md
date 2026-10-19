@@ -73,7 +73,7 @@ come from the perf tier exactly as `MainScreen` supplies them.
 |---|---|---|
 | `signSize` | **2.2 vh** | = the vector's own 1400px ink, so both crosses are one size |
 | `GAIN` | **0.22** | one multiplier on godrays/bloom/core/haze; a scale correction |
-| everything else | «Сияние» | dissolve 1 · grain 0 (31.3) · ca 0 (round 33) · parallax · falloff 780 · dust · breathe · shimmer — then the shipped look on top (33.1: rainbow 0.02, haze 0.18, trail ×1.23, see RAY_FIELD.md) |
+| everything else | «Сияние» | dissolve 1 · grain 0 (31.3) · ca 0 (round 33) · parallax · falloff 780 · dust · breathe · shimmer — then the shipped look on top (33.2, tuned on this page: trail ×1.47, ray edge 0.41, bloom ×0.34, core ×0.67, see RAY_FIELD.md) |
 | render scale | **the detail cap** (round 33) | `page/lightScale.ts`: ≈ 1.0 at 1440 on a 2× screen, governed by `EXACT_LADDER`; was a 1.5 cap under the march ladder. `?ls=` still pins it |
 
 ### Round 28 built this from the WRONG PARENT

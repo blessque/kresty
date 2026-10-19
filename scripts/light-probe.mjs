@@ -5,7 +5,9 @@
  * the canvas back and asserts what "the light is computed, not estimated" has to
  * mean, without trusting anybody's eyes:
  *
- *   V1  exact ≈ a dense un-jittered reference march with the TRUE kernel
+ *   V1  exact ≈ a dense un-jittered reference march with the TRUE kernel —
+ *       on the bare preset, and again on the SHIPPED look (`lightLook`'s
+ *       defaults: trail, ray edge, bloom, core…), so what ships is checked too
  *   V2  exact ≈ the EXPECTED VALUE of today's march (128 jitter offsets averaged)
  *       — today's look, sector by sector, minus its noise
  *   V3  noise: high-pass luminance + chroma RMS inside the rays, dither on
@@ -65,6 +67,10 @@ try {
     const data = buildLightMask(cv, { dissolve: 1 });
     const bakeMs = performance.now() - t0;
     const P0 = VARIANTS.find((v) => v.id === 'siyanie').params;
+    // the shipped look (round 33.1+): the preset through `applyLook`; ca 0 for the
+    // same reason as V1's (the reference marches one channel)
+    const { applyLook } = await import('/src/shared/lightLook.ts');
+    const PL = { ...applyLook(P0), ca: 0 };
 
     // the NATIVE condition: «Сияние»'s 500-ref-px emblem lands on exactly 640
     // canvas px — one mask texel per pixel, as on a 2× screen at stage scale 1
@@ -258,6 +264,8 @@ try {
       const P1 = { ...P0, ca: 0 };
       const exS = await shot(state(P1, { rays: 'exact', scissorPx: strip }), { ditherAmp: 0 });
       const ref = await shot(state(P1, { rays: 'ref', scissorPx: strip }), { ditherAmp: 0 });
+      const exL = await shot(state(PL, { rays: 'exact', scissorPx: strip }), { ditherAmp: 0 });
+      const refL = await shot(state(PL, { rays: 'ref', scissorPx: strip }), { ditherAmp: 0 });
       const marA = await shot(state(P0, { rays: 'march' }), { jitOffset: 0 });
       const marB = await shot(state(P0, { rays: 'march' }), { jitOffset: 0.37 });
       // E[march]: 128 jitter offsets, averaged in float. At 64 the far sectors —
@@ -316,6 +324,7 @@ try {
         .slice(0, 4);
       Object.assign(o, {
         v1: diffRows(exS, ref, strip[1], strip[1] + strip[3]),
+        v1look: diffRows(exL, refL, strip[1], strip[1] + strip[3]),
         v2: { max: secMax, mean: secSum / se.length, byRadius },
         v3: {
           exact: noise(exD7, exD8),
@@ -359,6 +368,7 @@ try {
     console.log(`${name}: exact available ${o.exactAvailable}, drew with '${o.active}', polar builds ${o.polarBuilds}`);
     check(o.active === 'exact', `${name} draws the exact light`, o.active);
     check(o.v1.max <= 2 && o.v1.mean <= 0.3, `${name} V1 exact vs reference march (true kernel)`, `max ${o.v1.max} mean ${o.v1.mean.toFixed(3)} LSB`);
+    check(o.v1look.max <= 2 && o.v1look.mean <= 0.3, `${name} V1 … at the shipped look (lightLook)`, `max ${o.v1look.max} mean ${o.v1look.mean.toFixed(3)} LSB`);
     check(o.v2.max <= 1.5, `${name} V2 exact vs E[today's march], sector means`, `max ${o.v2.max.toFixed(2)} mean ${o.v2.mean.toFixed(2)} LSB`);
     console.log(`        by radius (0.18/0.30/0.42/0.60 H): ` + o.v2.byRadius.map((b) => `max ${b.max.toFixed(1)} mean ${b.mean.toFixed(1)} signed ${b.signed >= 0 ? '+' : ''}${b.signed.toFixed(1)}`).join(' · '));
     console.log(`        worst sectors: ` + o.worst.map((w) => `r${w.rf} ${w.deg}° exact ${w.exact.toFixed(1)} march ${w.march.toFixed(1)}`).join(' · '));

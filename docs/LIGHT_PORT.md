@@ -118,8 +118,9 @@ canvas is exact black. Keep that multiply after `applyLook` (`MainScreen.setReve
    nothing; the same for every §1 file.
 2. **`?perf`** (query before the hash: `/?perf#museum`): the HUD reads `rays exact`, the same
    `polar` and `scale` as this prototype at the same window size on the same device.
-3. **`?lab`**: the panel opens at the shipped values (exposure 1.05, trail 1.23, haze 0.18…). A
-   look copied with Copy URL on one site reproduces on the other.
+3. **`?lab`**: the panel opens at the shipped values (exposure 1.05, trail 1.47, ray edge 0.41,
+   bloom 0.34, core 0.67, rainbow / haze / grain 0). A look copied with Copy URL on one site
+   reproduces on the other.
 4. **`?rays=march`** brings back the old light — proof the modes route as here.
 5. The engine's own proof runs in this repo: `npm run probe:light` (both backends; exits
    non-zero on any failure).

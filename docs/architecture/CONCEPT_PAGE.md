@@ -115,8 +115,9 @@ same defaults**, so the page is correct with no JS.
   Each icon's mask carries its own `buildLightMask` data, baked at `MOTION.dissolve`. `MOTION.ca`
   0.028 → 0 (the rainbow, off by the user's call) with `MotionPanel`'s store key v3 → v4, and the
   light lab's handles reach the icons through `applyLook({ ...SIYANIE, dissolve: MOTION.dissolve })`
-  — which since 33.1 carries the shipped look (rainbow 0.02 back, noise-free; haze 0.18). The
-  user tuned that look ON this page. The film grain stays hidden here (round 16).
+  — which carries the shipped look: since 33.2 trail ×1.47, ray edge 0.41, bloom ×0.34 and
+  **core ×0.67 — the one handle that matters most here**, since only the icons show a crisp core.
+  The film grain stays hidden here (round 16).
   The iPhone's "worst on the icons" was the march at 16 steps, its noise ~3 px a blob; the exact
   path has neither steps nor a sub-native canvas (on-device check still pending).
 - **The cursor moves the light again, in 5 × 4 = 20 quantised cells.** Three things were off,
