@@ -16,7 +16,7 @@ light»). Why each decision was made: `docs/effects/TUNING_LOG.md`, round 33.
 
 Record the commit you copied from (`git rev-parse HEAD` in this repo) next to the copy.
 
-**The engine — `src/gpu/`, the whole folder (17 files).** Two renderers with identical output:
+**The engine — `src/gpu/`, the whole folder (16 files).** Two renderers with identical output:
 WebGPU first, WebGL2 when WebGPU is missing or fails.
 
 | file | what it is |
