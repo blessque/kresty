@@ -1,135 +1,179 @@
-# Porting the light 1:1
+# Перенос света 1:1
 
-For the developers of the production site. This is how to get the light through the cross —
-main screen, «Музей», «О Крестах» icons — to render **exactly** as in this prototype: the same
-pixels for the same moment, on every device.
+Для разработчиков продакшен-сайта. Здесь описано, как перенести свет сквозь крест (главный
+экран, «Музей», иконки «О Крестах») так, чтобы он рисовался **в точности** как в этом прототипе:
+те же пиксели в тот же момент, на любом устройстве.
 
-**The rule that makes it 1:1: copy the engine verbatim and feed it the same state.** Every file
-in §1 is copied byte for byte, in the same relative layout (imports are relative), and never
-edited. If something has to change, it changes here first and is copied again. Everything that
-can differ between two sites lives in §2, and §2 says exactly how we do it.
+**Правило, которое даёт 1:1: движок копируется дословно, и ему подаётся то же состояние.**
+Каждый файл из §1 копируется байт в байт, с той же относительной структурой папок (импорты
+относительные), и никогда не правится. Если что-то нужно поменять, это меняется здесь, а потом
+копируется заново. Всё, что может различаться между двумя сайтами, собрано в §2, и §2 говорит,
+как именно это сделано у нас.
 
-What the light is, and why it is built this way: `docs/architecture/RAY_FIELD.md` («The exact
-light»). Why each decision was made: `docs/effects/TUNING_LOG.md`, round 33.
+Что такое этот свет и почему он устроен так: `docs/architecture/RAY_FIELD.md` («The exact
+light»). Почему принято каждое решение: `docs/effects/TUNING_LOG.md`, раунды 33 и 34.
 
-## 1. Copy verbatim — do not edit a line
+## 1. Копировать дословно, не меняя ни строки
 
-Record the commit you copied from (`git rev-parse HEAD` in this repo) next to the copy.
+Запишите рядом с копией коммит, с которого копировали (`git rev-parse HEAD` в этом репозитории).
 
-**The engine — `src/gpu/`, the whole folder (16 files).** Two renderers with identical output:
-WebGPU first, WebGL2 when WebGPU is missing or fails.
+**Движок: папка `src/gpu/` целиком (16 файлов).** Два рендерера с одинаковым результатом:
+сначала WebGPU, WebGL2, если WebGPU нет или он упал.
 
-| file | what it is |
+| файл | что это |
 |---|---|
-| `rayFieldTypes.ts` | the contract: `RayFieldParams`, `RayFieldState`, the renderer interface |
-| `capabilities.ts` | picks the backend |
-| `exactLight.ts` | the CPU half of the exact light (light centre, kernel fit, LODs, detail cap) |
-| `hazeNoise.ts` | the living haze's noise texture |
-| `webgl2/WebGL2RayFieldRenderer.ts`, `glProgram.ts`, `glTextures.ts`, `polarPasses.ts` | the WebGL2 renderer |
-| `webgl2/rayField.vert.glsl`, `rayField.frag.glsl`, `rayPolar.frag.glsl` | its shaders |
-| `webgpu/WebGPURayFieldRenderer.ts`, `gpuTextures.ts`, `polarPasses.ts` | the WebGPU renderer |
-| `webgpu/rayField.wgsl`, `rayPolar.wgsl` | its shaders |
+| `rayFieldTypes.ts` | контракт: `RayFieldParams`, `RayFieldState`, интерфейс рендерера |
+| `capabilities.ts` | выбирает бэкенд |
+| `exactLight.ts` | CPU-половина точного света (центр света, подгонка ядра, LOD-уровни, предел детализации) |
+| `hazeNoise.ts` | текстура шума для «живой дымки» |
+| `webgl2/WebGL2RayFieldRenderer.ts`, `glProgram.ts`, `glTextures.ts`, `polarPasses.ts` | рендерер WebGL2 |
+| `webgl2/rayField.vert.glsl`, `rayField.frag.glsl`, `rayPolar.frag.glsl` | его шейдеры |
+| `webgpu/WebGPURayFieldRenderer.ts`, `gpuTextures.ts`, `polarPasses.ts` | рендерер WebGPU |
+| `webgpu/rayField.wgsl`, `rayPolar.wgsl` | его шейдеры |
 
-**The mask, the resolution policy and the look:**
+**Маска, политика разрешения и «лук»:**
 
-| file | what it is |
+| файл | что это |
 |---|---|
-| `src/shared/rasterizeMask.ts` | draws the emblem SVG into the three-channel light mask |
-| `src/shared/lightMask.ts` | the mask's mips and the baked bloom (`buildLightMask`) |
-| `src/shared/frameGovernor.ts` | measures frame time, picks the quality rung |
-| `src/shared/performanceTier.ts` | the device tier (`layers`, `octaves`, `low`) |
-| `src/page/lightScale.ts` | the canvas resolution, from the light's own detail |
-| `src/shared/lightLook.ts` | **the shipped look** (`LOOK_DEFAULTS`) and `applyLook` |
-| `src/shared/filmGrain.ts` | the film grain (`GRAIN_DEFAULTS`) |
-| `src/shared/pointer.ts` | `SmoothPointer`, the cursor's inertia (main screen); on phones the gyro, permission asked on a tap |
-| `src/page/touchLight.ts` | a phone's cursor for a scrolling page: tilt + scroll gust, never the finger (round 34) |
-| `src/shared/assetUrl.ts` | `asset()` — the icon light loads its SVGs through it |
-| `src/screens/main/variants.ts` | the «Сияние» preset every light starts from |
-| `src/screens/concept/motionParams.ts` | the «О Крестах» icons' overrides (`MOTION`) |
-| `src/assets/sign.svg` | the emblem the cross is cut from |
-| `public/resources/{Bed,SPA,Restaurant,Window,Office}-640.svg` | the «О Крестах» icons — the `icon:` of each section in `src/screens/concept/pageSections.ts` |
+| `src/shared/rasterizeMask.ts` | рисует SVG эмблемы в трёхканальную маску света |
+| `src/shared/lightMask.ts` | мипы маски и запечённый bloom (`buildLightMask`) |
+| `src/shared/frameGovernor.ts` | меряет время кадра, выбирает ступень качества |
+| `src/shared/performanceTier.ts` | класс устройства (`layers`, `octaves`, `low`) |
+| `src/page/lightScale.ts` | разрешение канваса, исходя из детализации самого света |
+| `src/shared/lightLook.ts` | **выпущенный лук**: `LOOK_DEFAULTS` (общий), `MUSEUM_LOOK_DEFAULTS` (свой у «Музея», см. §2), `applyLook`, `museumLookOver` |
+| `src/shared/filmGrain.ts` | плёночное зерно (`GRAIN_DEFAULTS`) |
+| `src/shared/pointer.ts` | `SmoothPointer`, инерция курсора (главный экран); на телефонах гироскоп, разрешение запрашивается по тапу |
+| `src/page/touchLight.ts` | «курсор» телефона на скроллящейся странице: наклон + порыв от скролла, никогда не палец (раунд 34) |
+| `src/shared/assetUrl.ts` | `asset()`: через него свет иконок грузит свои SVG |
+| `src/screens/main/variants.ts` | пресет «Сияние», от которого стартует каждый свет |
+| `src/screens/concept/motionParams.ts` | переопределения для иконок «О Крестах» (`MOTION`) |
+| `src/screens/museum/museumLight.ts` | свет «Музея»: один канвас, «Сияние» плюс то, что вынуждает размер эмблемы |
+| `src/assets/sign.svg` | эмблема, из которой вырезан крест |
+| `public/resources/{Bed,SPA,Restaurant,Window,Office}-640.svg` | иконки «О Крестах»: поле `icon:` каждой секции в `src/screens/concept/pageSections.ts` |
 
-**Optional — the designer's panel (`?lab`):** `src/screens/lab/lightLab.ts`, `lightLab.css`,
-`src/shared/controlPanel.ts`, `src/styles/controlPanel.css`, and the `?lab` block in
-`src/main.ts` (a dynamic import, so a normal visit never downloads the panel). Worth keeping:
-it is how the look gets tuned on the live site, without a developer.
+**Опционально, панель дизайнера (`?lab`):** `src/screens/lab/lightLab.ts`, `lightLab.css`,
+`src/shared/controlPanel.ts`, `src/styles/controlPanel.css` и блок `?lab` в `src/main.ts`
+(динамический импорт, так что при обычном визите панель не скачивается). Её стоит оставить:
+через неё лук настраивается прямо на живом сайте, без разработчика. У «Музея» в панели своя
+группа ручек, «Музей» (см. §2).
 
-**Build requirements.** No runtime dependencies. The renderers import their shaders as text
-(`import src from './rayField.frag.glsl?raw'`): Vite does that natively; with webpack use
-`type: 'asset/source'` for `.glsl`/`.wgsl`/`.svg`. TypeScript strict; `@webgpu/types` for the
-WebGPU typings (dev only).
+**Требования к сборке.** Никаких рантайм-зависимостей. Рендереры импортируют шейдеры как текст
+(`import src from './rayField.frag.glsl?raw'`): Vite умеет это из коробки; в webpack используйте
+`type: 'asset/source'` для `.glsl`/`.wgsl`/`.svg`. TypeScript в strict-режиме; `@webgpu/types`
+для типов WebGPU (только dev).
 
-## 2. Wire it — the same state, every frame
+## 2. Подключение: то же состояние в каждом кадре
 
-Three reference consumers show the whole wiring. Reproduce them; do not re-derive them.
+Три эталонных потребителя показывают всю обвязку. Воспроизведите их, а не выводите заново.
 
-| page | reference | notes |
+| страница | эталон | заметки |
 |---|---|---|
-| «Музей» | `src/screens/museum/museumLight.ts` | self-contained, one canvas — copy it nearly as is. Its size terms (`cross`/`trails`/`reach`, round 34) are `MUSEUM_LOOK` in `lightLook.ts` |
-| «О Крестах» icons | `src/screens/concept/pageLight.ts` (+ `conceptPage.ts`) | a 2-viewport canvas + `scissorPx`, so the light never lags the scroll. Where the icon's column does not stick (one-column layouts), the transform rides a `ViewTimeline` (`src/page/viewLock.ts`), or it trails the scroll on a phone |
-| main | `src/screens/main/MainScreen.ts` | `initRenderer()`, `layout()`, `update()`, `stageCentre()`, `setReveal()` |
+| «Музей» | `src/screens/museum/museumLight.ts` + `MuseumScreen.ts` (`frame()`, `centre()`) | свет копируется как есть (§1); где стоит крест, как он поворачивается и насколько прозрачен, решает экран, см. ниже |
+| иконки «О Крестах» | `src/screens/concept/pageLight.ts` (+ `conceptPage.ts`) | канвас высотой в два вьюпорта + `scissorPx`, чтобы свет никогда не отставал от скролла. Там, где колонка с иконкой не залипает (одноколоночная вёрстка), трансформ едет по `ViewTimeline` (`src/page/viewLock.ts`), иначе на телефоне он отстаёт от скролла |
+| главный | `src/screens/main/MainScreen.ts` | `initRenderer()`, `layout()`, `update()`, `stageCentre()`, `setReveal()` |
 
-**Boot (once per canvas)** — exactly `MainScreen.initRenderer()`:
-1. `selectBackend()`; try `WebGPURayFieldRenderer`, on any error fall back to
+**Загрузка (один раз на канвас)** — точно как `MainScreen.initRenderer()`:
+1. `selectBackend()`; пробуем `WebGPURayFieldRenderer`, при любой ошибке откатываемся на
    `WebGL2RayFieldRenderer`; `await renderer.init(canvas)`.
 2. `governor.seed(renderer.gpuName, tier.low, renderer.exactAvailable)`.
-3. `const cv = await rasterizeMask(signSvg, { raw: true })`, then
-   `renderer.setSignMask(cv, buildLightMask(cv, { dissolve: preset.dissolve }))`. Without the
-   second argument the light silently falls back to the old estimator.
+3. `const cv = await rasterizeMask(signSvg, { raw: true })`, затем
+   `renderer.setSignMask(cv, buildLightMask(cv, { dissolve: preset.dissolve }))`. Без второго
+   аргумента свет молча откатывается на старый оценочный алгоритм.
 
-**Resolution** — on resize, on a DPR change (`matchMedia('(resolution: …dppx)')`) and whenever
-`governor.frame()` returns true: `const { scale, dither } = lightScale({ spanCss, params:
-applyLook(preset), cssW, cssH, marchCap })`, then
-`renderer.resize(Math.round(cssW × scale), Math.round(cssH × scale))`. The canvas's CSS box stays
-the CSS size. `spanCss` = the emblem's on-screen span in CSS px (`signSize × stage scale` on main).
+**Разрешение** — при ресайзе, при смене DPR (`matchMedia('(resolution: …dppx)')`) и каждый раз,
+когда `governor.frame()` возвращает true: `const { scale, dither } = lightScale({ spanCss, params:
+applyLook(preset), cssW, cssH, marchCap })`, затем
+`renderer.resize(Math.round(cssW × scale), Math.round(cssH × scale))`. CSS-размер канваса не
+меняется. `spanCss` — размах эмблемы на экране в CSS px (`signSize × масштаб сцены` на главном).
 
-**Every frame** — exactly `MainScreen.update()`:
-- `governor.frame(dtMs)` first; then `const q = governor.quality()`.
-- `renderer.render(state)` with `params: applyLook(preset)`, `rays: q.rays`,
-  `polarTheta: q.polarTheta`, `dither`, `scale`, `layers`/`octaves` from the device tier.
-- `timeSec` is a running clock in seconds — **never frozen**: breathing, shimmer, dust and the
-  rays' slow life all hang on it.
-- Main: `signRot = timeSec × 0.0126` (0.72°/s); the pointer through `SmoothPointer`; hover eased
-  150 ms in / 300 ms out into `hoverDir`/`hoverAmt`; the entrance burst. Every other state field
-  (`bgMix`, `sceneDim`, `beamHover`…) is set the way `update()` sets it.
+**Каждый кадр** — точно как `MainScreen.update()`:
+- сначала `governor.frame(dtMs)`, потом `const q = governor.quality()`.
+- `renderer.render(state)` с `params: applyLook(preset)`, `rays: q.rays`,
+  `polarTheta: q.polarTheta`, `dither`, `scale`, `layers`/`octaves` из класса устройства.
+- `timeSec` — идущие часы в секундах, **никогда не замороженные**: на них держатся дыхание,
+  мерцание, пыль и медленная жизнь лучей.
+- Главный: `signRot = timeSec × 0.0126` (0,72°/с); курсор через `SmoothPointer`; ховер
+  сглаживается за 150 мс на вход и 300 мс на выход в `hoverDir`/`hoverAmt`; вспышка на входе.
+  Все остальные поля состояния (`bgMix`, `sceneDim`, `beamHover`…) задаются так же, как в
+  `update()`.
 
-**Compositing.** The canvas draws light on black. CSS on it: `mix-blend-mode: screen;
-pointer-events: none` (see `.ray-canvas` in `main.css`). Keep it in the same stacking context as
-the background it lights: an ancestor with `opacity`, `transform`, `filter` or
-`isolation: isolate` isolates the blend, and the canvas's black then covers the page.
+**«Музей»: свой лук и своя композиция (раунд 34).** У страницы собственный набор ручек,
+`MUSEUM_LOOK` в `lightLook.ts`, и в `?lab` это группа «Музей».
+- `exposure`, `trail`, `edge`, `bloom`, `core` — копии общих ручек, которые **заменяют** их только
+  на этой странице (`applyLook(p, museumLookOver())`). Общий `LOOK_DEFAULTS` на «Музей» больше не
+  действует, а «Музей» больше не влияет на «О Крестах».
+- `cross` (bloom и core вокруг эмблемы), `rays` (godrays и дымка), `reach` (длина шлейфов
+  относительно «Сияния»), `solid` (`1 − dissolve`) компенсируют то, что эмблема здесь в 4 раза
+  больше, чем на главном. Это заменило прежний единый `GAIN = 0.22`.
+- **Центр креста** — `MuseumScreen.centre()`: на десктопе `(deskX × ширина, высота / 2)`, то есть
+  на 80 px левее края при 1440, а не ровно на нуле. Ниже брейкпоинта 1160 px:
+  `(phoneX × ширина, phoneY × высота)`, сейчас нижний правый угол.
+- **Поворот**: `progress × π`, где `progress` — доля прочитанного контента (0…1, до зоны шва).
+  Если центр в правой половине экрана, знак поворота меняется на противоположный (зеркальная
+  композиция). На тач-устройствах угол догоняет цель через критически демпфированную пружину
+  (`Spring(9, 1)` из `src/shared/easing.ts`).
+- **Непрозрачность канваса**: `(1 − white) × fade × ceiling`, где `ceiling` = `phoneGlow` ниже 1160
+  и 1 выше. `white` — насколько поле сейчас белое (на белой секции свет математически исчезает
+  при `screen` и переходит в синий вектор `museumCross.ts`, с тем же центром и с углом
+  **с обратным знаком**: шейдер вращает в обратную сторону от CSS). `fade` гасит свет за
+  первый вьюпорт шва.
+- Курсор на десктопе сглаживается экспоненциально, τ = 0,4 с (`easedPointer`); на телефоне
+  его заменяет `TouchLightInput` из `touchLight.ts`. Часы стартуют,
+  когда загорается свет, а не при загрузке страницы.
 
-**Film grain.** One `<div id="grain">` after the screens, the `#grain {…}` block from
-`src/styles/global.css`, and `initGrain(el)` once at boot. It is hidden over the map and the
-white pages (`concept.css`, `pages.css`) and ramped through `--grain-k` on «Музей»
-(`MuseumScreen.ts`) and at the main screen's seam (`MainScreen.setReveal`). Do the same.
+**Композитинг.** Канвас рисует свет на чёрном. CSS на нём: `mix-blend-mode: screen;
+pointer-events: none` (см. `.ray-canvas` в `main.css`). Держите его в том же контексте
+наложения, что и фон, который он освещает: предок с `opacity`, `transform`, `filter`,
+`isolation: isolate` или `position: sticky` изолирует бленд, и тогда чёрный канваса закрывает
+страницу.
 
-**The seam into the main screen.** The light's reveal multiplies everything it emits, so at 0 the
-canvas is exact black. Keep that multiply after `applyLook` (`MainScreen.setReveal`).
+**Плёночное зерно.** Один `<div id="grain">` после экранов, блок `#grain {…}` из
+`src/styles/global.css` и один вызов `initGrain(el)` при загрузке. Над картой и белыми страницами
+зерно скрыто (`concept.css`, `pages.css`), на «Музее» оно плавно меняется через `--grain-k`
+(`museumInk.ts`), а на шве главного экрана — в `MainScreen.setReveal`. Сделайте так же. Сейчас
+`GRAIN_DEFAULTS.amount` = 0, но обвязку стоит оставить: дизайнер может вернуть зерно из `?lab`.
 
-## 3. Delete from the current build
+**Шов в главный экран.** `reveal` умножает всё, что излучает свет, так что при 0 канвас
+идеально чёрный. Сохраните это умножение после `applyLook` (`MainScreen.setReveal`).
 
-- The old shader port (the pre-round-31 slit path) and its JavaScript.
-- The per-frame jitter re-seed and the time-hashed shimmer — the exact light has no jitter.
-- The about page's canvas at 0.22–0.48× — resolution comes from `lightScale` now.
-- `.footer__light`, the CSS cross: it turns at 2.9°/s over the shader's 0.72°/s.
+## 3. Удалить из текущей сборки
 
-## 4. Check it is 1:1
+- Старый порт шейдера (путь «прорези» до раунда 31) и его JavaScript.
+- Пересев джиттера в каждом кадре и мерцание через хэш времени: у точного света джиттера нет.
+- Канвас страницы «О Крестах» в масштабе 0,22–0,48×: разрешение теперь даёт `lightScale`.
+- `.footer__light`, CSS-крест: он вращается со скоростью 2,9°/с поверх шейдерных 0,72°/с.
+- На «Музее», если он у вас уже есть: единый `GAIN = 0.22` на все излучающие члены и центр
+  ровно на `x = 0`. Их заменили `MUSEUM_LOOK` и `centre()`.
 
-1. **Byte-identical engine.** `git diff --no-index <this repo>/src/gpu <your copy>/gpu` prints
-   nothing; the same for every §1 file.
-2. **`?perf`** (query before the hash: `/?perf#museum`): the HUD reads `rays exact`, the same
-   `polar` and `scale` as this prototype at the same window size on the same device.
-3. **`?lab`**: the panel opens at the shipped values (exposure 1.05, trail 1.47, ray edge 0.41,
-   bloom 0.34, core 0.67, rainbow / haze / grain 0). A look copied with Copy URL on one site
-   reproduces on the other.
-4. **`?rays=march`** brings back the old light — proof the modes route as here.
-5. The engine's own proof runs in this repo: `npm run probe:light` (both backends; exits
-   non-zero on any failure).
+## 4. Проверка, что вышло 1:1
 
-## 5. Changing the look
+1. **Движок совпадает побайтно.** `git diff --no-index <этот репозиторий>/src/gpu <ваша копия>/gpu`
+   ничего не выводит; то же для каждого файла из §1.
+2. **`?perf`** (query до хэша: `/?perf#museum`): HUD показывает `rays exact`, те же `polar` и
+   `scale`, что у прототипа при том же размере окна на том же устройстве.
+3. **`?lab`**: панель открывается на выпущенных значениях.
+   - Группа «Light»: exposure 1,05, trail 1,47, ray edge 0,41, bloom 0,34, core 0,67;
+     rainbow / haze / grain 0.
+   - Группа «Музей»: exposure 0,33, trail 0,81, edge 0,32, bloom 0,21, core 0; cross 0,49,
+     rays 0,68, reach 0,33, solid 0,86; deskX −0,056; phoneGlow 0,56, phoneX 1, phoneY 0,98.
 
-The designer tunes it in `?lab` and sends a Copy-URL link. To make that the default: put the
-values in `LOOK_DEFAULTS` (`src/shared/lightLook.ts`) and `GRAIN_DEFAULTS`
-(`src/shared/filmGrain.ts`), and bump the lab's `storeKey` in `lightLab.ts` (stored values
-outrank defaults). Make the change here and copy both files again — same rule as everything
-else: one source.
+   Лук, скопированный кнопкой Copy URL на одном сайте, воспроизводится на другом.
+4. **`?rays=march`** возвращает старый свет: доказательство, что режимы маршрутизируются как здесь.
+5. **`?rot=<градусы>`** на «Музее» фиксирует угол эмблемы: при нём свет и синий вектор на
+   белой секции должны совпасть по направлению лучей.
+6. Собственная проверка движка запускается в этом репозитории: `npm run probe:light` (оба
+   бэкенда; при любой ошибке завершается с ненулевым кодом).
+
+## 5. Как поменять лук
+
+Дизайнер настраивает его в `?lab` и присылает ссылку из Copy URL. Чтобы сделать её значениями
+по умолчанию:
+- ручки группы «Light» → `LOOK_DEFAULTS` (`src/shared/lightLook.ts`), зерно → `GRAIN_DEFAULTS`
+  (`src/shared/filmGrain.ts`);
+- ручки группы «Музей» (ключи `lab.mus*` в ссылке) → `MUSEUM_LOOK_DEFAULTS` в том же `lightLook.ts`.
+  Не переносите их в `LOOK_DEFAULTS`: тогда они изменят и «О Крестах», и главный экран;
+- затем увеличьте `storeKey` панели в `lightLab.ts` (сохранённые в браузере значения важнее
+  значений по умолчанию).
+
+Изменение делается здесь, и затем оба файла копируются заново. То же правило, что и для всего
+остального: один источник.
