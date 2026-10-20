@@ -9,6 +9,7 @@ import { getPerfTier } from '../../shared/performanceTier';
 import { buildLightMask, type LightMaskBuild } from '../../shared/lightMask';
 import { lightScale } from '../../page/lightScale';
 import { applyLook } from '../../shared/lightLook';
+import { lockToView } from '../../page/viewLock';
 
 /**
  * The envelope's shape. `smoothstep` is what shipped and is the default, so the
@@ -189,6 +190,9 @@ export class PageLight {
   renderCount = 0;
   /** the exact path's dither, raised below screen density (page/lightScale.ts) */
   private dither = 1;
+  /** round 34: the compositor drives the transform (see `lockTo`); what it was built for */
+  private lock: Animation | null = null;
+  private lockKey = '';
 
   constructor(private icons: string[]) {
     this.canvas.className = 'page-light';
@@ -410,7 +414,11 @@ export class PageLight {
    */
   position(iconY: number, opacity: number) {
     const transform = `translate3d(0, ${(iconY - this.viewH).toFixed(2)}px, 0)`;
-    if (transform !== this.lastTransform) {
+    // locked: the compositor owns the transform, and an inline write would be
+    // overridden by the animation anyway — skip it, and forget the last one so
+    // an unlock writes again
+    if (this.lock) this.lastTransform = '';
+    else if (transform !== this.lastTransform) {
       this.lastTransform = transform;
       this.canvas.style.transform = transform;
     }
@@ -419,6 +427,37 @@ export class PageLight {
       this.lastOpacity = op;
       this.canvas.style.opacity = op;
     }
+  }
+
+  /**
+   * ROUND 34: hand the canvas's position to the compositor while its icon FLOWS
+   * (below the sticky breakpoint) — `page/viewLock.ts` has the why. The canvas
+   * is anchored on the icon at its own middle, so the translate is
+   * `iconCentre − viewH`: `iconH/2` as the icon's top meets the frame's bottom,
+   * `−viewH − iconH/2` as its bottom clears the top.
+   *
+   * Idempotent on (station, viewport, icon size), so the caller may say it every
+   * frame. Returns false where it is unsupported, and the caller's own
+   * `position()` transform simply carries on.
+   */
+  lockTo(icon: HTMLElement, key: string, iconH: number): boolean {
+    const k = `${key}|${this.viewH}|${iconH.toFixed(1)}`;
+    if (k === this.lockKey) return this.lock !== null;
+    this.unlock();
+    this.lockKey = k;
+    this.lock = lockToView(this.canvas, icon, iconH / 2, -this.viewH - iconH / 2);
+    return this.lock !== null;
+  }
+
+  /** back to the rAF transform — the icon is sticky again, or the light is gone */
+  unlock() {
+    this.lock?.cancel();
+    this.lock = null;
+    this.lockKey = '';
+  }
+
+  get locked(): boolean {
+    return this.lock !== null;
   }
 
   /**
@@ -462,9 +501,13 @@ export class PageLight {
     canvasTop: number,
   ) {
     if (!this.renderer) return;
-    // the viewport [0, viewH] in canvas-local px, clamped to the canvas
-    const top = Math.max(0, -canvasTop);
-    const bottom = Math.min(this.viewH * CANVAS_VH, this.viewH - canvasTop);
+    // the viewport [0, viewH] in canvas-local px, clamped to the canvas. Locked,
+    // the compositor may place the canvas a frame AHEAD of this main-thread
+    // estimate, so a third of a viewport either side is shaded too — otherwise
+    // a fast flick shows the band's unshaded edge
+    const pad = this.lock ? this.viewH / 3 : 0;
+    const top = Math.max(0, -canvasTop - pad);
+    const bottom = Math.min(this.viewH * CANVAS_VH, this.viewH - canvasTop + pad);
     const band: [number, number] = [top, Math.max(0, bottom - top)];
     const args: BakeArgs = { idx, anchorX, pointer, px, timeSec, band };
     this.lastBake = args;
@@ -577,6 +620,7 @@ export class PageLight {
   }
 
   destroy() {
+    this.unlock();
     this.renderer?.destroy();
     this.renderer = null;
   }

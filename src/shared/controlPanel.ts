@@ -170,7 +170,10 @@ export class ControlPanel {
   private build() {
     const head = document.createElement('div');
     head.className = 'fx-panel-head';
-    head.innerHTML = `<b>${this.opts.title ?? 'Effect controls'}</b><span>H — hide</span>`;
+    head.innerHTML = `<b>${this.opts.title ?? 'Effect controls'}</b><span>H — hide · tap — fold</span>`;
+    // round 34: a phone has no H key, and the user tunes «Музей» on one — a tap
+    // on the header folds the panel down to this bar so the page shows through
+    head.addEventListener('click', () => this.el.classList.toggle('min'));
     this.el.appendChild(head);
 
     const body = document.createElement('div');

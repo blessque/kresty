@@ -7,6 +7,7 @@ import { getPerfTier } from '../../shared/performanceTier';
 import { MOTION, applyMotionCss } from './motionParams';
 import * as governor from '../../shared/frameGovernor';
 import { perfHud } from '../../shared/perfHud';
+import { TOUCH_LIGHT, TouchLightInput } from '../../page/touchLight';
 
 /**
  * `?bake` restores the pre-round-31 light: drawn once per station and cursor
@@ -154,6 +155,8 @@ export class ConceptPage {
   private smoothPtr: [number, number] | null = null;
   /** was the light live last frame — a fresh start resets the frame governor */
   private wasLive = false;
+  /** a phone's cursor: tilt and scroll, never the finger (round 34, page/touchLight.ts) */
+  private touch = new TouchLightInput();
 
   constructor(screen: HTMLElement, scroller: HTMLElement) {
     // ROUND 23: push the layout dials into CSS before anything measures. The
@@ -185,6 +188,15 @@ export class ConceptPage {
     screen.appendChild(this.sections.light.canvas);
 
     this.form.onResize = () => this.measure(this.viewW, this.viewH);
+  }
+
+  /** the screen became visible / hidden — the phone's tilt listener lives only while it is */
+  start() {
+    if (TOUCH_LIGHT.matches) this.touch.attach();
+  }
+
+  stop() {
+    this.touch.detach();
   }
 
   measure(viewW: number, viewH: number) {
@@ -224,6 +236,9 @@ export class ConceptPage {
     const dtMs = this.lastFrameT ? now - this.lastFrameT : 0;
     this.lastFrameT = now;
     let live = false;
+    // ROUND 34: a phone's cursor runs every frame, so its scroll gust is measured
+    // continuously rather than from the first frame the light happens to be up
+    const phonePtr = TOUCH_LIGHT.matches ? this.touch.update(dtMs, scrollTop, viewW, viewH) : null;
 
     // 1. the colour, applied. ROUND 24: the band is pushed in rather than read
     // out — `PageBackground` moved to `page/` and must not reach back into this
@@ -269,6 +284,18 @@ export class ConceptPage {
         // cursor that is nowhere near where the reader's actually is.
         const local: [number, number] = [pointer[0], pointer[1] - (y - viewH)];
 
+        // ROUND 34: WHILE THE ICON FLOWS, THE COMPOSITOR PLACES THE CANVAS. Below
+        // the sticky breakpoint the rAF transform chased the scroll every frame
+        // and trailed it on a phone — the reported "parallax" lag and jump.
+        // `position()` still writes the opacity; the translate is the view
+        // lock's. Sticky (desktop) keeps the rAF path, where the pin hides it.
+        const iconEl = this.sections.iconEl(t.idx);
+        if (!this.sections.isSticky(t.idx) && iconEl) {
+          light.lockTo(iconEl, String(t.idx), this.sections.iconH(t.idx));
+        } else {
+          light.unlock();
+        }
+
         // Suppress cursor bakes while the page is moving. Scroll owns the frame
         // budget — at render scale 2 a bake is 70–117 ms, which is a delay on a
         // still page and a stutter on a scrolling one. A station change is NOT
@@ -305,7 +332,7 @@ export class ConceptPage {
             this.smoothPtr = null;
           }
           if (this.wasLive && dtMs && governor.frame(dtMs)) light.refreshQuality();
-          const sp = this.smoothPointer(pointer, dtMs);
+          const sp = phonePtr ?? this.smoothPointer(pointer, dtMs, viewW, viewH);
           if (!this.clock0) this.clock0 = now;
           light.live(shown, t.x, [sp[0], sp[1] - (y - viewH)], t.px, (now - this.clock0) / 1000, y - viewH);
           if (governor.PERF_HUD) this.hud();
@@ -411,8 +438,19 @@ export class ConceptPage {
     return 1 - MOTION.swapDip * Math.sin(Math.PI * k);
   }
 
-  /** the cursor, eased exactly as `SmoothPointer` eases it for the main screen */
-  private smoothPointer(target: [number, number], dtMs: number): [number, number] {
+  /**
+   * The cursor, eased exactly as `SmoothPointer` eases it for the main screen.
+   *
+   * ROUND 34: CENTRE UNTIL A CURSOR ARRIVES. `ConceptScreen.cursor` starts at
+   * (−9999, −9999), and this passed it straight through: `u_parallax` is
+   * `q · 0.06 · 1.2`, so a light nobody had pointed at yet sat ~720 px off its
+   * own icon with the rays smeared one way, then flew back across the frame on
+   * the first move. A phone met it on every visit (it is the touch path now);
+   * a desktop only if the mouse never entered. «Музей» always had this guard.
+   */
+  private smoothPointer(raw: [number, number], dtMs: number, viewW: number, viewH: number): [number, number] {
+    const off = raw[0] < 0 || raw[1] < 0;
+    const target: [number, number] = off ? [viewW / 2, viewH / 2] : raw;
     if (!this.smoothPtr) this.smoothPtr = [target[0], target[1]];
     const k = 1 - Math.exp(-Math.min(dtMs, 50) / 1000 / POINTER_TAU);
     this.smoothPtr[0] += (target[0] - this.smoothPtr[0]) * k;

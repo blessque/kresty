@@ -6,8 +6,21 @@
  * On touch devices without a hovering cursor the device gyroscope plays the
  * cameraman instead: tilting the phone offsets a virtual pointer from the
  * screen center through the same smoothing pipeline. Best-effort — iOS 13+
- * permission is requested on the first touch; silently skipped elsewhere.
+ * permission is requested on the first TAP; silently skipped elsewhere.
+ *
+ * ROUND 34: THE REQUEST MOVED FROM `touchstart` TO `touchend`/`click`. WebKit
+ * does not count a touchstart as a user gesture, so `requestPermission()`
+ * rejected there, the `.catch` swallowed it, and the gyro most likely never ran
+ * on an iPhone at all — while desktop Chrome, which has no orientation sensor,
+ * could not show the difference. A touchend that ENDS A SCROLL is not a gesture
+ * either, so a rejection keeps listening and the next tap asks again; only an
+ * answer stops it. Once granted, the grant is shared by every instance (main,
+ * «Музей», «О Крестах»), because it belongs to the page, not to a screen.
  */
+
+/** iOS granted orientation access this page session — every instance may listen */
+let orientationGranted = false;
+
 export class SmoothPointer {
   raw = { x: innerWidth / 2, y: innerHeight / 2 };
   smooth = { x: innerWidth / 2, y: innerHeight / 2 };
@@ -15,8 +28,24 @@ export class SmoothPointer {
   tau = 0.4;
   private gyroBase: { beta: number; gamma: number } | null = null;
   private gyroActive = false;
+  private asking = false;
+
+  /**
+   * `ignoreTouch` (round 34, «Музей» and «О Крестах»): a finger's position is not
+   * a cursor. On a page that scrolls, `pointermove` fires only until the browser
+   * takes the pan, so the light would lurch to wherever each scroll began and
+   * stay there. Those pages take the hand (the gyro) and the scroll instead.
+   * Main keeps the default: its screen does not scroll, and a drag there is one.
+   */
+  constructor(private opts: { ignoreTouch?: boolean } = {}) {}
+
+  /** is the gyro driving `raw` right now (no real pointer has outranked it) */
+  get tilting(): boolean {
+    return this.gyroActive;
+  }
 
   private onMove = (e: PointerEvent) => {
+    if (this.opts.ignoreTouch && e.pointerType === 'touch') return;
     // a real pointer always outranks the gyro
     this.gyroActive = false;
     this.raw.x = e.clientX;
@@ -34,34 +63,49 @@ export class SmoothPointer {
     this.raw.y = innerHeight / 2 + (db / 25) * innerHeight * 0.45;
   };
 
-  private onFirstTouch = () => {
-    removeEventListener('touchstart', this.onFirstTouch);
+  private onTap = () => {
+    if (this.asking) return;
     type PermissionRequester = { requestPermission?: () => Promise<string> };
     const doe = DeviceOrientationEvent as unknown as PermissionRequester;
-    if (typeof doe.requestPermission === 'function') {
-      doe
-        .requestPermission()
-        .then((res) => {
-          if (res === 'granted') addEventListener('deviceorientation', this.onOrientation);
-        })
-        .catch(() => {});
-    } else {
-      addEventListener('deviceorientation', this.onOrientation);
-    }
+    if (typeof doe.requestPermission !== 'function') return;
+    this.asking = true;
+    doe
+      .requestPermission()
+      .then((res) => {
+        this.stopAsking();
+        if (res !== 'granted') return;
+        orientationGranted = true;
+        addEventListener('deviceorientation', this.onOrientation);
+      })
+      // not a gesture (a touchend that ended a scroll) — the next tap asks again
+      .catch(() => {})
+      .finally(() => (this.asking = false));
   };
+
+  private stopAsking() {
+    removeEventListener('touchend', this.onTap);
+    removeEventListener('click', this.onTap);
+  }
 
   attach() {
     addEventListener('pointermove', this.onMove, { passive: true });
     addEventListener('pointerdown', this.onMove, { passive: true });
     if ('ontouchstart' in window && typeof DeviceOrientationEvent !== 'undefined') {
-      addEventListener('touchstart', this.onFirstTouch, { passive: true });
+      const doe = DeviceOrientationEvent as unknown as { requestPermission?: unknown };
+      if (typeof doe.requestPermission !== 'function' || orientationGranted) {
+        // Android, or iOS already said yes this session: no gesture needed
+        addEventListener('deviceorientation', this.onOrientation);
+      } else {
+        addEventListener('touchend', this.onTap, { passive: true });
+        addEventListener('click', this.onTap);
+      }
     }
   }
 
   detach() {
     removeEventListener('pointermove', this.onMove);
     removeEventListener('pointerdown', this.onMove);
-    removeEventListener('touchstart', this.onFirstTouch);
+    this.stopAsking();
     removeEventListener('deviceorientation', this.onOrientation);
     this.gyroBase = null;
     this.gyroActive = false;

@@ -6261,3 +6261,143 @@ plain dynamic import landed on a different module instance (the first A/B read 1
 px and proved nothing). The centroid is now the luminance the light ADDS — a screenshot with the
 canvas minus one without — so static UI cancels: −2.1 to −2.7px on every seam, and it still
 moves (−58…−64px) when the cursor at the far left really leans the light.
+
+---
+
+## Round 34 (2026-10-20) — the light on phones, and «Музей»'s faded cross
+
+User report: on phones the «О Крестах» and «Музей» lights read as a background, and when they
+move they move hard; the «О Крестах» icons "parallax", lagging and then jumping; «Музей»'s cross
+"doesn't look interactive at all", and on every device it looks "shaded or semi-transparent".
+Main is fine. Four separate causes, read from the code before anything was changed.
+
+### «Музей»'s cross was grey because one gain solved a length problem
+
+Round 28.1's `GAIN = 0.22` multiplied all four emissive terms, because the 2.2-viewport emblem
+(~4× the hero's) washed the field out. The real mechanism: at dissolve 1 the visible arms ARE
+the rays, and the trails decay in **emblem units**, so a 4× emblem draws them 4× longer in px.
+They crossed the frame and, under `screen`, lifted the navy. 0.22 kept the field dark by
+dimming the cross. On a phone the 45 % `NARROW_LIGHT` stacked on top, which left it at ~10 % of
+main's strength.
+
+**First attempt, rejected by measurement:** bloom and core to 1 (per-pixel terms, size-free),
+rays still at 0.22. The field lifted (p10 41 → 54) and the arms stayed grey (p99 169 → 205),
+because at dissolve 1 the bloom is the haze AROUND the arms, not the arms.
+
+**What ships:** `reach` 0.3 shortens the trails back toward the hero's px length, so the rays
+can run at 1.2. The field ends darker than before (p10 34) and the arms reach main's level (p99
+228 against main's 237), measured over the left half at 1440×900 with `?rot=30`. Four handles
+now live in `MUSEUM_LOOK` (`shared/lightLook.ts`), the lab's «Музей» group: `cross`, `trails`,
+`reach`, `solid`. `?exp=` survives as the rays gain. At phone size, white body copy spans the
+whole width and dominates the percentiles, so the phone was judged by eye.
+
+### The phone handles are the user's call, made by looking
+
+Asked how bright the cross should be on a phone, where body copy runs over it, the user asked for
+handles rather than a number: "people read text in some point of their mobile screen, not thru
+the full screen height". So below 1160 the lab carries `phoneGlow` (the cap, 0.45 → 0.75),
+`phoneX` (fraction of the width) and `phoneY` (fraction of the height) for the convergence point.
+The vector cross follows through `--mus-cx`/`--mus-cy`, written from the same numbers. At
+390×844 with (−0.25, 1) it lands at (−97.5, 844). The lab panel docks to the bottom 45 % at
+≤ 640 px, and a tap on its header folds it (`ControlPanel`, every panel: a phone has no H key).
+
+### The icons lagged because sticky had been hiding a main-thread transform
+
+The icon light is a canvas outside the scroller (its `screen` blend must reach `.page-bg`), moved
+by a rAF `translate3d`. On desktop the column is sticky, so the transform barely changes and
+round 16.1's defect stays hidden. At ≤ 1160 the column is `static`, the icon flows, and the
+transform chases the compositor's scroll every frame. That is the reported "parallax".
+
+**Fix:** a `ViewTimeline` on the owning `.sec-icon` drives the transform (`page/viewLock.ts`),
+so the browser's animation engine runs it with the icon's own scroll progress as the playhead:
+threaded in Chrome, and in Safari since 26.4. It is relative to the subject, so content above
+changing height needs no re-measure. Sticky layouts keep the rAF path. Considered and not built:
+putting the canvas inside the scroller (its `z-index: 2` stacking context would isolate the
+`screen` blend and paint the canvas's black opaque), and an alpha-output mode in both shader twins
+(would work anywhere, but costs a gpu/ change for a problem a timeline solves).
+
+### Phones had no input, and two bugs made motion harsh
+
+- Main tilts with the phone (`SmoothPointer`'s gyro). These two pages listened only to
+  `pointermove`, which on a scrolling page fires until the browser takes the pan. So the light
+  lurched toward wherever each scroll began and parked there.
+- **«О Крестах» fed the light (−9999, −9999) before the first touch.** With `parallax` 1.2 that
+  is a ~720 px shove: the rays smeared one way, then flew back across the frame on the first
+  touch. It hit every phone visit, and desktop only if the mouse never entered.
+- **The gyro most likely never ran on an iPhone, main included.** `requestPermission()` was
+  called in `touchstart`, which WebKit does not treat as a user gesture, and `.catch(() => {})`
+  swallowed the rejection. Desktop Chrome has no orientation sensor, so nothing could show the
+  difference. It now asks on the first `touchend`/`click`. A rejection (a touchend that ended a
+  scroll is not a gesture either) keeps listening; only an answer stops it; and a grant is shared
+  by every `SmoothPointer` instance. The user chose this knowing it adds the one-time iOS prompt
+  to main too.
+
+**What a phone gets now** (`page/touchLight.ts`, gated on `(hover: none) and (pointer: coarse)`):
+tilt, with finger positions ignored (`SmoothPointer({ ignoreTouch })`), plus a **scroll gust**.
+Eased velocity (full at 2200 px/s, τ 0.12 s) pushes the virtual cursor up to 0.34 viewports along
+the content's motion, all through main's τ 0.4 s ease. «Музей»'s rotation follows its target
+through a spring (`shared/easing.ts` `Spring`, ω 9, ζ 0.75) plus ~7° of twist per full gust.
+Desktop is untouched. Measured in phone emulation: rest at the exact centre, a tap moves
+nothing, a CDP tilt moves the cursor (195, 422) → (300, 649), a 2400 px/s flick peaks at −93 px
+and settles to −0.2 px within 2 s.
+
+### Traps
+
+- **A probe that scrolls in jumps measures its own gust.** The first "cursor at rest" check read
+  17 px off centre: the sampling scroll steps were flicks. Wait out the gust.
+- **The `?t=` instance trap, twice in one round** (round 33.2's note). Every edit after the dev
+  server starts re-keys the module the app imports, so `import('/src/…')` overrides land
+  elsewhere: the second phone shot read the default centre after the lab values were "set".
+  Restart before any A/B that patches a module.
+
+### Not proven here
+
+The feel on a real phone: whether the lock is glued during iOS momentum scrolling (it needs
+26.4+), how tilt and the gust read in the hand, and where the cross belongs. That is the user's
+on-device pass, with the lab.
+
+### 34.1 — the user's «Музей» look, museum-only, and a cross in the phone's corner
+
+The user tuned in the lab and sent a Copy URL link: **exposure 0.46 · cross 0.47 · rays 1.3 · reach
+0.34 · solid 0.49 · phone glow 0.56 · phone (x 1, y 0.98)**. Two corrections came with it:
+
+- **"On «О Крестах» they don't look well."** Only one handle in the link was global: `exposure`,
+  from the Light group, which every light reads. The museum now has its own `exposure` in
+  `MUSEUM_LOOK`, applied through `applyLook(p, { exposure })`, so the Light group's 1.05 no longer
+  reaches this page and 0.46 reaches nothing else. The lab's store key goes v3 → v4, or the
+  user's stored global 0.46 would keep dimming every page whenever `?lab` is open.
+- **"In the bottom right corner on mobile it looks way better, it doesn't hurt left-aligned text
+  reading … it has to spin in opposite direction."** The corner is the link's phone x/y. The spin
+  is derived: when the convergence point is right of the frame's middle, `MuseumScreen` negates
+  the angle (gust twist included). The vector cross reads the same signed angle, so the white
+  handover still turns with it. Desktop is untouched: centre (0, ½), angle rising with the scroll.
+
+**`solid` is not only a look.** 0.49 brings the emblem's crisp strokes back, and a crisp core is
+real detail, so `detailScale` lifts the museum canvas from its ½·DPR floor to native: 2880×1800 at
+1440 on a 2× screen, and 824×1848 on a 412×924 phone at 2×. That is the bench's round-33 "exact,
+moving, native 2×" case, 4.1–4.2 ms on the M1. The governor's exact ladder steps it down on a
+weaker GPU.
+
+Verified on a fresh server: the phone centre is (412, 905.5) with the vector cross on the same
+point; the phone angle falls −0.40 → −0.73 → −1.07 across three screens while desktop rises
+0.36 → 0.67 → 0.99; the global exposure stays 1.05 and the museum's is 0.46.
+
+### 34.2 — the user's second «Музей» look, no bounce, and the desktop centre off the edge
+
+Link: **exposure 0.33 · trail 0.81 · edge 0.32 · bloom 0.21 · core 0 · cross 0.49 · rays 0.68 ·
+reach 0.33 · solid 0.86** (plus `hazeScale` 100, inert at haze 0). Four of those were Light-group
+handles again, the same leak as 34.1, and `core 0` would have switched off the «О Крестах»
+icons' crisp body. So the museum now owns all five Light-group handles the user has touched
+(`museumLookOver()`), and the lab shows them in the «Музей» group with the global ones' hints
+saying "every page but «Музей»". Store key v4 → v5. Verified: museum renders `coreIntensity` 0 and
+`rayEdge` 0.32, while «О Крестах» on the same build renders core 0.194 and edge 0.41.
+
+**"Too hard back bounce on mobile."** Round 34's rotation was ζ 0.75 plus a ~7° gust twist that
+released when the page stopped. Now it is ζ 1 with no twist, and the gust's reach is halved (0.17
+viewports), so the light's lean is smaller too. Measured on a phone viewport: 90 frames after a
+2400 px/s flick, the angle moves one way only, with 0 reversals.
+
+**Desktop centre at `deskX` −0.056**, i.e. −80.6 px at 1440. The user: "not exactly on the page's
+0 X … respectfully to the resolution". It is a fraction of the width, like `phoneX`; the vector
+cross reads the same −80.6 px.
+

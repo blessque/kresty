@@ -2,7 +2,7 @@ import signSvg from '../../assets/sign.svg?raw';
 import { rasterizeMask } from '../../shared/rasterizeMask';
 import { buildLightMask } from '../../shared/lightMask';
 import { lightScale } from '../../page/lightScale';
-import { applyLook } from '../../shared/lightLook';
+import { applyLook, MUSEUM_LOOK, museumLookOver } from '../../shared/lightLook';
 import { selectBackend } from '../../gpu/capabilities';
 import { VARIANTS } from '../main/variants';
 import type { RayFieldParams, RayFieldRenderer, RayFieldState } from '../../gpu/rayFieldTypes';
@@ -57,7 +57,7 @@ import * as governor from '../../shared/frameGovernor';
 const SIYANIE: RayFieldParams = VARIANTS.find((v) => v.id === 'siyanie')!.params;
 
 /**
- * ONE number, and «Сияние» is otherwise used VERBATIM.
+ * «Сияние» VERBATIM, plus the gains its size forces.
  *
  * ── the mistake this replaces ───────────────────────────────────────────────
  * Round 28 built this light by copying `screens/concept/pageLight.ts`, because
@@ -85,16 +85,22 @@ const SIYANIE: RayFieldParams = VARIANTS.find((v) => v.id === 'siyanie')!.params
  * ── why a gain is still needed ──────────────────────────────────────────────
  * The emblem is ~4× the hero's (the client asked for the vector's size) and the
  * emission terms are not normalised for it, so at the preset's own intensities
- * the field washes out. This is ONE multiplier on the four emissive terms —
- * a scale correction, not a second opinion about what the light should look
- * like. Every other number is «Сияние»'s.
+ * the field washes out. A scale correction, not a second opinion about what the
+ * light should look like. Every other number is «Сияние»'s.
+ *
+ * ROUND 34: THE GAIN WAS SOLVING THE WRONG PROBLEM, and its replacement lives
+ * in `MUSEUM_LOOK` (`shared/lightLook.ts`, the lab's «Музей» group). The rays'
+ * trails decay in emblem units, so a 4× emblem draws them 4× longer and they
+ * flood the field; 0.22 kept the navy by turning the cross grey ("shaded or
+ * semi-transparent"). Now `reach` shortens the trails and the rays burn at the
+ * hero's strength — measured table with `MUSEUM_LOOK`.
  *
  * Sanity-checked against the frame's own hero render (its open field reads
  * ~rgb(37,37,33)); `?exp=` moves it. Note that single-pixel sampling is no
  * longer a stable measurement now that `grain` and the clock are live — every
  * frame differs, which is the point. Compare regions, or just look.
  */
-const GAIN = 0.22;
+/* `GAIN` (0.22) is `MUSEUM_LOOK_DEFAULTS.trails` since round 34 — see above */
 
 /**
  * Texture span of the emblem, in viewport heights.
@@ -138,9 +144,12 @@ export class MuseumLight {
   private viewH = 0;
   private lastOpacity = '';
   /** what was last asked for, so a late mask upload can repeat it */
-  private lastArgs: { rot: number; pointer: [number, number]; timeSec: number } | null = null;
+  private lastArgs: RenderArgs | null = null;
   private signVh = numParam('sign', SIGN_VH, 0.05, 6);
-  private gain = numParam('exp', GAIN, 0, 4);
+  /** `?exp=` — the trails gain, outranking the lab (it predates it); NaN = absent */
+  private expOverride = numParam('exp', NaN, 0, 4);
+  /** the `solid`/`edge` the canvas scale was last derived for — crisp detail needs more pixels */
+  private scaleKey = '';
   /** the perf tier's own dust settings, exactly as the main screen uses them */
   private layers = 3;
   private octaves = 4;
@@ -223,7 +232,7 @@ export class MuseumLight {
       const mask = await rasterizeMask(signSvg, { raw: true });
       this.renderer.setSignMask(mask, buildLightMask(mask, { dissolve: SIYANIE.dissolve }));
       this.maskReady = true;
-      if (this.lastArgs) this.render(this.lastArgs.rot, this.lastArgs.pointer, this.lastArgs.timeSec);
+      if (this.lastArgs) this.render(this.lastArgs);
     } catch (err) {
       console.warn('[kresty] museum light: sign mask failed', err);
     }
@@ -262,9 +271,10 @@ export class MuseumLight {
    * edge spans several device pixels — and `?ls=` still wins, as before.
    */
   private liveScale(): number {
+    this.scaleKey = scaleKey();
     const ls = lightScale({
       spanCss: Math.max(1, this.viewH * this.signVh),
-      params: applyLook(SIYANIE),
+      params: applyLook({ ...SIYANIE, dissolve: dissolve() }, museumLookOver()),
       cssW: Math.max(1, this.viewW),
       cssH: Math.max(1, this.viewH),
       marchCap: this.tierScale,
@@ -296,7 +306,7 @@ export class MuseumLight {
     const rs = this.renderScale;
     this.renderer.resize(Math.round(this.viewW * rs), Math.round(this.viewH * rs));
     // the canvas just lost its contents; redraw what was on it
-    if (this.lastArgs) this.render(this.lastArgs.rot, this.lastArgs.pointer, this.lastArgs.timeSec);
+    if (this.lastArgs) this.render(this.lastArgs);
   }
 
   /**
@@ -307,36 +317,47 @@ export class MuseumLight {
    * viewport px because the canvas is never transformed — the one simplification
    * that follows from the cross not travelling, and worth stating because the
    * concept light's equivalent comment documents a real bug from getting it
-   * wrong.
+   * wrong. `centre` is the convergence point in the same px — (0, viewH/2) on
+   * desktop, the lab's `phoneX`/`phoneY` below the breakpoint (round 34).
    *
    * No dedupe. With a running clock every frame genuinely differs, so a key
    * would be a comparison that never matches — cost with none of the saving.
    */
-  render(rot: number, pointer: [number, number], timeSec: number) {
-    this.lastArgs = { rot, pointer, timeSec };
+  render(args: RenderArgs) {
+    this.lastArgs = args;
     if (!this.renderer || !this.maskReady || !this.viewH) return;
+    const { rot, pointer, timeSec, centre } = args;
+    // a lab move of `solid` or `edge` changes the detail the canvas has to carry
+    if (scaleKey() !== this.scaleKey) this.refreshQuality();
 
     const rs = this.renderScale;
     this.renderCount++;
 
     // «Сияние» VERBATIM. Only the three things the composition forces may
-    // differ, plus one gain on the emissive terms because the emblem is ~4× the
-    // hero's. `dissolve`, `grain`, `ca`, `parallax`, `falloffL`, `dustAmount`,
-    // `hazeBase`, `breathe`, `shimmer` and `rotSpeed` all come through the
-    // spread and MUST keep coming through it — each one that gets a local
-    // opinion is a step back toward a lookalike.
-    const g = this.gain;
+    // differ, plus what its size forces (round 34: the trails' gain and REACH,
+    // the cross's own glow) and the lab's `solid`. `grain`, `ca`, `parallax`, `falloffL`, `dustAmount`,
+    // `breathe`, `shimmer` and `rotSpeed` all come through the spread and MUST
+    // keep coming through it — each one that gets a local opinion is a step
+    // back toward a lookalike.
+    const trails = Number.isNaN(this.expOverride) ? MUSEUM_LOOK.rays : this.expOverride;
+    const cross = MUSEUM_LOOK.cross;
     const p: RayFieldParams = applyLook({
       ...SIYANIE,
-      godrays: SIYANIE.godrays * g,
-      bloom: SIYANIE.bloom * g,
-      coreIntensity: SIYANIE.coreIntensity * g,
-      hazeBase: SIYANIE.hazeBase * g,
+      dissolve: dissolve(),
+      // `reach` < 1 shortens the trails: their decay runs in EMBLEM units, so a
+      // 4× emblem draws them 4× longer in px than the hero's
+      trail: SIYANIE.trail / Math.max(0.05, MUSEUM_LOOK.reach),
+      godrays: SIYANIE.godrays * trails,
+      hazeBase: SIYANIE.hazeBase * trails,
+      bloom: SIYANIE.bloom * cross,
+      coreIntensity: SIYANIE.coreIntensity * cross,
       // Reference px ARE CSS px here, so the preset's 780px falloff keeps its
       // hero magnitude and decays inside the frame exactly as on the main
       // screen.
       signSize: this.viewH * this.signVh,
-    });
+      // round 34.1–34.2: this page's own exposure, trail, edge, bloom and core
+      // — the Light group's handles no longer reach it
+    }, museumLookOver());
 
     const state: RayFieldState = {
       // THE CLOCK IS LIVE. It is what `breathe`, `shimmer`, the dust drift, the
@@ -345,8 +366,9 @@ export class MuseumLight {
       // hero rather than the hero.
       timeSec,
       // x = 0: the convergence point sits ON the left edge, so the emblem is
-      // bisected by it and the page shows its right half.
-      centerPx: [0, (this.viewH / 2) * rs],
+      // bisected by it and the page shows its right half. Below the breakpoint
+      // the lab can move it (round 34) — `MuseumScreen.centre()`.
+      centerPx: [centre[0] * rs, centre[1] * rs],
       pointerPx: [pointer[0] * rs, pointer[1] * rs],
       scale: rs,
       signRot: rot,
@@ -391,6 +413,24 @@ export class MuseumLight {
   }
 }
 
+interface RenderArgs {
+  rot: number;
+  pointer: [number, number];
+  timeSec: number;
+  /** the convergence point, viewport px */
+  centre: [number, number];
+}
+
+/** «Сияние»'s dissolve, less the lab's `solid` (0 = the preset untouched) */
+function dissolve(): number {
+  return SIYANIE.dissolve * (1 - MUSEUM_LOOK.solid);
+}
+
+/** what the canvas scale depends on among the lab's handles */
+function scaleKey(): string {
+  return `${MUSEUM_LOOK.solid}|${MUSEUM_LOOK.edge}`;
+}
+
 /** `?ls=<k>` — the same dev dial «О Крестах» carries, clamped the same way */
 function renderScaleOverride(): number | null {
   const raw = new URLSearchParams(location.search).get('ls');
@@ -404,6 +444,8 @@ function renderScaleOverride(): number | null {
  * `?fall=` the radial falloff in reference px. «О Крестах» has a whole panel
  * for the equivalent; three query params is the right size for three numbers,
  * and it is how the shipped values below were arrived at rather than guessed.
+ * (Round 34: `?exp=` is the TRAILS gain now — the job the single gain had —
+ * and the rest of the page's dials are the lab's «Музей» group.)
  */
 function numParam(key: string, dflt: number, lo: number, hi: number): number {
   const raw = new URLSearchParams(location.search).get(key);

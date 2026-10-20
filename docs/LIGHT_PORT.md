@@ -41,7 +41,8 @@ WebGPU first, WebGL2 when WebGPU is missing or fails.
 | `src/page/lightScale.ts` | the canvas resolution, from the light's own detail |
 | `src/shared/lightLook.ts` | **the shipped look** (`LOOK_DEFAULTS`) and `applyLook` |
 | `src/shared/filmGrain.ts` | the film grain (`GRAIN_DEFAULTS`) |
-| `src/shared/pointer.ts` | `SmoothPointer`, the cursor's inertia (main screen) |
+| `src/shared/pointer.ts` | `SmoothPointer`, the cursor's inertia (main screen); on phones the gyro, permission asked on a tap |
+| `src/page/touchLight.ts` | a phone's cursor for a scrolling page: tilt + scroll gust, never the finger (round 34) |
 | `src/shared/assetUrl.ts` | `asset()` — the icon light loads its SVGs through it |
 | `src/screens/main/variants.ts` | the «Сияние» preset every light starts from |
 | `src/screens/concept/motionParams.ts` | the «О Крестах» icons' overrides (`MOTION`) |
@@ -64,8 +65,8 @@ Three reference consumers show the whole wiring. Reproduce them; do not re-deriv
 
 | page | reference | notes |
 |---|---|---|
-| «Музей» | `src/screens/museum/museumLight.ts` | self-contained, one canvas — copy it nearly as is |
-| «О Крестах» icons | `src/screens/concept/pageLight.ts` (+ `conceptPage.ts`) | a 2-viewport canvas + `scissorPx`, so the light never lags the scroll |
+| «Музей» | `src/screens/museum/museumLight.ts` | self-contained, one canvas — copy it nearly as is. Its size terms (`cross`/`trails`/`reach`, round 34) are `MUSEUM_LOOK` in `lightLook.ts` |
+| «О Крестах» icons | `src/screens/concept/pageLight.ts` (+ `conceptPage.ts`) | a 2-viewport canvas + `scissorPx`, so the light never lags the scroll. Where the icon's column does not stick (one-column layouts), the transform rides a `ViewTimeline` (`src/page/viewLock.ts`), or it trails the scroll on a phone |
 | main | `src/screens/main/MainScreen.ts` | `initRenderer()`, `layout()`, `update()`, `stageCentre()`, `setReveal()` |
 
 **Boot (once per canvas)** — exactly `MainScreen.initRenderer()`:

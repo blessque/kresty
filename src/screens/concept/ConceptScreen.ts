@@ -522,6 +522,7 @@ export class ConceptScreen {
     this.running = true;
     this.el.classList.remove('hidden');
     this.page.handoff.reset();
+    this.page.start();
     if (restore === undefined) {
       // arriving from the main screen must always land on the resting composition
       this.scroll.reset();
@@ -613,6 +614,7 @@ export class ConceptScreen {
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.el.classList.add('hidden');
+    this.page.stop();
     this.picker.select(null);
     this.drawer.close();
     removeEventListener('resize', this.resize);

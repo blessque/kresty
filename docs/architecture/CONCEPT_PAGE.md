@@ -120,6 +120,24 @@ same defaults**, so the page is correct with no JS.
   The film grain stays hidden here (round 16).
   The iPhone's "worst on the icons" was the march at 16 steps, its noise ~3 px a blob; the exact
   path has neither steps nor a sub-native canvas (on-device check still pending).
+- **Round 34: below the sticky breakpoint the COMPOSITOR places the canvas.** The rAF
+  `translate3d` is fine on desktop only because the pinned column holds the icon still. At ≤ 1160
+  (and on short viewports) `.sec-col` is `static`, so the icon flows with the text and the
+  main-thread transform chased the scroll every frame. On a phone it trailed by a frame or two,
+  30–70 px at flick speed: the "parallax" the user reported, lagging and then jumping.
+  `page/viewLock.ts` now drives the transform with a WAAPI animation on a `ViewTimeline` whose
+  subject is the owning station's `.sec-icon`. The keyframes run from `iconH/2` to
+  `−viewH − iconH/2` across the cover range. It is `mediaSlider`'s `view()` reasoning, threaded in
+  Chrome and in Safari since 26.4. `position()` still writes the opacity. The scissor band is
+  padded a third of a viewport either side, because the compositor can lead the main thread's
+  estimate. Measured at 390×844: canvas middle = icon centre at five scroll positions, 0.00 px.
+  Without `ViewTimeline` (Firefox, iOS < 26.4) the rAF path carries on.
+- **Round 34: the phone cursor is tilt + scroll, and the light rests centred.** The light was fed
+  `ConceptScreen.cursor`, which starts at **(−9999, −9999)**. With `parallax` 1.2 that shoved a
+  never-pointed-at light ~720 px off its icon, so the rays smeared one way until the first touch
+  flew it back. Every phone visit hit it. Touch devices now take `page/touchLight.ts` (gyro +
+  scroll gust, finger positions ignored), and `smoothPointer` treats an off-screen cursor as the
+  centre on desktop too.
 - **The cursor moves the light again, in 5 × 4 = 20 quantised cells.** Three things were off,
   not one: `MOTION.parallax` was 0 (which zeroes every consumer of `q`), `bake()` was never
   called on cursor movement despite its own doc comment saying it was, and **the pointer was

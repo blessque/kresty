@@ -8,3 +8,18 @@
   right: 16px;
   bottom: 16px;
 }
+
+/* round 34: the user tunes «Музей» on a phone, where a 290px column down the
+   right is three quarters of the screen. Dock to the bottom, under half the
+   height, so the cross on the left stays visible; the header folds it away. */
+@media (max-width: 640px) {
+  .fx-panel.fx-panel--lab,
+  .fx-panel.fx-panel--lab.min {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 45vh;
+  }
+}

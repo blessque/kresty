@@ -3,11 +3,14 @@ import { buildPageHead } from '../../page/pageHead';
 import { getPerfTier } from '../../shared/performanceTier';
 import * as governor from '../../shared/frameGovernor';
 import { perfHud } from '../../shared/perfHud';
-import { T } from '../../styles/tokens.gen';
+import { Spring, clamp01 } from '../../shared/easing';
+import { MUSEUM_LOOK } from '../../shared/lightLook';
 import type { ColorStop } from '../../page/pageBackground';
+import { TOUCH_LIGHT, TouchLightInput } from '../../page/touchLight';
 import { MuseumRun } from './museumRun';
 import { MuseumLight } from './museumLight';
 import { buildVectorCross } from './museumCross';
+import { MuseumInk } from './museumInk';
 import { MUSEUM_SECTIONS, MUSEUM_LEAD, MUSEUM_TITLE, WHITE_SECTION } from './museumSections';
 
 /**
@@ -71,8 +74,26 @@ const WARM_VH = 1.5;
  * injects CSS asynchronously, and a `matchMedia` on the same number is the
  * honest version of the coupling.
  */
-const NARROW = '(max-width: 1160px)';
-const NARROW_LIGHT = 0.45;
+const NARROW = matchMedia('(max-width: 1160px)');
+/* `NARROW_LIGHT` (0.45) is the lab's `phoneGlow` since round 34, raised to 0.75
+   alongside the brighter cross — see `MUSEUM_LOOK` in shared/lightLook.ts. The
+   lab also moves the convergence point down here (`phoneX`/`phoneY`), because a
+   phone is read in one band of its height, not across all of it. */
+
+/**
+ * ROUND 34: ON A PHONE THE ROTATION HAS WEIGHT. Geared straight to `scrollTop`,
+ * the emblem stopped dead the instant the finger did and turned only a few
+ * degrees a screen on the long one-column page — it read as a background. On a
+ * touch device the angle follows its scroll target through a spring, so a flick
+ * glides on and settles. Desktop keeps the direct mapping.
+ *
+ * 34.2: CRITICALLY DAMPED, AND NO TWIST. Round 34 shipped ζ 0.75 plus ~7° of
+ * extra turn per full scroll gust, released when the page stopped — the user:
+ * "too hard back bounce". ζ 1 is the fastest settle that never overshoots, so
+ * the glide stays and nothing swings back.
+ */
+const ROT_OMEGA = 9;
+const ROT_ZETA = 1;
 
 /**
  * `?rot=<deg>` pins the emblem's angle instead of deriving it from scroll.
@@ -96,15 +117,18 @@ export class MuseumScreen extends ContentScreen {
   private light = new MuseumLight();
   private cross = buildVectorCross();
   private tier = getPerfTier();
+  private ink: MuseumInk;
   private raf = 0;
   private warmed = false;
   /** window coordinates, as the light wants them — the canvas is never moved */
   private pointer: [number, number] = [-9999, -9999];
   /** the eased cursor the light actually sees; null until the first frame */
   private smoothPtr: [number, number] | null = null;
+  /** a phone's cursor: tilt and scroll, never the finger (page/touchLight.ts) */
+  private touch = new TouchLightInput();
+  private rotSpring = new Spring(ROT_OMEGA, ROT_ZETA);
   private lastRotDeg = '';
-  private lastInk = '';
-  private lastChrome = '';
+  private lastCentre = '';
   /** when the light's clock started — see the frame loop */
   private t0 = 0;
   /** previous rAF timestamp — the frame governor's input */
@@ -112,6 +136,7 @@ export class MuseumScreen extends ContentScreen {
 
   constructor(el: HTMLElement) {
     super(el, 'museum-page');
+    this.ink = new MuseumInk(el);
   }
 
   protected build() {
@@ -175,6 +200,8 @@ export class MuseumScreen extends ContentScreen {
     this.remeasure();
     governor.reset();
     this.lastFrame = 0;
+    this.rotSpring.reset();
+    if (TOUCH_LIGHT.matches) this.touch.attach();
     if (!this.raf) this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -182,6 +209,7 @@ export class MuseumScreen extends ContentScreen {
     super.stop();
     cancelAnimationFrame(this.raf);
     this.raf = 0;
+    this.touch.detach();
     // `--grain-k` is shared with MainScreen's reveal ramp; leave it as we found
     // it so a page that never drives it is not stuck at whatever we last wrote.
     document.documentElement.style.removeProperty('--grain-k');
@@ -239,7 +267,26 @@ export class MuseumScreen extends ContentScreen {
     // 0…1 across the content, then held. The emblem reaches 180° exactly where
     // the reader stops reading.
     const progress = clamp01(top / Math.max(1, handoffTop - viewH));
-    const rot = ROT_PIN ?? progress * TOTAL_ROT;
+    const phone = TOUCH_LIGHT.matches;
+    const viewW = sc.clientWidth;
+    // the phone's cursor runs every frame, so the gust is live before the light is
+    const pointer = phone ? this.touch.update(dtMs, top, viewW, viewH) : this.easedPointer(dtMs);
+    const narrow = NARROW.matches;
+    const centre = this.centre(narrow, viewW, viewH);
+    // ROUND 34.1: A CROSS ON THE RIGHT TURNS THE OTHER WAY. The user moved the
+    // phone's convergence point to the bottom-right corner; the page then shows
+    // the emblem's LEFT half, a mirror of the desktop composition, and its spin
+    // has to mirror too. Derived from where the centre is, not hard-coded to
+    // phones, so moving it back left in the lab restores the original turn. The
+    // vector cross reads the same signed angle, so the white handover follows.
+    // (34.2: the flick's extra twist is gone, so this negates the spring alone.)
+    const turn = centre[0] > viewW / 2 ? -1 : 1;
+    const rot =
+      ROT_PIN ??
+      turn *
+        (phone
+          ? this.rotSpring.step(progress * TOTAL_ROT, dtMs)
+          : progress * TOTAL_ROT);
 
     // Both the light and the cross belong to the CONTENT. They ramp to nothing
     // across the first viewport of the handoff, which is the same viewport
@@ -250,12 +297,21 @@ export class MuseumScreen extends ContentScreen {
     const white = this.whiteness();
 
     if (this.light.ready) {
-      const ceiling = matchMedia(NARROW).matches ? NARROW_LIGHT : 1;
+      const ceiling = narrow ? MUSEUM_LOOK.phoneGlow : 1;
       this.light.setOpacity((1 - white) * fade * ceiling);
       // The clock starts when the light does, not at page load: a reader who
       // spends a minute on «О Крестах» first should not arrive mid-breath.
       if (!this.t0) this.t0 = performance.now();
-      this.light.render(rot, this.easedPointer(dtMs), (performance.now() - this.t0) / 1000);
+      this.light.render({ rot, pointer, timeSec: (performance.now() - this.t0) / 1000, centre });
+    }
+
+    // the vector cross sits on the light's centre — one source, so the white
+    // handover lands on the same point wherever the lab has moved it
+    const c = `${centre[0].toFixed(1)}px|${centre[1].toFixed(1)}px`;
+    if (c !== this.lastCentre) {
+      this.lastCentre = c;
+      this.cross.style.setProperty('--mus-cx', `${centre[0].toFixed(1)}px`);
+      this.cross.style.setProperty('--mus-cy', `${centre[1].toFixed(1)}px`);
     }
 
     this.cross.style.opacity = (white * CROSS_OPACITY * fade).toFixed(3);
@@ -272,45 +328,11 @@ export class MuseumScreen extends ContentScreen {
       this.cross.style.setProperty('--mus-rot', `${deg}deg`);
     }
 
-    const ink = mixHex(INK_DARKFIELD, INK_LIGHTFIELD, white);
-    if (ink !== this.lastInk) {
-      this.lastInk = ink;
-      this.el.style.setProperty('--mus-ink', ink);
-    }
-
-    // THE CHROME RUNS THE OTHER WAY TO THE INK. The wordmark and the slider
-    // chevrons are the site's blue on a light field — that is the sitewide
-    // "blue means interactive" rule and the four white pages all do it — but on
-    // this page's dark fields blue on #081b5a is the one thing on screen with no
-    // contrast. So they are white while the field is dark and become the link
-    // blue as it turns white, which satisfies both: interactive everywhere it
-    // can be read as interactive, legible everywhere else.
-    const chrome = mixHex(INK_DARKFIELD, LINK, white);
-    if (chrome !== this.lastChrome) {
-      this.lastChrome = chrome;
-      this.el.style.setProperty('--mus-chrome', chrome);
-    }
-    document.documentElement.style.setProperty('--grain-k', (1 - white).toFixed(3));
+    this.ink.apply(white);
   };
 
-  /* ROUND 29 DELETED `fadeEras()`.
-   *
-   * It wrote `--mus-era-op` on each era column every frame, an envelope of
-   * distance from the frame's middle. Its reason was structural: a STICKY column
-   * is on screen from the moment its section's top edge is, so at every boundary
-   * the outgoing era sat at the top of the frame while the incoming one arrived
-   * at the bottom — two titles, both fully opaque, reading as a layout fault
-   * rather than a handover. The era is a heading at the top of its section now
-   * and scrolls away like any other, so there are never two.
-   *
-   * Noting it because the pairing it served is the thing the client gave up: the
-   * envelope peaked exactly at the cross's convergence point, so an era was at
-   * full strength precisely when it was inside the light. If a future round
-   * wants that back, it wants the sticky column back first — and note this
-   * method reached its target as `sec.firstElementChild?.firstElementChild`,
-   * which after round 29's restructuring would silently have found the heading
-   * band instead.
-   */
+  /* ROUND 29 DELETED `fadeEras()` — the era crossfade existed only for PINNED
+   * titles. Why, and what it would take to bring back: MUSEUM.md, "a section". */
 
   /**
    * How white the field is RIGHT NOW — 1 on the white section, falling to 0 both
@@ -332,6 +354,18 @@ export class MuseumScreen extends ContentScreen {
     return 0;
   }
 
+  /**
+   * The convergence point, viewport px. Desktop: a touch off the left edge at
+   * mid-height — `deskX` −0.056, i.e. −80 px at 1440, a fraction of the width so
+   * it scales with the screen (34.2: "not exactly on the page's 0 X"). Below the
+   * breakpoint the lab's `phoneX`/`phoneY` place it (round 34).
+   */
+  private centre(narrow: boolean, w: number, h: number): [number, number] {
+    return narrow
+      ? [MUSEUM_LOOK.phoneX * w, MUSEUM_LOOK.phoneY * h]
+      : [MUSEUM_LOOK.deskX * w, h / 2];
+  }
+
   /** the cursor, eased toward the pointer — see POINTER_TAU. Centre until one arrives. */
   private easedPointer(dtMs: number): [number, number] {
     const w = this.shell.scroller.clientWidth;
@@ -346,35 +380,4 @@ export class MuseumScreen extends ContentScreen {
     ];
     return this.smoothPtr;
   }
-}
-
-/* The two ends of the ink ramp — on-dark main and on-light main, the same two
-   the rest of the site switches between. Read from the token MODULE rather than
-   the cascade: `getComputedStyle` at module scope returns '' in dev, because
-   Vite injects CSS asynchronously. */
-const INK_DARKFIELD = T.textOndarkMain;
-const INK_LIGHTFIELD = T.textOnlightMain;
-const LINK = T.link;
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-/**
- * Component-wise sRGB mix of two `#rrggbb` strings.
- *
- * sRGB rather than oklab, deliberately: `PageBackground` needs oklab because two
- * deep saturated colours lerped in sRGB pass through a muddy neutral, and this
- * ramp is white to near-black — an achromatic path with no hue to muddy, on
- * text, where a `color-mix()` string per frame would be parsed per frame.
- */
-function mixHex(a: string, b: string, t: number): string {
-  const pa = parseInt(a.slice(1), 16);
-  const pb = parseInt(b.slice(1), 16);
-  const m = (sh: number) => {
-    const ca = (pa >> sh) & 255;
-    const cb = (pb >> sh) & 255;
-    return Math.round(ca + (cb - ca) * t);
-  };
-  return `rgb(${m(16)}, ${m(8)}, ${m(0)})`;
 }

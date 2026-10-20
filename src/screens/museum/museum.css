@@ -75,8 +75,11 @@
 #screen-museum .museum-cross {
   --mus-cross-size: 155.6vh;
   position: absolute;
-  left: 0;
-  top: 50%;
+  /* the light's convergence point, written by `MuseumScreen` from the same
+     numbers the shader gets (round 34: the lab can move it on a phone) — the
+     fallbacks are the desktop point, so the stylesheet stands alone */
+  left: var(--mus-cx, 0px);
+  top: var(--mus-cy, 50%);
   width: var(--mus-cross-size);
   height: var(--mus-cross-size);
   z-index: 0;

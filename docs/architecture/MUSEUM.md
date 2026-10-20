@@ -58,21 +58,55 @@ feel. The 20-cell grid (5×4) it replaced was a leftover of the baked light and 
 jump between 20 poses; *disturbed dust, never literally follow the mouse* is satisfied by
 inertia, exactly as on the main screen.
 
+**Round 34: on a phone the cursor is the HAND and the SCROLL, never the finger.**
+`page/touchLight.ts`, gated on `(hover: none) and (pointer: coarse)`: the gyro (main's own
+`SmoothPointer`, with `ignoreTouch` so a finger landing to scroll no longer yanks the light) plus
+a **scroll gust**, where the eased page velocity pushes the virtual cursor along the content's
+motion and lets go when the page settles. The rotation gets weight too: a spring chases
+`progress × π`, so a flick glides on and settles. **34.2 made it critically damped (ζ 1) and
+removed round 34's ~7° gust twist, and halved the gust (0.34 → 0.17 viewports).** The user found
+the swing-back "too hard". Desktop keeps the direct mapping. `?rot=` still pins.
+
 ### The numbers, and how they were got
 
-Three URL dials, which is how these were arrived at rather than guessed:
-`?sign=` (emblem span in viewport heights) · `?exp=` (exposure gain) · `?fall=` (falloff, ref px).
-Plus `?rot=<deg>` to pin the angle, and `?ls=` for render scale.
+URL dials: `?sign=` (emblem span in viewport heights) · `?exp=` (the RAYS gain since round 34) ·
+`?fall=` (falloff, ref px). Plus `?rot=<deg>` to pin the angle, and `?ls=` for render scale. The
+rest are the lab's **«Музей» group** (`?lab`, `MUSEUM_LOOK` in `shared/lightLook.ts`).
 
 **«Сияние» IS THE PRESET, SPREAD UNTOUCHED.** Only what the composition forces may differ —
-`centerPx`, `signSize`, `signRot` — plus ONE gain on the four emissive terms, because the
-emblem is ~4× the hero's and those terms are not normalised for size. `layers` and `octaves`
-come from the perf tier exactly as `MainScreen` supplies them.
+`centerPx`, `signSize`, `signRot` — plus what the emblem's SIZE forces (below). `layers` and
+`octaves` come from the perf tier exactly as `MainScreen` supplies them.
+
+**Round 34: the single `GAIN = 0.22` treated a LENGTH problem as a brightness one.** At
+dissolve 1 the visible arms ARE the rays, and the rays' trails decay in emblem units, so a 4×
+emblem draws them 4× longer in px. They crossed the whole frame and lifted the navy, and 0.22
+fixed that by making the cross grey. The user asked "why is it faded?" Now `reach` shortens the
+trails back toward the hero's length, and the rays burn at the hero's strength. Luminance
+percentiles over the left half at 1440×900, `?rot=30`:
+
+| look | field p10 | arms p99 |
+|---|---|---|
+| round 28.1, one gain 0.22 | 41 | 169 |
+| bloom/core at 1, rays still 0.22 (the first split) | 54 | 205 (field lifted, arms still grey) |
+| **cross 0.3 · rays 1.2 · reach 0.3** (shipped) | **34** | **228** |
+| main's own cross, centre 500² | 54 | 237 |
 
 | | shipped | note |
 |---|---|---|
 | `signSize` | **2.2 vh** | = the vector's own 1400px ink, so both crosses are one size |
-| `GAIN` | **0.22** | one multiplier on godrays/bloom/core/haze; a scale correction |
+| `exposure` · `trail` · `edge` · `bloom` · `core` | **0.33 · 0.81 · 0.32 · 0.21 · 0** | this page's OWN copies of the Light group's handles, replacing them here only (34.1–34.2) |
+| `cross` | **0.49** | gain on bloom + core, the glow hugging the emblem |
+| `rays` | **0.68** | gain on godrays + haze, the rays themselves (`?exp=` overrides; lab key `musTrails`) |
+| `reach` | **0.33** | the trails' length relative to «Сияние»'s; what keeps the field dark |
+| `solid` | **0.86** | `1 − dissolve`, the crisp register: rays gated near the centre, a sharper bloom. With `core` 0 the strokes themselves stay dark. It raises the canvas to native resolution (≈ 4.1 ms on the M1 at 2×, the bench's "exact, moving" row) |
+| `deskX` | **−0.056** | the desktop centre, as a fraction of the width: −80 px at 1440, scaling with the screen |
+
+**Rounds 34.1 and 34.2 are the user's own looks from the lab**: the rows above are 34.2's. The
+first cut (cross 0.3 · rays 1.2 · reach 0.3 · solid 0) is the measured row in the table before
+it. Both links set Light-group handles while tuning this page: 34.1 `exposure`, 34.2 `trail`,
+`edge`, `bloom` and `core`. Those reach every page, so 34.1 dimmed «О Крестах»'s icons and 34.2's
+`core 0` would have switched their crisp body off. The page now carries its own copies
+(`museumLookOver()` → `applyLook(p, over)`), and the global handles no longer reach it.
 | everything else | «Сияние» | dissolve 1 · grain 0 (31.3) · ca 0 (round 33) · parallax · falloff 780 · dust · breathe · shimmer — then the shipped look on top (33.2, tuned on this page: trail ×1.47, ray edge 0.41, bloom ×0.34, core ×0.67, see RAY_FIELD.md) |
 | render scale | **the detail cap** (round 33) | `page/lightScale.ts`: ≈ 1.0 at 1440 on a 2× screen, governed by `EXACT_LADDER`; was a 1.5 cap under the march ladder. `?ls=` still pins it |
 
@@ -96,7 +130,9 @@ dust in it and read as a smooth pre-rendered gradient. That is what "why does it
 was pointing at, and the live clock alone was never going to fix it. Every param that gets a
 local opinion is a step back toward a lookalike; keep them coming through the spread.
 
-**`signSize` and `GAIN` are a pair. Do not move one alone.**
+**`signSize` and the size terms are a pair. Do not move one alone.** (Round 28.1 wrote this
+about `GAIN`; since round 34 the terms are `reach`, `trails` and `cross`, and `reach` is the one
+that scales with the emblem.)
 
 `signSize` is the SLIT, not the rays — their reach comes from `falloffL`. That is true, and it
 is *not* sufficient: a small slit makes thin needles, and both the frame's own light-beam
@@ -307,9 +343,23 @@ content's min-content, `.ms-frame` was deliberately `100% + one column + one gut
 is the same bug the `100vw` strip would now cause on a WIDE screen, so it is one rule rather
 than two that can disagree.
 
-The light drops to 45 % (`NARROW_LIGHT`), because at that width the body copy moves under the
-convergence point and there is no left edge to spare. (Nothing sticks down here any more — there
-is nothing left to un-stick.)
+Below 1160 the body copy moves under the convergence point and there is no left edge to spare,
+so the light is capped. It was a fixed 45 % (`NARROW_LIGHT`). **Since round 34 it is the lab's
+`phoneGlow`, at 0.56 since 34.1**, and two more handles place the convergence point on a narrow
+screen:
+`phoneX` (fraction of the width, 0 = the left edge, −0.25 a quarter further off it) and `phoneY`
+(fraction of the height, 0.5 = the middle, 1 = the bottom corner). The user's reasoning: a phone
+is read in one band of its height, so where the light sits matters as much as how bright it is.
+The vector cross reads the same point through `--mus-cx`/`--mus-cy`, written by `MuseumScreen`,
+so the white handover lands where the light was.
+
+**34.1: on a phone the cross sits in the BOTTOM-RIGHT corner** (`phoneX` 1, `phoneY` 0.98),
+the user's pick: there "it doesn't hurt left-aligned text reading". The page then shows the
+emblem's left half, a mirror of the desktop composition, **so the spin mirrors too**. The rule is
+derived from where the centre sits (right of the frame's middle → the angle is negated), so the
+lab can move it back left and the original turn returns. The vector cross reads the same signed
+angle. (Nothing sticks down here any more — there is
+nothing left to un-stick.)
 
 ---
 

@@ -78,6 +78,8 @@ export interface SectionGeom {
   iconX: number;
   /** the icon box's rendered size, px — responsive, so the light follows it */
   iconPx: number;
+  /** its height, px — the view lock's travel (round 34; square today, measured anyway) */
+  iconH: number;
   /** false below the sticky breakpoint: the column flows and never pins */
   sticky: boolean;
 }
@@ -95,6 +97,8 @@ export class SectionRun {
   readonly light = new PageLight([...PAGE_SECTIONS.map((s) => s.icon), FORM_ICON]);
 
   private sections: HTMLElement[] = [];
+  /** each station's `.sec-icon`, kept by `measure()` — the view lock's subject */
+  private icons: HTMLElement[] = [];
   private gap = document.createElement('div');
   private geom: SectionGeom[] = [];
   /** who held the light last frame — the incumbent in the hysteresis test */
@@ -222,9 +226,10 @@ export class SectionRun {
       for (const el of this.sections) el.style.removeProperty('--sec-pin');
     }
 
-    this.geom = this.sections.map((el) => {
+    this.icons = this.sections.map((el) => el.querySelector('.sec-icon') as HTMLElement);
+    this.geom = this.sections.map((el, i) => {
       const col = el.querySelector('.sec-col') as HTMLElement;
-      const icon = el.querySelector('.sec-icon') as HTMLElement;
+      const icon = this.icons[i];
       const cs = getComputedStyle(col);
       // `position: static` below the sticky breakpoint — the column flows, so
       // there is no pin and the station invariant does not apply
@@ -248,6 +253,7 @@ export class SectionRun {
         // column come from one source (the grid) instead of two that can drift
         iconX: ir.left + ir.width / 2,
         iconPx: ir.width,
+        iconH: ir.height,
         sticky: isSticky,
       };
     });
@@ -339,6 +345,19 @@ export class SectionRun {
 
   iconX(i: number): number {
     return this.geom[i]?.iconX ?? 0;
+  }
+
+  /** round 34: what the light locks to while station `i` flows (not sticky) */
+  iconEl(i: number): HTMLElement | null {
+    return this.icons[i] ?? null;
+  }
+
+  iconH(i: number): number {
+    return this.geom[i]?.iconH ?? 0;
+  }
+
+  isSticky(i: number): boolean {
+    return this.geom[i]?.sticky ?? false;
   }
 
   /**

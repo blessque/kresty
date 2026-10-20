@@ -31,6 +31,18 @@
   display: none;
 }
 
+/* round 34: a tap on the header folds the panel to that bar — the phone's H */
+.fx-panel-head {
+  cursor: pointer;
+}
+.fx-panel.min {
+  bottom: auto;
+}
+.fx-panel.min .fx-panel-body,
+.fx-panel.min .fx-panel-foot {
+  display: none;
+}
+
 .fx-panel-head,
 .fx-panel-foot {
   display: flex;
